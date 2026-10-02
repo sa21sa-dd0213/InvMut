@@ -1,0 +1,62 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("BANK_SAFE mutant detection - overflow protection", function () {   it("should revert on deposit that would cause overflow in original, but mutant allows it", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("BANK_SAFE");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // First, initialize the contract so we can deposit     await instance.connect(owner).SetMinSum(0);     await instance.connect(owner).Initialized();      // Get the maximum uint256 value     const MAX_UINT = ethers.MaxUint256;          // First deposit a large amount to addr1's balance to set up overflow condition     // We need to make addr1's balance large enough so that adding 1 would overflow     const largeAmount = MAX_UINT - BigInt(1);          // Send ether to the contract to fund addr1's balance     await owner.sendTransaction({       to: await instance.getAddress(),       value: largeAmount     });          // Deposit the large amount as addr1     // We need to call deposit through receive() by sending ether     await addr1.sendTransaction({       to: await instance.getAddress(),       value: largeAmount     });      // Now try to deposit 1 wei - this should overflow in original (revert)     // but in mutant it will silently overflow and wrap around     const tx = addr1.sendTransaction({       to: await instance.getAddress(),       value: 1     });      // In the original contract, this should revert due to overflow check     // In the mutant, it will succeed (killing the mutant)     await expect(tx).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract BANK_SAFE { mapping (address=>uint256) public balances; uint public MinSum; LogFile Log; bool intitalized; function SetMinSum(uint _val) public { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log) public { if(intitalized)revert(); Log = LogFile(_log); } function Initialized() public { intitalized = true; } function Deposit() public payable { require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); balances[msg.sender]+= msg.value; Log.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { if(balances[msg.sender]>=MinSum && balances[msg.sender]>=_am) { balances[msg.sender] = (balances[msg.sender] - _am); (bool _veri_ok,) = msg.sender.call{value: _am}(""); if(_veri_ok) { Log.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } receive() external payable { Deposit(); } } contract LogFile { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val,string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("BANK_SAFE mutant detection - overflow protection", function () {
+  it("should revert on deposit that would cause overflow in original, but mutant allows it", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("BANK_SAFE");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // First, initialize the contract so we can deposit
+    await instance.connect(owner).SetMinSum(0);
+    await instance.connect(owner).Initialized();
+
+    // Get the maximum uint256 value
+    const MAX_UINT = ethers.MaxUint256;
+    
+    // First deposit a large amount to addr1's balance to set up overflow condition
+    // We need to make addr1's balance large enough so that adding 1 would overflow
+    const largeAmount = MAX_UINT - BigInt(1);
+    
+    // Send ether to the contract to fund addr1's balance
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: largeAmount
+    });
+    
+    // Deposit the large amount as addr1
+    // We need to call deposit through receive() by sending ether
+    await addr1.sendTransaction({
+      to: await instance.getAddress(),
+      value: largeAmount
+    });
+
+    // Now try to deposit 1 wei - this should overflow in original (revert)
+    // but in mutant it will silently overflow and wrap around
+    const tx = addr1.sendTransaction({
+      to: await instance.getAddress(),
+      value: 1
+    });
+
+    // In the original contract, this should revert due to overflow check
+    // In the mutant, it will succeed (killing the mutant)
+    await expect(tx).to.be.reverted;
+  });
+});
+```

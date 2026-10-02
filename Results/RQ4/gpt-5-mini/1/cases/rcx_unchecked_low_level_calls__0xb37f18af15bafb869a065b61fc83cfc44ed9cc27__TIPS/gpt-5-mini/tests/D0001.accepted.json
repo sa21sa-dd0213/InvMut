@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "For every caller and value, if a non-owner attempts to call withdraw after any sendMoney call, the correct contract C will revert (non-owners cannot withdraw), whereas the mutant (which inverts onlyOwner) allows some non-owner to successfully withdraw and thus reduce address(c).balance for some inputs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Changed onlyOwner modifier to invert the check so it requires caller NOT be owner, altering access to withdrawAll.",
+ "mutated_unit_code": "modifier onlyOwner(){\n    require(msg.sender != owner);\n    _;\n}\n",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    address payable nonOwner;\n\n    function setUp() public { c = new SimpleWallet(); nonOwner = payable(address(0xBEEF)); }\n\n    function testFuzz_property(uint256 sendValue, uint256 fundAmount) public {\n        sendValue = bound(sendValue, 0, 1 ether);\n        fundAmount = bound(fundAmount, 0, 1 ether);\n\n        vm.deal(nonOwner, fundAmount);\n\n        if (fundAmount > 0) {\n            vm.deal(address(this), fundAmount);\n            (bool s,) = address(c).call{value: fundAmount}(\"\");\n            require(s);\n        }\n\n        vm.prank(address(this));\n        bool ok;\n        try c.sendMoney(nonOwner, sendValue) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        uint256 balAfter = address(c).balance;\n\n        vm.prank(nonOwner);\n        bool nonOwnerCouldWithdraw;\n        try c.withdrawAll() {\n            nonOwnerCouldWithdraw = true;\n        } catch {\n            nonOwnerCouldWithdraw = false;\n        }\n\n        assertTrue(!nonOwnerCouldWithdraw);\n    }\n}\n"
+}

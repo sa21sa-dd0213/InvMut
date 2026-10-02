@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EtherLotto:
+        Contract Code: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+
+    Consider the following mutant of EtherLotto:
+        Mutant me59dbaab of function play replaces - with +
+        Mutant Diff: ---|             payable(msg.sender).transfer(pot - FEE_AMOUNT); +++|             payable(msg.sender).transfer(pot + FEE_AMOUNT);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract calculates the player's payout as `pot - FEE_AMOUNT`, meaning the player receives the entire pot minus a 1 wei fee sent to the bank. The mutant changes this to `pot + FEE_AMOUNT`, so the player receives more than the total pot, which is impossible and would cause the transfer to fail if the contract's balance is insufficient.
+
+**Hypothesis:** The mutant incorrectly adds the fee to the player's payout instead of subtracting it. Therefore, a test case that calls `play()` with exactly 10 wei and then attempts to verify that the contract's final balance equals exactly 1 wei (the fee retained by the bank) should kill the mutant, because with the mutant the transfer of `pot + FEE_AMOUNT` (11 wei) will revert due to insufficient contract balance, leaving the full 10 wei in the contract instead of the expected 1 wei.

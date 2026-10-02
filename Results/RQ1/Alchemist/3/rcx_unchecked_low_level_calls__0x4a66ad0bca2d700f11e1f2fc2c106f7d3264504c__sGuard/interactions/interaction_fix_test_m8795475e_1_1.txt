@@ -1,0 +1,62 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EBU mutant detection test", function () {   it("should detect mutant m8795475e by verifying token transfer to recipient", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy the EBU contract (no constructor arguments needed)     const Factory = await ethers.getContractFactory("EBU");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Get the from address from the contract     const fromAddress = await instance.from();          // Create a simple token contract that can receive transferFrom calls     const TokenFactory = await ethers.getContractFactory("ERC20Mock");     const token = await TokenFactory.deploy("Test", "TST", 18);     await token.waitForDeployment();          // Mint tokens to the from address     const mintAmount = ethers.parseEther("1000");     await token.mint(fromAddress, mintAmount);          // Approve the caddress (which should be the token contract in original)     // But in mutant it points to fromAddress itself     const caddress = await instance.caddress();     await token.connect(owner).approve(caddress, ethers.MaxUint256);          // Prepare transfer parameters     const recipients = [addr1.address];     const amounts = [1]; // 1 ETH worth of tokens          // Execute the transfer     const tx = await instance.connect(owner).transfer(recipients, amounts);     await tx.wait();          // Check recipient balance - in original, tokens would be transferred     // In mutant, call goes to fromAddress (EOA) so no transfer happens     const recipientBalance = await token.balanceOf(addr1.address);          // If mutant is active, recipient will have 0 tokens     // If original, recipient will have 1000000000000000000 tokens (1 * 10^18)     expect(recipientBalance).to.equal(ethers.parseEther("1"));   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function mul_uint256(uint256 a, uint256 b) internal pure returns (uint256) { if (a == 0) { return 0; } uint256 c = a * b; assert(c / a == b); return c; } } contract EBU is sGuard { address public from = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9; address public caddress = 0x1f844685f7Bf86eFcc0e74D8642c54A257111923; function transfer( address[] memory _tos, uint[] memory v)public returns (bool){ require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9); require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ caddress.call(abi.encodeWithSelector(id,from,_tos[i],mul_uint256(v[i], 1000000000000000000))); } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant detection test", function () {
+  it("should detect mutant m8795475e by verifying token transfer to recipient", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy the EBU contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Get the from address from the contract
+    const fromAddress = await instance.from();
+    
+    // Create a simple token contract that can receive transferFrom calls
+    const TokenFactory = await ethers.getContractFactory("ERC20Mock");
+    const token = await TokenFactory.deploy("Test", "TST", 18);
+    await token.waitForDeployment();
+    
+    // Mint tokens to the from address
+    const mintAmount = ethers.parseEther("1000");
+    await token.mint(fromAddress, mintAmount);
+    
+    // Approve the caddress (which should be the token contract in original)
+    // But in mutant it points to fromAddress itself
+    const caddress = await instance.caddress();
+    await token.connect(owner).approve(caddress, ethers.MaxUint256);
+    
+    // Prepare transfer parameters
+    const recipients = [addr1.address];
+    const amounts = [1]; // 1 ETH worth of tokens
+    
+    // Execute the transfer
+    const tx = await instance.connect(owner).transfer(recipients, amounts);
+    await tx.wait();
+    
+    // Check recipient balance - in original, tokens would be transferred
+    // In mutant, call goes to fromAddress (EOA) so no transfer happens
+    const recipientBalance = await token.balanceOf(addr1.address);
+    
+    // If mutant is active, recipient will have 0 tokens
+    // If original, recipient will have 1000000000000000000 tokens (1 * 10^18)
+    expect(recipientBalance).to.equal(ethers.parseEther("1"));
+  });
+});
+```

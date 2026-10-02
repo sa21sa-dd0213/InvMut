@@ -1,0 +1,61 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mdfdde560 of PoCGame.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PoCGame.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PoCGame:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PoCGame reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PoCGame by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PoCGame"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PoCGame mutant mdfdde560 - kill test for removed onlyRealPeople modifier on wager", function () {
+  it("should revert when a contract attempts to call wager on original, but succeed on mutant (killing it)", async function () {
+    const [owner, whale, player] = await ethers.getSigners();
+    const betLimit = ethers.parseEther("1.0");
+
+    // Deploy PoCGame with required constructor arguments (whaleAddress, wagerLimit)
+    const Factory = await ethers.getContractFactory("PoCGame");
+    const instance = await Factory.deploy(whale.address, betLimit);
+    await instance.waitForDeployment();
+
+    // Open the game to public (only owner can do this)
+    await instance.connect(owner).OpenToThePublic();
+
+    // Deploy a malicious contract that will try to call wager on PoCGame
+    const AttackerFactory = await ethers.getContractFactory("ContractCaller");
+    const attacker = await AttackerFactory.deploy();
+
+    // Fund the attacker contract so it can send the betLimit
+    await player.sendTransaction({
+      to: attacker.target,
+      value: betLimit
+    });
+
+    // Attempt to call wager from the contract - this should revert in original due to onlyRealPeople
+    // but in mutant it will succeed (killing the mutant)
+    await expect(
+      attacker.connect(player).callWager(instance.target, { value: betLimit })
+    ).to.be.revertedWith(""); // Empty revert reason expected from require(msg.sender == tx.origin)
+  });
+});
+
+// Helper contract that acts as a contract caller (msg.sender != tx.origin)
+contract ContractCaller {
+  function callWager(address gameAddress) external payable {
+    (bool success, ) = gameAddress.call{value: msg.value}(abi.encodeWithSignature("wager()"));
+    require(success, "wager call failed");
+  }
+}
+```

@@ -1,0 +1,74 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m468688ec of GameItems.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test GameItems.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for GameItems:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("GameItems reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy GameItems by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("GameItems"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("GameItems - kill mutant m468688ec (OR -> AND in mint)", function () {
+  it("should allow minting when daily allowance has been partially consumed and replenishment time has not passed, but quantity <= remaining allowance", async function () {
+    const [owner, buyer, treasury] = await ethers.getSigners();
+    
+    // Deploy Neuron contract first (required for GameItems minting)
+    const NeuronFactory = await ethers.getContractFactory("Neuron");
+    const neuronInstance = await NeuronFactory.deploy(owner.address, treasury.address, buyer.address);
+    await neuronInstance.waitForDeployment();
+    
+    // Deploy GameItems contract
+    const Factory = await ethers.getContractFactory("GameItems");
+    const instance = await Factory.deploy(owner.address, treasury.address);
+    await instance.waitForDeployment();
+    
+    // Setup: instantiate Neuron contract in GameItems
+    await instance.instantiateNeuronContract(await neuronInstance.getAddress());
+    
+    // Give buyer some NRN tokens for purchase
+    const buyerNrnBalance = ethers.parseEther("1000");
+    await neuronInstance.mint(buyer.address, buyerNrnBalance);
+    
+    // Create a game item with daily allowance of 10, finite supply, transferable, price 1 NRN
+    await instance.createGameItem(
+      "TestItem",
+      "ipfs://test",
+      true,      // finiteSupply
+      true,      // transferable
+      100,       // itemsRemaining
+      ethers.parseEther("1"), // itemPrice
+      10         // dailyAllowance
+    );
+    
+    const tokenId = 0;
+    
+    // Buyer mints 5 items first (half of daily allowance)
+    await instance.connect(buyer).mint(tokenId, 5);
+    
+    // Verify remaining allowance is 5
+    expect(await instance.getAllowanceRemaining(buyer.address, tokenId)).to.equal(5);
+    
+    // Now try to mint 3 more items (within remaining allowance of 5)
+    // but before daily allowance replenishment time
+    // Original: should succeed (quantity 3 <= remaining 5)
+    // Mutant: should revert (dailyAllowanceReplenishTime > block.timestamp is false)
+    await instance.connect(buyer).mint(tokenId, 3);
+    
+    // Verify the mint was successful
+    expect(await instance.balanceOf(buyer.address, tokenId)).to.equal(8);
+    expect(await instance.getAllowanceRemaining(buyer.address, tokenId)).to.equal(2);
+  });
+});
+```

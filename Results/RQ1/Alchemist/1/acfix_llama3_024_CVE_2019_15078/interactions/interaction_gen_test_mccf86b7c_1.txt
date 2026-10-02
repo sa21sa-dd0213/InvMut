@@ -1,0 +1,88 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mccf86b7c of XBORNID.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test XBORNID.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for XBORNID:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("XBORNID reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy XBORNID by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("XBORNID"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("XBORNID mutant mccf86b7c detection", function () {
+    it("should detect mutant that changes >= to == in distribution finished check", async function () {
+        const [owner, investor1, investor2] = await ethers.getSigners();
+        const Factory = await ethers.getContractFactory("XBORNID");
+        const instance = await Factory.deploy();
+        await instance.waitForDeployment();
+
+        // Get initial state
+        const totalSupply = await instance.totalSupply();
+        const totalDistributed = await instance.totalDistributed();
+        const value = await instance.value();
+        
+        // Calculate how many tokens are needed to reach exactly totalSupply
+        // We need to distribute until totalDistributed exceeds totalSupply
+        const remainingToExceed = totalSupply - totalDistributed + BigInt(1);
+        
+        // Calculate how many calls to getTokens() are needed
+        // Each call distributes 'value' tokens, but value decreases each time
+        // Let's do it step by step
+        
+        // First, let's distribute some tokens normally
+        await instance.connect(investor1).getTokens({ value: ethers.parseEther("1") });
+        
+        // Now check the state after first distribution
+        let currentDistributed = await instance.totalDistributed();
+        let currentValue = await instance.value();
+        let currentRemaining = await instance.totalRemaining();
+        
+        // Keep distributing until we exceed totalSupply
+        let iterations = 0;
+        const maxIterations = 100;
+        
+        while (currentDistributed < totalSupply && iterations < maxIterations) {
+            // Get a new investor for each call (since blacklist prevents reuse)
+            const newInvestor = (await ethers.getSigners())[iterations + 3];
+            
+            // Send exactly the required ether to trigger getTokens()
+            await instance.connect(newInvestor).getTokens({ value: ethers.parseEther("0.001") });
+            
+            currentDistributed = await instance.totalDistributed();
+            currentValue = await instance.value();
+            currentRemaining = await instance.totalRemaining();
+            iterations++;
+        }
+        
+        // Now we should have totalDistributed >= totalSupply in the original
+        // In the mutant, totalDistributed == totalSupply might not trigger if it exceeds
+        
+        // Try one more distribution - this should revert in original but pass in mutant
+        const lastInvestor = (await ethers.getSigners())[iterations + 3];
+        
+        // In the original code, distributionFinished should be true and getTokens should revert
+        // In the mutant, if totalDistributed > totalSupply, distributionFinished might never be set
+        const tx = instance.connect(lastInvestor).getTokens({ value: ethers.parseEther("0.001") });
+        
+        // If the mutant is present (== instead of >=), this might succeed
+        // If original code, it should revert
+        // We expect it to revert (original behavior)
+        await expect(tx).to.be.reverted;
+        
+        // Additional verification: distributionFinished should be true
+        const isFinished = await instance.distributionFinished();
+        expect(isFinished).to.equal(true);
+    });
+});
+```

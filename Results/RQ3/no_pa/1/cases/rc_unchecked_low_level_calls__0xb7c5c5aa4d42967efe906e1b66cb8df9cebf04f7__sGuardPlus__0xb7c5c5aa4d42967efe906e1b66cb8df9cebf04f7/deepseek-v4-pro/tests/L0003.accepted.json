@@ -1,0 +1,11 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "After Alice deposits 1 ether and Bob deposits 1 ether, Bob calls withdraw(), then Alice calls withdraw(): in the reference, Alice receives 1 ether and her balance becomes 0; in the bug, Alice's balance is zeroed before the external call, so she receives 0 ether but her balance is still 0, and the reference sends 1 ether to Alice while the bug does not.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "change_summary": "Swap the order of the require and balance zeroing statements so that balance is set to zero before the external call.",
+ "mutated_unit_code": "function withdraw () public __lock_modifier0  {\nbalances[msg.sender]=0;\n(bool __sent_result100, ) = msg.sender.call{value: balances[msg.sender]}(\"\");\nrequire(__sent_result100);\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport \"forge-std/Test.sol\";\nimport {keepMyEther} from \"../src/keepMyEther.sol\";\n\ncontract InvMutTest is Test {\n    keepMyEther c;\n    bool rejectEth;\n\n    function setUp() public {\n        c = new keepMyEther();\n    }\n\n    function testFuzz_run() public {\n        vm.deal(address(this), 1 ether);\n\n        rejectEth = false;\n        (bool s, ) = address(c).call{value: 1}(\"\");\n        require(s, \"deposit failed\");\n        assertEq(c.balances(address(this)), 1);\n\n        rejectEth = true;\n\n        try c.withdraw() {\n        } catch {\n        }\n\n        assertGt(c.balances(address(this)), 0);\n    }\n\n    receive() external payable {\n        if (rejectEth) revert(\"no eth\");\n    }\n}"
+}

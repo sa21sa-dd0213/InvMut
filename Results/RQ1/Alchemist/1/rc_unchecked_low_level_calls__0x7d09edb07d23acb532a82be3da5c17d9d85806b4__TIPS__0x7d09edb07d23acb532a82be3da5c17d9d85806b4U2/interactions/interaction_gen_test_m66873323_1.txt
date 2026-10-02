@@ -1,0 +1,57 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m66873323 of PoCGame.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PoCGame.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PoCGame:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PoCGame reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PoCGame by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PoCGame"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PoCGame mutant test - constructor onlyRealPeople modifier", function () {
+  it("should revert when deploying from a contract (msg.sender != tx.origin) if onlyRealPeople modifier is present", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy a helper contract that will deploy PoCGame from its constructor
+    // This simulates msg.sender being a contract address while tx.origin is an EOA
+    const DeployerFactory = await ethers.getContractFactory(
+      "contract Deployer { constructor(address whaleAddress, uint256 wagerLimit) { new PoCGame(whaleAddress, wagerLimit); } }"
+    );
+    
+    // Get the PoCGame factory to link it
+    const PoCGameFactory = await ethers.getContractFactory("PoCGame");
+    const PoCGameBytecode = PoCGameFactory.bytecode;
+    
+    // Create deployer contract that references PoCGame
+    const DeployerWithPoCGame = await ethers.getContractFactory(
+      `contract Deployer { constructor(address whaleAddress, uint256 wagerLimit) { bytes memory bytecode = hex"${PoCGameBytecode.slice(2)}"; address addr; assembly { addr := create(0, add(bytecode, 0x20), mload(bytecode)) } require(addr != address(0), "Deploy failed"); } }`
+    );
+    
+    // Attempt to deploy from a contract - this should revert in original (onlyRealPeople)
+    // but might succeed in mutant (without modifier)
+    await expect(
+      DeployerWithPoCGame.deploy(addr1.address, ethers.parseEther("1"))
+    ).to.be.reverted;
+  });
+  
+  it("should deploy successfully from EOA (normal deployment)", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("PoCGame");
+    const instance = await Factory.deploy(addr1.address, ethers.parseEther("1"));
+    await instance.waitForDeployment();
+    expect(await instance.ethBalance()).to.equal(0);
+  });
+});
+```

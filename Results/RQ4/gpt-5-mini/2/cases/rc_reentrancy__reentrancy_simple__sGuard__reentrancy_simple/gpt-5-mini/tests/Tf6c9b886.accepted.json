@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tf6c9b886",
+ "property_summary": "For any address u, getBalance(u) always returns the stored userBalance for that address (i.e., userBalance[u]); the mutant instead returns userBalance[msg.sender], so for calls where msg.sender != u the mutant can return a different value and thus violates the rule.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change getBalance to return balance of the caller (msg.sender) instead of the requested address u.",
+ "mutated_unit_code": "function getBalance(address u)  public view returns (uint) {\n         return userBalance[msg.sender];\n     }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n\n    function testFuzz_property(address actor, address target, uint256 amount) public {\n        vm.assume(actor != address(0));\n        vm.assume(target != address(0));\n\n        uint256 amt = bound(amount, 0, 1 ether);\n\n        vm.deal(target, amt);\n        vm.prank(target);\n        c.addToBalance{value: amt}();\n\n        uint256 actorAmt = amt / 2;\n        vm.deal(actor, actorAmt);\n        vm.prank(actor);\n        c.addToBalance{value: actorAmt}();\n\n        vm.prank(actor);\n        uint256 reported = c.getBalance(target);\n\n        vm.prank(target);\n        uint256 actual = c.getBalance(target);\n\n        assertTrue(reported == actual);\n    }\n}\n"
+}

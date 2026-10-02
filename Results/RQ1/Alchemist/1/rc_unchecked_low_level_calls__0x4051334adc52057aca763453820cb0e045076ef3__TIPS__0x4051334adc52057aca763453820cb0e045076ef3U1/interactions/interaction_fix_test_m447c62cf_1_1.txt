@@ -1,0 +1,40 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("airdrop mutant m447c62cf test", function () {   it("should detect mutant where loop condition changed from < to <=", async function () {     const [owner, from, recipient1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("airdrop");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // The mutant changes for(uint i=0;i<_tos.length;i++) to for(uint i=0;i<=_tos.length;i++)     // This causes an out-of-bounds access on the last iteration     // For an array with 1 element, the loop runs twice (i=0 and i=1)     // The second iteration tries to access _tos[1] which is out of bounds, causing revert          const recipients = [recipient1.address];     const value = ethers.parseEther("1");          // This should succeed on the original but revert on the mutant     await expect(       instance.connect(from).transfer(from.address, recipient1.address, recipients, value)     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract airdrop{ function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){ require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ { (bool _s,) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v)); require(_s); } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airdrop mutant m447c62cf test", function () {
+  it("should detect mutant where loop condition changed from < to <=", async function () {
+    const [owner, from, recipient1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("airdrop");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // The mutant changes for(uint i=0;i<_tos.length;i++) to for(uint i=0;i<=_tos.length;i++)
+    // This causes an out-of-bounds access on the last iteration
+    // For an array with 1 element, the loop runs twice (i=0 and i=1)
+    // The second iteration tries to access _tos[1] which is out of bounds, causing revert
+    
+    const recipients = [recipient1.address];
+    const value = ethers.parseEther("1");
+    
+    // This should succeed on the original but revert on the mutant
+    await expect(
+      instance.connect(from).transfer(from.address, recipient1.address, recipients, value)
+    ).to.be.reverted;
+  });
+});
+```

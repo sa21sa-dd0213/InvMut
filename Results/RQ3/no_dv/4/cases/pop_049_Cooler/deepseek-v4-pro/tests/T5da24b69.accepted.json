@@ -1,0 +1,12 @@
+{
+ "difference_id": "T5da24b69",
+ "property_summary": "The collateral() function must return the address at immutable offset 0x14 (the actual collateral token), not the address at offset 0x3c (the factory). The bug breaks this by returning the factory address instead.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the address offset from 0x14 to 0x3c so collateral() returns the factory address instead.",
+ "mutated_unit_code": "function collateral() public pure returns (ERC20 _collateral) {\n        return ERC20(_getArgAddress(0x3c));\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Cooler} from \"../src/Cooler.sol\";\n\ncontract InvMutTest is Test {\n    Cooler c;\n    function setUp() public { c = new Cooler(); }\n    function testFuzz_property(address expectedCollateral) public {\n        vm.assume(expectedCollateral != address(0));\n        bytes memory args = abi.encodePacked(\n            address(0),\n            expectedCollateral,\n            address(0),\n            address(0)\n        );\n        address implementation = address(new Cooler());\n\n        address _collateral = address(uint160(uint256(keccak256(abi.encodePacked(expectedCollateral)))));\n        address _factory = address(uint160(uint256(keccak256(abi.encodePacked(expectedCollateral, \"factory\")))));\n        vm.assume(_collateral != _factory);\n\n        bytes memory immArgs = abi.encodePacked(\n            address(0x1),\n            _collateral,\n            address(0),\n            _factory\n        );\n        uint16 immLength = uint16(immArgs.length);\n        bytes4 selector = bytes4(keccak256(\"collateral()\"));\n        bytes memory calldata_ = abi.encodePacked(selector, immArgs, immLength);\n\n        (bool success, bytes memory ret) = address(c).call(calldata_);\n        address returnedCollateral = abi.decode(ret, (address));\n        assertTrue(success && returnedCollateral == _collateral);\n    }\n}"
+}

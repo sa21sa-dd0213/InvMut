@@ -1,0 +1,69 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airPort mutant detection - loop bound change", function () {
+  it("should revert when _tos array has one element due to out-of-bounds access in mutant", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("airPort");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // The transfer function requires: from, caddress, _tos[], v
+    // We use a simple ERC20-like token address for caddress (using a dummy contract)
+    const dummyTokenFactory = await ethers.getContractFactory("contracts/DummyToken.sol:DummyToken");
+    const dummyToken = await dummyTokenFactory.deploy();
+    await dummyToken.waitForDeployment();
+
+    // Setup: mint tokens to owner and approve the airPort contract (if needed)
+    // For the transfer function to succeed, caddress.call must succeed.
+    // We'll use a simple token that accepts transferFrom calls from any address
+    const amount = ethers.parseEther("1");
+    
+    // Create an array with exactly one recipient
+    const recipients = [addr1.address];
+    
+    // Original: loop runs once (i=0, 0<1) - should succeed
+    // Mutant: loop runs twice (i=0, i<=1) - second iteration i=1 accesses _tos[1] which is out of bounds => revert
+    // But we need the call to succeed on the first iteration to reach the second
+    // Since we can't guarantee the token contract behavior, we use a simple approach:
+    // Use a caddress that will revert on any call to trigger the revert on the second iteration
+    
+    // Actually, the simplest detection: call with _tos having 0 elements?
+    // No, require(_tos.length > 0) prevents that.
+    
+    // Best approach: call with one element and a caddress that always succeeds
+    // Then the mutant will try _tos[1] which is undefined (0x0...), and the call will likely fail
+    
+    // Use a simple contract that always returns true
+    const alwaysTrueFactory = await ethers.getContractFactory("contracts/AlwaysTrue.sol:AlwaysTrue");
+    const alwaysTrue = await alwaysTrueFactory.deploy();
+    await alwaysTrue.waitForDeployment();
+
+    // This should pass on original (one iteration, call succeeds)
+    // On mutant, second iteration tries _tos[1] which is address(0) - the call will likely fail
+    // because transferring from address(0) might not work or the call to 0x0 will fail
+    
+    // To be precise: the for loop with i<=_tos.length when _tos.length=1 will execute for i=0 and i=1
+    // At i=1, _tos[1] returns address(0) (default value for out-of-bounds in memory arrays)
+    // Then caddress.call with from=owner, to=address(0), value=amount will be attempted
+    // The call will likely fail (revert) because transferFrom to address(0) is invalid in most tokens
+    
+    // However, to guarantee detection, we can make the first call succeed and the second fail
+    // Use a token that reverts when 'to' is address(0)
+    
+    // Actually, the simplest: the out-of-bounds access itself reverts in Solidity ^0.8.0
+    // Accessing _tos[i] when i >= _tos.length will cause a runtime error (index out of bounds)
+    // This is because Solidity 0.8+ has built-in bounds checking for arrays
+    
+    // So the test is straightforward: call with one recipient
+    // Original succeeds, mutant reverts due to bounds check
+    
+    await expect(
+      instance.transfer(owner.address, alwaysTrue.target, recipients, amount)
+    ).to.not.be.reverted; // Original passes
+
+    // Note: This test will actually pass on original and fail on mutant
+    // But since we're running on original, we expect it to pass
+    // The mutant would revert due to out-of-bounds access
+  });
+});

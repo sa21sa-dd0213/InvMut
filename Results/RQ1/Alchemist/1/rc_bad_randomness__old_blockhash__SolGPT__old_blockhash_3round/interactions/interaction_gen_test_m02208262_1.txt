@@ -1,0 +1,248 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m02208262 of PredictTheBlockHashChallenge.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PredictTheBlockHashChallenge.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PredictTheBlockHashChallenge:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PredictTheBlockHashChallenge reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PredictTheBlockHashChallenge by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("PredictTheBlockHashChallenge - Kill mutant m02208262", function () {
+    it("should transfer 2 ether when correct guess is made, but mutant with false condition never transfers", async function () {
+        const [owner, user] = await ethers.getSigners();
+        const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge");
+        const instance = await Factory.deploy({ value: ethers.parseEther("1") });
+        await instance.waitForDeployment();
+
+        // Get initial balance of user
+        const initialBalance = await ethers.provider.getBalance(user.address);
+
+        // Lock in a guess for the next block hash
+        // We'll guess blockhash of block.number + 1 after lockInGuess
+        const currentBlock = await ethers.provider.getBlock("latest");
+        const targetBlockNumber = currentBlock.number + 1;
+
+        // We need to predict the blockhash - we can't know it in advance, but we can compute it after the fact
+        // For a proper test, we'll use a known hash that will NOT match (since we can't predict)
+        // The mutant replaces the check with false, so no transfer will ever happen
+        // We'll lock in any hash, then settle and verify no transfer occurs
+
+        // Lock in a guess (any hash)
+        const anyHash = ethers.keccak256(ethers.toUtf8Bytes("test"));
+        await instance.connect(user).lockInGuess(anyHash, { value: ethers.parseEther("1") });
+
+        // Mine one more block to pass the target block
+        await ethers.provider.send("evm_mine", []);
+
+        // Settle
+        const tx = await instance.connect(user).settle();
+        const receipt = await tx.wait();
+
+        // Check balance after settlement
+        const finalBalance = await ethers.provider.getBalance(user.address);
+
+        // In the original contract, if guess matches, user gets 2 ether
+        // Since we used a random hash, it likely won't match, but the mutant ALWAYS fails
+        // The key difference: in original, if guess DID match, balance would increase by 2 ether
+        // In mutant, balance never increases regardless
+
+        // For the mutant detection, we need a case where original WOULD transfer but mutant doesn't
+        // We can't predict blockhash, but we can test the logic by ensuring the mutant never transfers
+
+        // A simpler approach: check that the mutant never transfers even if we could make a correct guess
+        // Since we can't actually make a correct guess in a deterministic test, we verify the mutant's behavior:
+        // The mutant's condition is always false, so no transfer ever occurs
+
+        // Alternative: We'll use a different approach - directly verify the contract's balance
+        // In the original, a correct guess would reduce contract balance by 2 ether
+        // In the mutant, contract balance stays the same
+
+        // Let's check the contract balance after settlement
+        const contractBalance = await ethers.provider.getBalance(instance.target);
+        expect(contractBalance).to.equal(ethers.parseEther("1")); // Original 1 ether deposit minus potential transfer
+
+        // If the contract still has 1 ether, it means no transfer happened (mutant behavior)
+        // But this doesn't definitively kill the mutant since original might also not transfer if guess is wrong
+
+        // Better approach: We need to ensure a correct guess scenario
+        // We can do this by using blockhash of a previous block we know
+        // Let's use a known blockhash
+
+        const knownBlock = await ethers.provider.getBlock("latest");
+        const knownHash = knownBlock.hash;
+
+        // Now lock in a guess that we know will match the next block's hash? No, we need to match a future block
+
+        // Actually, the simplest way: We can manipulate the blockhash by mining blocks
+        // But we can't control the hash
+
+        // Let's use a different strategy: test that the mutant never transfers even in the best case
+        // We'll create a scenario where we know the answer
+
+        // Mine a block and record its hash
+        await ethers.provider.send("evm_mine", []);
+        const block1 = await ethers.provider.getBlock("latest");
+        const block1Hash = block1.hash;
+
+        // Now lock in the guess for block1.number (which is already in the past - but lockInGuess requires future block)
+        // This won't work because lockInGuess sets block to block.number + 1
+
+        // The proper way: We need to predict the hash of block.number + 1 at lockInGuess time
+        // Since we can't, let's use a different testing technique
+
+        // For the purpose of killing the mutant, we can test that:
+        // 1. The function settle() does not revert
+        // 2. No ether is transferred to the caller
+
+        // In the original, if the guess is wrong, no transfer happens (same as mutant)
+        // If the guess is right, transfer happens (different from mutant)
+
+        // To force a correct guess, we can use blockhash of a block we've already seen
+        // But we need to call lockInGuess BEFORE that block
+
+        // Let's do it properly:
+        // 1. Call lockInGuess with a hash
+        // 2. Mine a block
+        // 3. Get the hash of that block
+        // 4. The answer will be blockhash(guesses[msg.sender].block) where block is the block number we mined
+
+        // Actually, let's use a simpler deterministic approach:
+        // We'll lock in a guess, then mine one block, then settle
+        // The answer will be blockhash(targetBlock) where targetBlock = block.number + 1 at lockInGuess time
+        // After mining one block, block.number > targetBlock
+
+        // We can't know the hash in advance, but we can compute it after mining
+        // Then we can check if the transfer happened
+
+        // Let's restart with a clean approach:
+        const instance2 = await Factory.deploy({ value: ethers.parseEther("1") });
+        await instance2.waitForDeployment();
+
+        // Get current block number
+        const blockBefore = await ethers.provider.getBlock("latest");
+        const targetBlockNum = blockBefore.number + 1;
+
+        // Lock in a guess (we'll use a dummy hash for now)
+        await instance2.connect(user).lockInGuess(ethers.ZeroHash, { value: ethers.parseEther("1") });
+
+        // Mine one block to pass the target
+        await ethers.provider.send("evm_mine", []);
+
+        // Now get the blockhash of the target block
+        const targetBlock = await ethers.provider.getBlock(targetBlockNum);
+        const actualBlockHash = targetBlock.hash;
+
+        // We can't change our guess now, but we can verify the answer would have been correct
+
+        // For the test, let's do it in reverse: first know the answer, then lock it in
+        // This requires careful ordering
+
+        // Better approach: Use a test where we know the exact blockhash
+        // We'll mine a block, get its hash, then use that hash in a new deployment
+
+        const instance3 = await Factory.deploy({ value: ethers.parseEther("1") });
+        await instance3.waitForDeployment();
+
+        // Mine a block and record its hash
+        await ethers.provider.send("evm_mine", []);
+        const knownBlock2 = await ethers.provider.getBlock("latest");
+        const knownHash2 = knownBlock2.hash;
+        const knownBlockNumber = knownBlock2.number;
+
+        // Now we need to lock in a guess that will match the hash of a FUTURE block
+        // We can do this by: lockInGuess(knownHash2) at a block number such that
+        // block.number + 1 = knownBlockNumber (but that's in the past)
+
+        // This is getting complex. Let's use a simpler approach that works for the test:
+
+        // The mutant changes the condition to false, meaning the transfer NEVER happens
+        // In the original, the transfer happens when guess matches answer
+        // To kill the mutant, we need to create a scenario where the guess WOULD match
+
+        // We can do this by calling lockInGuess with the hash of the NEXT block,
+        // but we can't know it in advance... unless we manipulate the blockhash
+
+        // In Hardhat, we can use evm_setNextBlockHash to set the hash of the next block!
+        // This is the key to making a deterministic test
+
+        const instance4 = await Factory.deploy({ value: ethers.parseEther("1") });
+        await instance4.waitForDeployment();
+
+        // Set the next block's hash to a known value
+        const predictedHash = ethers.keccak256(ethers.toUtf8Bytes("predicted"));
+        await ethers.provider.send("evm_setNextBlockHash", [predictedHash]);
+
+        // Now lock in the guess with the predicted hash
+        await instance4.connect(user).lockInGuess(predictedHash, { value: ethers.parseEther("1") });
+
+        // The target block is the next block (block.number + 1 at time of lockInGuess)
+        // Since we set the next block's hash, when we mine a block, it will have that hash
+
+        // Mine the block (this will use the hash we set)
+        await ethers.provider.send("evm_mine", []);
+
+        // Now settle - the answer should be the predicted hash
+        const userBalanceBefore = await ethers.provider.getBalance(user.address);
+        await instance4.connect(user).settle();
+        const userBalanceAfter = await ethers.provider.getBalance(user.address);
+
+        // In the original contract, the transfer of 2 ether should have happened
+        // In the mutant, no transfer happens because condition is always false
+        // Therefore, the balance difference should be 2 ether in original, 0 in mutant
+
+        const balanceDiff = userBalanceAfter - userBalanceBefore;
+        // Adjust for gas costs - the actual difference will be 2 ether minus gas
+        // But in the mutant, it will be negative (gas cost) or 0
+
+        // For the test to kill the mutant, we expect that in the original, balance increases by ~2 ether
+        // In the mutant, balance decreases (due to gas) or stays same
+
+        // Since we're testing the mutant specifically, we expect the balance NOT to increase
+        // But we need to assert the opposite for the original
+
+        // Actually, let's re-think: The test should pass on original and fail on mutant
+        // So we should write the test assuming original behavior
+
+        // Let's use a different approach: check the contract balance
+        const contractBalBefore = await ethers.provider.getBalance(instance4.target);
+        // After settle, if transfer happened, contract balance decreased by 2 ether
+        // If not (mutant), contract balance stays the same
+
+        // The original would have transferred, so contract balance would be 1 - 2 = -1? No, it started with 1 ether
+        // Actually the contract was deployed with 1 ether, and transfers 2 ether - this would fail in original
+        // because contract doesn't have enough balance
+
+        // Let's deploy with enough balance: 2 ether to cover the potential transfer
+        const instance5 = await Factory.deploy({ value: ethers.parseEther("3") });
+        await instance5.waitForDeployment();
+
+        // Set next block hash
+        const predictedHash2 = ethers.keccak256(ethers.toUtf8Bytes("predicted2"));
+        await ethers.provider.send("evm_setNextBlockHash", [predictedHash2]);
+
+        await instance5.connect(user).lockInGuess(predictedHash2, { value: ethers.parseEther("1") });
+        await ethers.provider.send("evm_mine", []);
+
+        const contractBalBeforeSettle = await ethers.provider.getBalance(instance5.target);
+        await instance5.connect(user).settle();
+        const contractBalAfterSettle = await ethers.provider.getBalance(instance5.target);
+
+        // In original: contract balance decreases by 2 ether (from 3 to 1)
+        // In mutant: contract balance stays the same (3)
+        expect(contractBalAfterSettle).to.equal(contractBalBeforeSettle - ethers.parseEther("2"));
+    });
+});
+```

@@ -1,0 +1,65 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MultiplicatorX3 mutant kill test - m35c8952e", function () {
+  it("should kill mutant by sending msg.value equal to contract balance, causing transfer to fail on mutant but succeed on original", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy contract (no constructor arguments for this contract)
+    const Factory = await ethers.getContractFactory("MultiplicatorX3");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    const contractAddress = await instance.getAddress();
+
+    // Fund the contract with 1 ETH from owner
+    const fundTx = await owner.sendTransaction({
+      to: contractAddress,
+      value: ethers.parseEther("1.0")
+    });
+    await fundTx.wait();
+
+    // Get current contract balance (should be 1 ETH)
+    const balanceBefore = await ethers.provider.getBalance(contractAddress);
+    
+    // Call multiplicate with msg.value equal to contract balance (1 ETH)
+    // In original: transfer sends balance + msg.value = 1 + 1 = 2 ETH but contract only has 1 ETH? 
+    // Wait - condition requires msg.value >= address(this).balance, so with 1 ETH balance and 1 ETH msg.value,
+    // the original transfers balance+msg.value = 2 ETH which is more than contract has - this would also fail!
+    // Let's reconsider: The condition msg.value >= address(this).balance means we need msg.value >= 1 ETH
+    // Original transfer: address(this).balance + msg.value = 1 + 1 = 2 ETH - too much
+    // Mutant transfer: address(this).balance + msg.value + 1 = 1 + 1 + 1 = 3 ETH - also too much
+    // Both would fail. Let's adjust: fund contract with 0.5 ETH, send msg.value = 0.5 ETH
+    // Then original: balance 0.5 + 0.5 = 1 ETH - works if contract has 0.5 before + 0.5 received = 1 total
+    // Mutant: 0.5 + 0.5 + 1 = 1.001 ETH - fails
+
+    // Let's redo with proper setup:
+    // Deploy fresh contract
+    const Factory2 = await ethers.getContractFactory("MultiplicatorX3");
+    const instance2 = await Factory2.deploy();
+    await instance2.waitForDeployment();
+    const contractAddress2 = await instance2.getAddress();
+
+    // Fund contract with exactly 1 ETH
+    const fundTx2 = await owner.sendTransaction({
+      to: contractAddress2,
+      value: ethers.parseEther("1.0")
+    });
+    await fundTx2.wait();
+
+    const contractBal = await ethers.provider.getBalance(contractAddress2);
+    expect(contractBal).to.equal(ethers.parseEther("1.0"));
+
+    // Now call multiplicate with msg.value = 1 ETH (satisfies msg.value >= balance)
+    // Original: transfer(address(this).balance + msg.value) = transfer(1 + 1) = 2 ETH
+    // But contract only has 1 ETH initially + 1 ETH received = 2 ETH total at time of transfer
+    // So original succeeds
+    // Mutant: transfer(1 + 1 + 1) = 3 ETH - contract only has 2 ETH - FAILS
+    
+    const multiplicateTx = instance2.connect(owner).multiplicate(addr1.address, {
+      value: ethers.parseEther("1.0")
+    });
+
+    // On original this would succeed, on mutant it reverts
+    await expect(multiplicateTx).to.be.reverted;
+  });
+});

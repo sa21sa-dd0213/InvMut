@@ -1,0 +1,23 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Phishable:
+        Contract Code: pragma solidity ^0.8.0; contract Phishable { address public owner; constructor(address _owner) public { owner = _owner; } fallback() external payable { } function withdrawAll(address _recipient) public { require(msg.sender == owner); payable(_recipient).transfer(address(this).balance); } }
+
+    Consider the following mutant of Phishable:
+        Mutant m151610e6 of function constructor replaces _owner with address(this)
+        Mutant Diff: ---| 	owner = _owner; +++| 	owner = address(this);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original constructor sets the contract owner to the `_owner` parameter passed during deployment. The mutant sets the owner to `address(this)` (the contract's own address). 
+
+A test that deploys the contract with a specific deployer address (e.g., Alice), then attempts to call `withdrawAll` from that deployer address, expecting it to succeed, will fail on the mutant because the owner is now the contract itself, not the deployer. Conversely, a test that calls `withdrawAll` from the contract's own address (simulated via a self-call or another contract) would succeed on the mutant but fail on the original.
+
+**Hypothesis:** A test that deploys the contract with a known deployer account, then calls `withdrawAll` from that same deployer account and expects the call to succeed (i.e., transfer the entire contract balance) will kill the mutant, because on the mutant the deployer is not the owner and the transaction will revert.

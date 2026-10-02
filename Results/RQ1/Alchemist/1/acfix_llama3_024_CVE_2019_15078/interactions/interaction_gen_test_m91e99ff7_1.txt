@@ -1,0 +1,62 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m91e99ff7 of XBORNID.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test XBORNID.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for XBORNID:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("XBORNID reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy XBORNID by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("XBORNID"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("XBORNID - kill mutant m91e99ff7 (transferFrom allowance division)", function () {
+  it("should correctly subtract allowance in transferFrom, not divide it", async function () {
+    const [owner, spender, recipient] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("XBORNID");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get initial balances and setup
+    const initialSupply = ethers.parseEther("500000000");
+    const distributeAmount = ethers.parseEther("1000");
+    
+    // Owner distributes tokens to himself (since constructor sets owner balance)
+    // First, get some tokens to transfer
+    await instance.connect(owner).getTokens();
+    
+    // Approve spender to use 100 tokens from owner
+    const approveAmount = ethers.parseEther("100");
+    await instance.connect(owner).approve(spender.address, approveAmount);
+    
+    // Verify allowance is set correctly
+    let allowance = await instance.allowance(owner.address, spender.address);
+    expect(allowance).to.equal(approveAmount);
+    
+    // Transfer 10 tokens from owner to recipient using spender
+    const transferAmount = ethers.parseEther("10");
+    await instance.connect(spender).transferFrom(owner.address, recipient.address, transferAmount);
+    
+    // Check allowance after transfer - should be 90 (100 - 10), not 10 (100 / 10)
+    allowance = await instance.allowance(owner.address, spender.address);
+    const expectedAllowance = ethers.parseEther("90");
+    
+    // This assertion will pass on original (subtraction) but fail on mutant (division)
+    expect(allowance).to.equal(expectedAllowance);
+    
+    // Also verify the transfer actually happened
+    const recipientBalance = await instance.balanceOf(recipient.address);
+    expect(recipientBalance).to.equal(transferAmount);
+  });
+});
+```

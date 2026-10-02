@@ -1,0 +1,37 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Reentrance mutant test - md6226a93", function () {   it("should detect mutant that removes return statement from getBalance", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Reentrance");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Add balance to addr1     const depositAmount = ethers.parseEther("1.0");     await instance.connect(addr1).addToBalance({ value: depositAmount });      // Call getBalance and check the returned value     const balance = await instance.connect(owner).getBalance(addr1.address);          // On the original contract this returns depositAmount, on the mutant it returns 0     expect(balance).to.equal(depositAmount);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } } contract Reentrance  is sGuard { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public nonReentrant_ payable { userBalance[msg.sender] = add_uint256(userBalance[msg.sender], msg.value); } function withdrawBalance()  public nonReentrant_ { { (bool _s, bytes memory _d) = msg.sender.call{value: userBalance[msg.sender]}(""); _d; if (! _s) { revert(); } } userBalance[msg.sender] = 0; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Reentrance mutant test - md6226a93", function () {
+  it("should detect mutant that removes return statement from getBalance", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Reentrance");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Add balance to addr1
+    const depositAmount = ethers.parseEther("1.0");
+    await instance.connect(addr1).addToBalance({ value: depositAmount });
+
+    // Call getBalance and check the returned value
+    const balance = await instance.connect(owner).getBalance(addr1.address);
+
+    // On the original contract this returns depositAmount, on the mutant it returns 0
+    expect(balance).to.equal(depositAmount);
+  });
+});
+```

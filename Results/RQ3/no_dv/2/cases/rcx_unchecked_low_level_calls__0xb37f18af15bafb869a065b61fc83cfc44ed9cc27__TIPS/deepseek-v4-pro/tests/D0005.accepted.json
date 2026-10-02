@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0005",
+ "property_summary": "After any successful sendMoney call, the owner's ability to withdraw funds via withdraw (which retains its onlyOwner modifier in the correct contract) ensures the contract balance never decreases when a non-owner calls withdraw; removing the modifier allows a non-owner to call withdraw and reduce the balance, violating this invariant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Remove the onlyOwner modifier from withdraw, allowing anyone to call it.",
+ "mutated_unit_code": "function withdraw(uint _value)  public {\n\tpayable(msg.sender).transfer(_value);\n\t}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n    function testFuzz_property(uint256 amount, address nonOwner) public {\n        vm.assume(nonOwner != address(0) && nonOwner != address(this) && nonOwner != address(c));\n        vm.assume(nonOwner != c.owner());\n        amount = bound(amount, 1, address(c).balance + 1 ether);\n\n        vm.deal(address(c), amount);\n        vm.prank(c.owner());\n        c.sendMoney(nonOwner, 0);\n\n        uint256 balanceBefore = address(c).balance;\n        vm.prank(nonOwner);\n        vm.deal(nonOwner, 0);\n        try c.withdraw(amount) {\n            assertTrue(address(c).balance == balanceBefore);\n        } catch {\n            assertTrue(address(c).balance == balanceBefore);\n        }\n    }\n}"
+}

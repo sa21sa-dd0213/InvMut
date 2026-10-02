@@ -1,0 +1,80 @@
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("EtherLotto mutant detection - m89187fec", function () {
+  it("should detect the division mutation by building up the pot and checking payout amounts", async function () {
+    const [owner, player1, player2, player3] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    const instanceAddr = await instance.getAddress();
+
+    const TICKET_AMOUNT = 10n;
+    const FEE_AMOUNT = 1n;
+
+    // Get initial balances
+    const bankInitial = await ethers.provider.getBalance(owner.address);
+    const player1Initial = await ethers.provider.getBalance(player1.address);
+    const player2Initial = await ethers.provider.getBalance(player2.address);
+    const player3Initial = await ethers.provider.getBalance(player3.address);
+
+    // Player 1 plays and loses (random == 1) - adds to pot
+    const tx1 = await instance.connect(player1).play({ value: TICKET_AMOUNT });
+    await tx1.wait();
+
+    // Player 2 plays and loses (random == 1) - adds to pot
+    const tx2 = await instance.connect(player2).play({ value: TICKET_AMOUNT });
+    await tx2.wait();
+
+    // Now pot should be 20 wei (10 + 10)
+    // Player 3 plays and we need to ensure they win (random == 0)
+    // We'll call play() in a loop until player3 wins to test the payout
+    let player3Won = false;
+    let attempts = 0;
+    while (!player3Won && attempts < 20) {
+      attempts++;
+      const tx = await instance.connect(player3).play({ value: TICKET_AMOUNT });
+      const receipt = await tx.wait();
+
+      // Check if player3 won by checking balance change
+      const player3After = await ethers.provider.getBalance(player3.address);
+      if (player3After > player3Initial - TICKET_AMOUNT) {
+        player3Won = true;
+        
+        // Get the pot value at time of win
+        const potAfterWin = await instance.pot();
+        
+        // In original: winner gets pot - FEE, bank gets FEE
+        // In mutant: winner gets pot / FEE (which is pot since FEE=1), causing revert or wrong amounts
+        
+        // Check that bank received FEE_AMOUNT
+        const bankFinal = await ethers.provider.getBalance(owner.address);
+        const bankProfit = bankFinal - bankInitial;
+        
+        // In original, bank should have received FEE_AMOUNT per win (there were 3 wins total including player3)
+        // But since player3's win should reset pot, bank should have at least FEE_AMOUNT from this win
+        // In mutant, the transfer to bank would fail or pot accounting would be wrong
+        
+        // The key assertion: if mutant, either the transaction would revert or bank wouldn't get proper fee
+        // Since we successfully got receipt, check bank got at least FEE_AMOUNT
+        expect(bankProfit).to.be.at.least(FEE_AMOUNT);
+        
+        // Also verify player3 didn't get the entire pot (which would be the mutant behavior)
+        const player3Profit = player3After - player3Initial;
+        // In original: player3 should get (pot before win) - FEE
+        // In mutant: player3 would get pot before win (since pot/1 = pot), which is too much
+        // The max player should get is pot - FEE
+        const potBeforeWin = potAfterWin + FEE_AMOUNT; // pot was reset to 0 after win
+        expect(player3Profit).to.be.lessThanOrEqual(potBeforeWin - FEE_AMOUNT + TICKET_AMOUNT); // account for ticket cost
+        
+        // If mutant is active, the transaction would revert or player3 would get wrong amount
+        // This assertion should catch the mutant
+      } else {
+        // Player3 lost, pot increased
+      }
+    }
+    
+    // Ensure we actually tested a win scenario
+    expect(player3Won).to.be.true;
+  });
+});

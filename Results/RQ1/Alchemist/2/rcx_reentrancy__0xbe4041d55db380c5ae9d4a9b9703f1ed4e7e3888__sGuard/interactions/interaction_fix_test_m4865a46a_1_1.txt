@@ -1,0 +1,54 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MONEY_BOX mutant kill test - m4865a46a", function () {   it("should detect mutant that logs msg.value-1 instead of msg.value", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy MONEY_BOX (no constructor arguments needed)     const MoneyBoxFactory = await ethers.getContractFactory("MONEY_BOX");     const moneyBox = await MoneyBoxFactory.deploy();     await moneyBox.waitForDeployment();          // Deploy Log contract (no constructor arguments needed)     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();          // Set the LogFile address in MONEY_BOX     await moneyBox.connect(owner).SetLogFile(await log.getAddress());          // Initialize the contract     await moneyBox.connect(owner).Initialized();          // Set MinSum to 0 so we can collect later if needed     await moneyBox.connect(owner).SetMinSum(0);          // Send exactly 1 wei via Put function     const tx = await moneyBox.connect(addr1).Put(0, { value: 1 });     await tx.wait();          // Check the LogFile history - the last entry should have Val = 1     const historyLength = await log.History.length;     const lastEntry = await log.History(historyLength - 1n);          // Original would log 1, mutant logs 0 (msg.value - 1)     expect(lastEntry.Val).to.equal(1);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } } contract MONEY_BOX is sGuard { struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; uint public MinSum; Log LogFile; bool intitalized; function SetMinSum(uint _val)  public nonReentrant_ { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log)  public nonReentrant_ { if(intitalized)revert(); LogFile = Log(_log); } function Initialized()  public nonReentrant_ { intitalized = true; } function Put(uint _lockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); if(add_uint256(block.timestamp, _lockTime)>acc.unlockTime)acc.unlockTime=add_uint256(block.timestamp, _lockTime); LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); LogFile.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } } contract Log is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MONEY_BOX mutant kill test - m4865a46a", function () {
+  it("should detect mutant that logs msg.value-1 instead of msg.value", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy MONEY_BOX (no constructor arguments needed)
+    const MoneyBoxFactory = await ethers.getContractFactory("MONEY_BOX");
+    const moneyBox = await MoneyBoxFactory.deploy();
+    await moneyBox.waitForDeployment();
+
+    // Deploy Log contract (no constructor arguments needed)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Set the LogFile address in MONEY_BOX
+    await moneyBox.connect(owner).SetLogFile(await log.getAddress());
+
+    // Initialize the contract
+    await moneyBox.connect(owner).Initialized();
+
+    // Set MinSum to 0 so we can collect later if needed
+    await moneyBox.connect(owner).SetMinSum(0);
+
+    // Send exactly 1 wei via Put function
+    const tx = await moneyBox.connect(addr1).Put(0, { value: 1 });
+    await tx.wait();
+
+    // Check the LogFile history - the last entry should have Val = 1
+    const historyLength = await log.History.length;
+    const lastEntry = await log.History(historyLength - 1n);
+
+    // Original would log 1, mutant logs 0 (msg.value - 1)
+    expect(lastEntry.Val).to.equal(1);
+  });
+});
+```

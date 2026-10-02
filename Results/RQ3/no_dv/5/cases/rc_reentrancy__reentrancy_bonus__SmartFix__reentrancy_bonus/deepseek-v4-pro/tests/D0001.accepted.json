@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "For every recipient address that is a contract whose fallback/receive uses up all gas (i.e., consumes gas but does not revert), the reference C that uses low-level call will tolerate the external invocation and complete getFirstWithdrawalBonus (so claimedBonus becomes true and rewardsForA is zero), whereas the mutant using transfer will revert when the recipient's receive runs out of gas, causing getFirstWithdrawalBonus to fail for some such recipient; thus: for all gas-consuming-but-not-reverting recipient contracts, calling getFirstWithdrawalBonus completes successfully on the reference and marks claimedBonus true (the mutant can fail).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change the external call to use transfer (which reverts on failure differently) instead of low-level call, altering post-call behavior and revert semantics affecting observable state.",
+ "mutated_unit_code": "function withdrawReward(address recipient)  public _nonReentrant  {\n        uint amountToWithdraw = rewardsForA[recipient];\n        rewardsForA[recipient] = 0;\n        // use transfer instead of call\n        payable(recipient).transfer(amountToWithdraw);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrancy_bonus} from \"../src/Reentrancy_bonus.sol\";\n\ncontract InvMutTest is Test {\n    Reentrancy_bonus c;\n\n    function setUp() public { c = new Reentrancy_bonus(); }\n\n    function testFuzz_property(uint256 gasBurn) public {\n        gasBurn = bound(gasBurn, 0, 1_000_000);\n\n        GasBurner burner = new GasBurner(gasBurn);\n\n        address recipient = address(burner);\n\n        vm.deal(address(c), 100);\n\n        bool ok;\n        try c.getFirstWithdrawalBonus(recipient) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok);\n\n    }\n}\n\ncontract GasBurner {\n    uint256 public toBurn;\n    constructor(uint256 _toBurn) payable {\n        toBurn = _toBurn;\n    }\n    receive() external payable {\n        uint256 i = 0;\n        while (i < toBurn) {\n            assembly { let tmp := sload(0) }\n            i++;\n        }\n    }\n}\n"
+}

@@ -1,0 +1,108 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("VaultAdapter mutant mb0260178 detection", function () {
+  it("should detect mutant by calling rate twice in same block and checking storage not updated", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy VaultAdapter (no constructor arguments needed as it uses _disableInitializers)
+    const Factory = await ethers.getContractFactory("VaultAdapter");
+    const vaultAdapter = await Factory.deploy();
+    await vaultAdapter.waitForDeployment();
+    
+    // Deploy a mock vault contract that implements IVault interface
+    const MockVault = await ethers.getContractFactory("MockVault");
+    const mockVault = await MockVault.deploy();
+    await mockVault.waitForDeployment();
+    
+    // Deploy access control
+    const AccessControl = await ethers.getContractFactory("MockAccessControl");
+    const accessControl = await AccessControl.deploy();
+    await accessControl.waitForDeployment();
+    
+    // Initialize VaultAdapter
+    await vaultAdapter.initialize(await accessControl.getAddress());
+    
+    // Grant access to owner for setSlopes
+    await accessControl.grantAccess(vaultAdapter.interface.getSighash("setSlopes"), await vaultAdapter.getAddress(), owner.address);
+    await accessControl.grantAccess(vaultAdapter.interface.getSighash("rate"), await vaultAdapter.getAddress(), owner.address);
+    
+    // Setup slopes for an asset
+    const asset = addr1.address;
+    const slopes = {
+      kink: ethers.parseEther("0.8"), // 80% utilization kink
+      slope0: ethers.parseEther("0.05"),
+      slope1: ethers.parseEther("0.5")
+    };
+    await vaultAdapter.setSlopes(asset, slopes);
+    
+    // Set limits
+    await vaultAdapter.setLimits(
+      ethers.parseEther("2"),   // maxMultiplier
+      ethers.parseEther("0.5"), // minMultiplier
+      ethers.parseEther("0.1")  // rate
+    );
+    
+    // First call to rate - this sets lastUpdate to current block.timestamp
+    const mockVaultAddress = await mockVault.getAddress();
+    await vaultAdapter.rate(mockVaultAddress, asset);
+    
+    // Get the storage slot for utilizationData[mockVault][asset]
+    // Storage slot calculation: keccak256(abi.encode(asset, keccak256(abi.encode(mockVault, slot))))
+    const storageSlot = ethers.keccak256(
+      ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "bytes32"],
+        [asset, ethers.keccak256(
+          ethers.AbiCoder.defaultAbiCoder().encode(
+            ["address", "uint256"],
+            [mockVaultAddress, 1] // slot 1 for mapping utilizationData
+          )
+        )]
+      )
+    );
+    
+    // Read lastUpdate before second call
+    const lastUpdateSlot = ethers.toBigInt(storageSlot) + 2n; // lastUpdate is the third field (index 2)
+    const lastUpdateBefore = await ethers.provider.getStorage(
+      await vaultAdapter.getAddress(),
+      ethers.toBeHex(lastUpdateSlot)
+    );
+    
+    // Mine a block with same timestamp (simulate same block)
+    await ethers.provider.send("evm_mine", [ethers.toNumber(lastUpdateBefore)]);
+    
+    // Second call in same block (block.timestamp == lastUpdate)
+    await vaultAdapter.rate(mockVaultAddress, asset);
+    
+    // Read lastUpdate after second call
+    const lastUpdateAfter = await ethers.provider.getStorage(
+      await vaultAdapter.getAddress(),
+      ethers.toBeHex(lastUpdateSlot)
+    );
+    
+    // In the original contract, lastUpdate should NOT be updated (stays same)
+    // In the mutant (>=), lastUpdate WOULD be updated
+    // This test passes on original, fails on mutant
+    expect(lastUpdateBefore).to.equal(lastUpdateAfter);
+  });
+});
+
+// Helper contract deployments for testing
+// MockVault contract
+const mockVaultArtifact = {
+  abi: [
+    "function currentUtilizationIndex(address) view returns (uint256)",
+    "function utilization(address) view returns (uint256)"
+  ],
+  bytecode: "0x608060405234801561001057600080fd5b5061012a806100206000396000f3fe6080604052348015600f57600080fd5b506004361060325760003560e01c8063160f2e0b1460375780637168abaf14606c575b600080fd5b6056604236600460b2565b5060007fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff90565b60405190815260200160405180910390f35b6056607736600460b2565b5060007fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff90565b60006020828403121560c357600080fd5b813573ffffffffffffffffffffffffffffffffffffffff8116811460e657600080fd5b939250505056fea2646970667358221220a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b64736f6c63430008130033"
+};
+
+// MockAccessControl contract
+const mockAccessControlArtifact = {
+  abi: [
+    "function initialize(address) external",
+    "function grantAccess(bytes4, address, address) external",
+    "function checkAccess(bytes4, address, address) view returns (bool)"
+  ],
+  bytecode: "0x608060405234801561001057600080fd5b50610150806100206000396000f3fe6080604052348015600f57600080fd5b5060043610603c5760003560e01c8063c4d66de8146041578063d1239730146056578063f5986434146069575b600080fd5b6051604c36600460a2565b50565b005b6051606436600460b2565b505050565b6079607436600460f2565b92915050565b604051901515815260200160405180910390f35b600060208284031215609e57600080fd5b50565b60006020828403121560b357600080fd5b50565b60008060006060848603121560c657600080fd5b833560e081901c8152602085810135908201526040909301356001600160a01b038116939092019290925250565b60008060006060848603121561010657600080fd5b833560e081901c81526020848101356001600160a01b03908116918301919091526040909401351692909201919091565b6001600160a01b0381168114605157600080fd5b6101a4806101386000396000f3fe608060405234801561001057600080fd5b50600436106100415760003560e01c8063c4d66de814610046578063d12397301461005b578063f59864341461006e575b600080fd5b6100596100543660046100d5565b61008e565b005b6100596100693660046100f1565b61009c565b61008161007c36600461014d565b6100ae565b604051901515815260200160405180910390f35b6100966100c5565b50565b6100a46100c5565b505050565b60009392505050565b3b151590565b6001600160a01b038116811461009657600080fd5b6100d86100c0565b565b6000602082840312156100e757600080fd5b81356100e6816100c0565b60008060006060848603121561010657600080fd5b833560e081901c81526020850135915061011f826100c0565b6040850135909250610130816100c0565b809150509250925092565b6001600160a01b038116811461009657600080fd5b60008060006060848603121561016257600080fd5b833560e081901c81526020840135915061017b8261013b565b60408401359091506101308161013b56fe"
+};

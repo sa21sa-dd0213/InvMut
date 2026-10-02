@@ -1,0 +1,12 @@
+{
+ "difference_id": "Te065845b",
+ "property_summary": "After a valid fallback call, if the payout condition is true in the reference contract (block.number % 15 == 0), address(c).balance must be 0, and if it is false, address(c).balance must be 10 ether; the buggy contract inverts this relationship, so the balance rule fails for some input.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Change the payout condition from block.number % 15 == 0 to block.number % 15 != 0.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp + 1;\n\n        if(block.number % 15 != 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n\n    function testFuzz_property(uint64 seed, uint8 offset) public {\n        seed = uint64(bound(seed, 1, type(uint64).max - 100));\n        offset = uint8(bound(offset, 1, 100));\n\n        address sender = address(uint160(uint256(keccak256(abi.encode(seed)))));\n        vm.assume(sender != address(0) && sender != address(c));\n\n        vm.deal(sender, 10 ether);\n\n        vm.warp(seed);\n        uint256 blockNum = seed + offset;\n        vm.roll(blockNum);\n\n        vm.prank(sender);\n        (bool ok,) = address(c).call{value: 10 ether}(\"\");\n        require(ok, \"call failed\");\n\n        if (blockNum % 15 == 0) {\n            assertEq(address(c).balance, 0, \"balance should be 0 after payout\");\n        } else {\n            assertEq(address(c).balance, 10 ether, \"balance should be 10 ether when no payout\");\n        }\n    }\n}\n"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T4c9768f8",
+ "property_summary": "After a successful withdrawal of the full balance (where the call to msg.sender does not revert), the user's recorded balance must be zero in the reference contract, but the mutant leaves the old balance non-zero.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the userBalance[msg.sender] = 0 assignment, so the balance is never reset after withdrawal.",
+ "mutated_unit_code": "function withdrawBalance()  public nonReentrant_ {\n\n         { (bool _s, bytes memory _d) = msg.sender.call{value: userBalance[msg.sender]}(\"\"); _d; if (! _s) {\n             revert();\n         } }\n     }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n    function testFuzz_property(address actor, uint256 amount) public {\n        vm.assume(actor != address(0));\n        amount = bound(amount, 1, type(uint128).max);\n        vm.deal(actor, amount);\n        vm.prank(actor);\n        c.addToBalance{value: amount}();\n        vm.deal(actor, 0);\n        uint256 balanceBefore = c.getBalance(actor);\n        vm.prank(actor);\n        bool ok;\n        try c.withdrawBalance() { ok = true; } catch { ok = false; }\n        if (ok) {\n            uint256 balanceAfter = c.getBalance(actor);\n            assertTrue(balanceAfter == 0);\n        }\n    }\n}\n"
+}

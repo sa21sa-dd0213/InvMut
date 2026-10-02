@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0003",
+ "property_summary": "For any recipient and amount, if the reference sendMoney call with sufficient gas succeeds, the buggy version reverts when the recipient uses more than 2300 gas; the test deploys a gas-consuming callee and asserts that the reference succeeds while the mutant reverts on the same call.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the low-level call with a regular transfer, which forwards a fixed 2300 gas and reverts on failure, changing the observable success/failure behavior for recipients with fallback logic requiring more gas or returning data.",
+ "mutated_unit_code": "function sendMoney(address _target, uint _value)  public onlyOwner {\n\tpayable(_target).transfer(_value);\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n    function testFuzz_property(uint256 amount) public {\n        vm.assume(amount > 0 && amount <= 100 ether);\n        GasConsumer gc = new GasConsumer();\n        vm.deal(address(c), 100 ether);\n        vm.prank(c.owner());\n        c.sendMoney(address(gc), amount);\n        assertEq(gc.received(), true);\n    }\n}\n\ncontract GasConsumer {\n    bool public received;\n    receive() external payable {\n        uint256 x;\n        for (uint256 i = 0; i < 100; i++) {\n            x++;\n        }\n        received = true;\n    }\n}"
+}

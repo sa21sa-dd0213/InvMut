@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0004",
+ "property_summary": "After any sequence of calls, the sum of all user balances equals the total Ether sent to the contract minus the total Ether withdrawn; the buggy addToBalance resets the balance before adding, so the sum of balances undercounts total deposits.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Insert a line that resets the caller's balance to 0 before the normal addition, causing the final balance to be just msg.value instead of the sum.",
+ "mutated_unit_code": "function addToBalance() public payable {\n    require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender]));\n    userBalance[msg.sender] = 0;\n    userBalance[msg.sender] += msg.value;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n\n    function testFuzz_property(uint256 deposit1, uint256 deposit2, address user) public {\n        vm.assume(user != address(0) && user != address(c));\n        deposit1 = bound(deposit1, 0, type(uint256).max / 2);\n        deposit2 = bound(deposit2, 0, type(uint256).max / 2);\n\n        vm.deal(user, deposit1 + deposit2);\n\n        vm.startPrank(user);\n        c.addToBalance{value: deposit1}();\n        c.addToBalance{value: deposit2}();\n        vm.stopPrank();\n\n        uint256 balanceOnBook = c.getBalance(user);\n        uint256 totalReceived = deposit1 + deposit2;\n        assertTrue(balanceOnBook == totalReceived);\n    }\n}"
+}

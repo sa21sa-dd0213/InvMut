@@ -1,0 +1,61 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ModifierEntrancy mutant m7d8ecc58 - reentrancy test", function () {
+  it("should revert when reentrant call to airDrop is attempted with _nonReentrant modifier", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+
+    // Deploy the Bank contract (required by supportsToken modifier)
+    const BankFactory = await ethers.getContractFactory("Bank");
+    const bank = await BankFactory.deploy();
+    await bank.waitForDeployment();
+
+    // Deploy ModifierEntrancy (no constructor arguments)
+    const ModifierEntrancyFactory = await ethers.getContractFactory("ModifierEntrancy");
+    const entrancy = await ModifierEntrancyFactory.deploy();
+    await entrancy.waitForDeployment();
+
+    // Deploy a malicious contract that will attempt reentrancy
+    const MaliciousFactory = await ethers.getContractFactory("MaliciousReentrancy");
+    const malicious = await MaliciousFactory.deploy(await entrancy.getAddress());
+    await malicious.waitForDeployment();
+
+    // Fund attacker with some ether if needed for gas
+    // No ether needed for this test
+
+    // Call airDrop from the malicious contract - first call should succeed
+    // The supportsToken modifier will call back into the malicious contract
+    // which will attempt to call airDrop again
+    await expect(
+      malicious.connect(attacker).attack()
+    ).to.be.reverted;
+
+    // Verify that only one minting happened (the original call should revert on reentrancy)
+    // If the mutant is alive (no _nonReentrant), both calls would succeed and balance would be 40
+    const attackerBalance = await entrancy.tokenBalance(await malicious.getAddress());
+    expect(attackerBalance).to.equal(0); // If reentrancy was blocked, balance remains 0
+  });
+});
+
+// Malicious contract to test reentrancy
+contract MaliciousReentrancy {
+    ModifierEntrancy public target;
+
+    constructor(address _target) {
+        target = ModifierEntrancy(_target);
+    }
+
+    function attack() external {
+        // First call - this will trigger supportsToken modifier which calls back
+        target.airDrop();
+    }
+
+    // This function is called by the supportsToken modifier via Bank(msg.sender).supportsToken()
+    function supportsToken() external pure returns (bytes32) {
+        // On the first call, this will attempt reentrancy
+        // On subsequent calls, it could also reenter
+        // This simulates a malicious contract that tries to reenter
+        target.airDrop(); // Attempt reentrancy
+        return keccak256(abi.encodePacked("Nu Token"));
+    }
+}

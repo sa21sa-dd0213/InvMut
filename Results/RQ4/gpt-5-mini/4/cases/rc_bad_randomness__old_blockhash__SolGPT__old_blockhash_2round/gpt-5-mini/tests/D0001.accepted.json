@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "For any caller and any call-value, the reference requires exactly 1 ether to lock a guess so calls with value != 1 ether are rejected; the mutant allows value > 1 ether and thus accepts some calls (value > 1 ether) that the reference rejects.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the require that msg.value == 1 ether with require(msg.value >= 1 ether) allowing larger ether to be accepted and changing recorded behavior when callers send more than 1 ether.",
+ "mutated_unit_code": "function lockInGuess(bytes32 hash) public payable {\n        require(guesses[msg.sender].block == 0);\n        require(msg.value >= 1 ether);\n\n        guesses[msg.sender].guess = hash;\n        guesses[msg.sender].block = block.number + 1;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {PredictTheBlockHashChallenge} from \"../src/PredictTheBlockHashChallenge.sol\";\n\ncontract InvMutTest is Test {\n    PredictTheBlockHashChallenge c;\n    function setUp() public { c = new PredictTheBlockHashChallenge{value: 1 ether}(); }\n\n    function testFuzz_property(address actor, uint256 amount) public {\n        vm.assume(actor != address(0));\n        amount = bound(amount, 0, 10 ether);\n\n        bytes32 h = keccak256(abi.encodePacked(\"x\"));\n\n        vm.deal(actor, amount);\n\n        bool ok;\n        vm.prank(actor);\n        try c.lockInGuess{value: amount}(h) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok == (amount == 1 ether));\n    }\n}\n"
+}

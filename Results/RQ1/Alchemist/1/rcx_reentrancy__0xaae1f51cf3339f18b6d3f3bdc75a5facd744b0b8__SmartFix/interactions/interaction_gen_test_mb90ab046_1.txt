@@ -1,0 +1,72 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mb90ab046 of DEP_BANK.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test DEP_BANK.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for DEP_BANK:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("DEP_BANK reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy DEP_BANK by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("DEP_BANK"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DEP_BANK mutant kill test - mb90ab046", function () {
+  it("should revert when Collect ETH transfer fails in original, but mutant allows balance deduction", async function () {
+    const [owner, user] = await ethers.getSigners();
+
+    // Deploy LogFile (no constructor arguments)
+    const LogFileFactory = await ethers.getContractFactory("LogFile");
+    const logFile = await LogFileFactory.deploy();
+    await logFile.waitForDeployment();
+
+    // Deploy DEP_BANK (no constructor arguments)
+    const DEP_BANKFactory = await ethers.getContractFactory("DEP_BANK");
+    const bank = await DEP_BANKFactory.deploy();
+    await bank.waitForDeployment();
+
+    // Setup: set MinSum, set LogFile, initialize
+    await bank.SetMinSum(0);
+    await bank.SetLogFile(await logFile.getAddress());
+    await bank.Initialized();
+
+    // User deposits 1 ETH
+    const depositAmount = ethers.parseEther("1");
+    await bank.connect(user).Deposit({ value: depositAmount });
+
+    // Deploy a malicious receiver contract that rejects ETH
+    const MaliciousReceiverFactory = await ethers.getContractFactory(
+      "contract MaliciousReceiver { receive() external payable { revert(); } }"
+    );
+    const maliciousReceiver = await MaliciousReceiverFactory.deploy();
+    await maliciousReceiver.waitForDeployment();
+
+    // User tries to collect 1 ETH but sends to malicious receiver
+    // In original: should revert because transfer fails
+    // In mutant: balance gets deducted but ETH is not transferred
+    const tx = bank.connect(user).Collect(
+      depositAmount,
+      { gasLimit: 500000 }
+    );
+
+    // We expect the transaction to succeed in the mutant (no revert)
+    // But user's balance should NOT be deducted (mutant incorrectly deducts)
+    const balanceBefore = await bank.balances(user.address);
+    await tx;
+    const balanceAfter = await bank.balances(user.address);
+
+    // In original, this would have reverted. In mutant, balance is incorrectly changed.
+    // The test kills the mutant if balance decreased when it should not have
+    expect(balanceAfter).to.equal(balanceBefore);
+  });
+});
+```

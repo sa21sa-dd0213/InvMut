@@ -1,0 +1,58 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m87cf6694 of SimpleWallet.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test SimpleWallet.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for SimpleWallet:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("SimpleWallet reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy SimpleWallet by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("SimpleWallet"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("SimpleWallet mutant kill test - overflow require removal", function () {
+  it("should revert on overflow in receive() on original but succeed on mutant", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("SimpleWallet");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // The contract has no constructor arguments, so we don't pass any.
+    // We need to overflow depositsCount. Since it's uint, we can send
+    // 2^256 times to cause overflow, but that's impractical.
+    // Instead, we can directly set depositsCount to max uint256 via storage manipulation
+    // to simulate the state just before overflow, then call receive() to trigger it.
+    
+    // Get the storage slot for depositsCount (slot 1, since owner is slot 0)
+    const slot = ethers.hexlify(1);
+    const maxUint = ethers.MaxUint256;
+    
+    // Set depositsCount to max value
+    await ethers.provider.send("hardhat_setStorageAt", [
+      await instance.getAddress(),
+      slot,
+      ethers.zeroPadValue(maxUint, 32)
+    ]);
+
+    // Now send 1 wei via receive() - should revert on original due to overflow check
+    // but on mutant it would succeed because the require is removed
+    const tx = owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("0.001")
+    });
+
+    // On original, this reverts; on mutant it does not
+    await expect(tx).to.be.reverted;
+  });
+});
+```

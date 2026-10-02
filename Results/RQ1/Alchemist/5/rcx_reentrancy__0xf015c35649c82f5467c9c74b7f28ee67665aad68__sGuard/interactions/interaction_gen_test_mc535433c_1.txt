@@ -1,0 +1,59 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mc535433c of MY_BANK.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test MY_BANK.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for MY_BANK:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("MY_BANK reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy MY_BANK by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("MY_BANK"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant kill test - mc535433c", function () {
+  it("should kill mutant by withdrawing exact balance amount (edge case of >= vs >)", async function () {
+    const [owner, user] = await ethers.getSigners();
+    
+    // Deploy Log contract first (required by MY_BANK constructor)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy MY_BANK with Log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+    
+    const bankAddress = await bank.getAddress();
+    const minSum = await bank.MinSum();
+    
+    // Deposit exactly MinSum (1 ether) to user's account
+    const depositAmount = minSum;
+    await bank.connect(user).Put(0, { value: depositAmount });
+    
+    // Verify balance equals MinSum
+    const holder = await bank.Acc(user.address);
+    expect(holder.balance).to.equal(minSum);
+    
+    // Now try to withdraw exactly the balance amount
+    // The original allows this (>=), but the mutant rejects it (>)
+    await expect(
+      bank.connect(user).Collect(depositAmount)
+    ).to.not.be.reverted;
+    
+    // Verify the withdrawal succeeded (balance should be 0)
+    const holderAfter = await bank.Acc(user.address);
+    expect(holderAfter.balance).to.equal(0);
+  });
+});
+```

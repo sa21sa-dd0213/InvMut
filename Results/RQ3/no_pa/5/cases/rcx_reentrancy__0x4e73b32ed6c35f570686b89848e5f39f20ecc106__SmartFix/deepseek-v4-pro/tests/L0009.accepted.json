@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0009",
+ "property_summary": "Deposit with value 0 fails (reverts) in reference due to addition overflow check 'balances[msg.sender] + msg.value >= balances[msg.sender]' being true (0+0>=0), but in modified version the check uses '>' so 0>0 is false, causing revert; we assert that a zero-value deposit reverts in the modified version but not in reference.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "-require(((balances[msg.sender] + msg.value) >= balances[msg.sender]));; +require(((balances[msg.sender] + msg.value) > balances[msg.sender]));",
+ "mutated_unit_code": "    function Deposit()\n    public\n    payable\n    {\n        require(((balances[msg.sender] + msg.value) > balances[msg.sender]));\n        balances[msg.sender]+= msg.value;\n        Log.AddMessage(msg.sender,msg.value,\"Put\");\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {PRIVATE_ETH_CELL} from \"../src/PRIVATE_ETH_CELL.sol\";\n\ncontract InvMutTest is Test {\n    PRIVATE_ETH_CELL c;\n    function setUp() public { c = new PRIVATE_ETH_CELL(); }\n    function testRegression_property() public {\n        address log = address(new LogFile());\n        vm.prank(address(this));\n        c.SetLogFile(log);\n        vm.prank(address(this));\n        c.SetMinSum(1);\n        vm.prank(address(this));\n        c.Initialized();\n        address actor = address(0x123);\n        vm.deal(actor, 1 ether);\n        vm.prank(actor);\n        bool ok;\n        try c.Deposit{value: 0}() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        assertTrue(ok);\n    }\n}\n\ncontract LogFile {\n    struct Message {\n        address Sender;\n        string Data;\n        uint Val;\n        uint Time;\n    }\n    Message[] public History;\n    Message LastMsg;\n    function AddMessage(address _adr, uint _val, string memory _data) public {\n        LastMsg.Sender = _adr;\n        LastMsg.Time = block.timestamp;\n        LastMsg.Val = _val;\n        LastMsg.Data = _data;\n        History.push(LastMsg);\n    }\n}"
+}

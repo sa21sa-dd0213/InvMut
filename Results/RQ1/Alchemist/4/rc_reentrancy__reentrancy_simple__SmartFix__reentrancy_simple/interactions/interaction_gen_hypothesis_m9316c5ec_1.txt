@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Reentrance:
+        Contract Code: pragma solidity ^0.8.0; contract Reentrance { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public payable { require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender])); userBalance[msg.sender] += msg.value; } function withdrawBalance() public{ uint256 tmp__1 = userBalance[msg.sender]; userBalance[msg.sender] = 0; { (bool _s, bytes memory _d) = msg.sender.call{value: tmp__1}(""); _d; if (! _s) { revert(); } } } }
+
+    Consider the following mutant of Reentrance:
+        Mutant m9316c5ec of function addToBalance replaces msg.value with msg.value+1
+        Mutant Diff: ---|          require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender])); +++|          require(((userBalance[msg.sender] + msg.value+1) >= userBalance[msg.sender]));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant modifies the `addToBalance` function so that the require statement checks `userBalance[msg.sender] + msg.value + 1 >= userBalance[msg.sender]` instead of `userBalance[msg.sender] + msg.value >= userBalance[msg.sender]`. This change makes the overflow/underflow check slightly more restrictive—it now requires the new balance to be at least one wei larger than the old balance, even when `msg.value` is zero.
+
+**Hypothesis**: A test case that calls `addToBalance` with a `msg.value` of exactly 0 wei should pass on the original contract (since the check `oldBalance + 0 >= oldBalance` is always true), but will revert on the mutant because `oldBalance + 0 + 1 >= oldBalance` will be false for any finite `oldBalance`. Such a test would kill the mutant.

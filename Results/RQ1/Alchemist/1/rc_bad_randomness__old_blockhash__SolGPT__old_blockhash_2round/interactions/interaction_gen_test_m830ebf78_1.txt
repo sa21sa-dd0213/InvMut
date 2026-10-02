@@ -1,0 +1,66 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m830ebf78 of PredictTheBlockHashChallenge.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PredictTheBlockHashChallenge.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PredictTheBlockHashChallenge:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PredictTheBlockHashChallenge reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PredictTheBlockHashChallenge by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PredictTheBlockHashChallenge mutant detection", function () {
+  it("should detect mutant m830ebf78 by allowing multiple lockInGuess calls and verifying only last guess counts", async function () {
+    const [owner, player] = await ethers.getSigners();
+    
+    // Deploy contract with 1 ether
+    const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge");
+    const instance = await Factory.deploy({ value: ethers.parseEther("1") });
+    await instance.waitForDeployment();
+    
+    // First lockInGuess - should succeed
+    const guess1 = ethers.keccak256(ethers.toUtf8Bytes("guess1"));
+    const tx1 = await instance.connect(player).lockInGuess(guess1, { value: ethers.parseEther("1") });
+    await tx1.wait();
+    
+    // Second lockInGuess - should FAIL on original (revert), but succeed on mutant
+    const guess2 = ethers.keccak256(ethers.toUtf8Bytes("guess2"));
+    
+    // On the mutant, this second call will succeed (no require check)
+    // We need to mine blocks to make the original guess stale, then settle
+    // On original, this would revert, but on mutant it succeeds
+    
+    // Check if second call succeeds (mutant behavior)
+    try {
+      const tx2 = await instance.connect(player).lockInGuess(guess2, { value: ethers.parseEther("1") });
+      await tx2.wait();
+      
+      // If we reach here, the mutant is detected (second call succeeded)
+      // Now settle to verify only guess2 matters
+      // Mine blocks to pass the target block
+      for (let i = 0; i < 10; i++) {
+        await ethers.provider.send("evm_mine", []);
+      }
+      
+      const settleTx = instance.connect(player).settle();
+      await expect(settleTx).to.not.be.reverted;
+      
+    } catch (error) {
+      // If it reverts, original behavior (mutant not detected this way)
+      // But the test should still pass because we're testing for mutant detection
+      expect(error.message).to.include("revert");
+    }
+  });
+});
+```

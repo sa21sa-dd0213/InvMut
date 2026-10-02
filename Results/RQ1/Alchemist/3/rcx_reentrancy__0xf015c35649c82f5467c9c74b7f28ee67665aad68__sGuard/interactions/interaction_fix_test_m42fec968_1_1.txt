@@ -1,0 +1,63 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MY_BANK mutant m42fec968 test", function () {   it("should kill the mutant by exploiting block.prevrandao instead of block.timestamp in Put", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy Log contract first (required constructor argument for MY_BANK)     const LogFactory = await ethers.getContractFactory("Log");     const logInstance = await LogFactory.deploy();     await logInstance.waitForDeployment();          // Deploy MY_BANK with Log address     const BankFactory = await ethers.getContractFactory("MY_BANK");     const bankInstance = await BankFactory.deploy(await logInstance.getAddress());     await bankInstance.waitForDeployment();          const bankAddress = await bankInstance.getAddress();          // Fund addr1 with some ether     await owner.sendTransaction({       to: addr1.address,       value: ethers.parseEther("10")     });          // Step 1: Put ether with _unlockTime = 0 (which is <= block.timestamp)     // In original: unlockTime becomes block.timestamp     // In mutant: unlockTime becomes block.prevrandao (random large number)     const depositAmount = ethers.parseEther("2");     await bankInstance.connect(addr1).Put(0, { value: depositAmount });          // Step 2: Check the unlockTime set for addr1     const holder = await bankInstance.Acc(addr1.address);     const unlockTime = holder.unlockTime;          // Step 3: Try to collect the deposit immediately     // In original: should succeed because block.timestamp > unlockTime (which was block.timestamp)     // In mutant: should revert because block.timestamp < unlockTime (which is block.prevrandao, a huge number)     await expect(       bankInstance.connect(addr1).Collect(depositAmount)     ).to.be.reverted;          // Verify that the balance was NOT reduced (since Collect should have failed)     const holderAfter = await bankInstance.Acc(addr1.address);     expect(holderAfter.balance).to.equal(depositAmount);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } } contract MY_BANK is sGuard { function Put(uint _unlockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); LogFile.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant m42fec968 test", function () {
+  it("should kill the mutant by exploiting block.prevrandao instead of block.timestamp in Put", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy Log contract first (required constructor argument for MY_BANK)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+
+    // Deploy MY_BANK with Log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bankInstance = await BankFactory.deploy(await logInstance.getAddress());
+    await bankInstance.waitForDeployment();
+
+    const bankAddress = await bankInstance.getAddress();
+
+    // Fund addr1 with some ether
+    await owner.sendTransaction({
+      to: addr1.address,
+      value: ethers.parseEther("10")
+    });
+
+    // Step 1: Put ether with _unlockTime = 0 (which is <= block.timestamp)
+    // In original: unlockTime becomes block.timestamp
+    // In mutant: unlockTime becomes block.prevrandao (random large number)
+    const depositAmount = ethers.parseEther("2");
+    await bankInstance.connect(addr1).Put(0, { value: depositAmount });
+
+    // Step 2: Check the unlockTime set for addr1
+    const holder = await bankInstance.Acc(addr1.address);
+    const unlockTime = holder.unlockTime;
+
+    // Step 3: Try to collect the deposit immediately
+    // In original: should succeed because block.timestamp > unlockTime (which was block.timestamp)
+    // In mutant: should revert because block.timestamp < unlockTime (which is block.prevrandao, a huge number)
+    await expect(
+      bankInstance.connect(addr1).Collect(depositAmount)
+    ).to.be.reverted;
+
+    // Verify that the balance was NOT reduced (since Collect should have failed)
+    const holderAfter = await bankInstance.Acc(addr1.address);
+    expect(holderAfter.balance).to.equal(depositAmount);
+  });
+});
+```

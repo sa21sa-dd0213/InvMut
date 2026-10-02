@@ -1,0 +1,50 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("keepMyEther mutant m7ee4bf22", function () {   it("should detect mutant that subtracts 1 wei from msg.value in fallback", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("keepMyEther");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Send exactly 1 wei to the contract via fallback     const tx = await addr1.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("0.000000000000000001") // 1 wei     });     await tx.wait();      // Check balance recorded in the contract     const balanceBefore = await instance.balances(addr1.address);          // Withdraw all funds     const withdrawTx = await instance.connect(addr1).withdraw();     await withdrawTx.wait();      // Check balance after withdrawal     const balanceAfter = await instance.balances(addr1.address);      // In original: 1 wei deposited, then withdrawn -> balance becomes 0     // In mutant: 1 wei - 1 = 0 deposited -> withdraw sends 0 wei, balance stays 0     // The mutant fails because the caller receives 0 wei instead of 1 wei     expect(balanceBefore).to.equal(ethers.parseEther("0.000000000000000001"));     expect(balanceAfter).to.equal(0);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuardPlus { constructor() { __lock_modifier0_lock = false; } bool private __lock_modifier0_lock; modifier __lock_modifier0() { require(!__lock_modifier0_lock); __lock_modifier0_lock = true; _; __lock_modifier0_lock = false; } } contract keepMyEther is sGuardPlus { mapping (address  => uint256 ) public   balances; fallback() external payable { balances[msg.sender]+=msg.value; } function withdraw () public __lock_modifier0  { (bool __sent_result100, ) = msg.sender.call{value: balances[msg.sender]}(""); require(__sent_result100); balances[msg.sender]=0; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("keepMyEther mutant m7ee4bf22", function () {
+  it("should detect mutant that subtracts 1 wei from msg.value in fallback", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("keepMyEther");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Send exactly 1 wei to the contract via fallback
+    const tx = await addr1.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("0.000000000000000001") // 1 wei
+    });
+    await tx.wait();
+
+    // Check balance recorded in the contract
+    const balanceBefore = await instance.balances(addr1.address);
+
+    // Withdraw all funds
+    const withdrawTx = await instance.connect(addr1).withdraw();
+    await withdrawTx.wait();
+
+    // Check balance after withdrawal
+    const balanceAfter = await instance.balances(addr1.address);
+
+    // In original: 1 wei deposited, then withdrawn -> balance becomes 0
+    // In mutant: 1 wei - 1 = 0 deposited -> withdraw sends 0 wei, balance stays 0
+    // The mutant fails because the caller receives 0 wei instead of 1 wei
+    expect(balanceBefore).to.equal(ethers.parseEther("0.000000000000000001"));
+    expect(balanceAfter).to.equal(0);
+  });
+});
+```

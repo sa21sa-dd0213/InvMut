@@ -1,0 +1,12 @@
+{
+ "difference_id": "T9e143f8f",
+ "property_summary": "After any call to addToBalance, the balance of any account returned by getBalance must be at least what it was before the call (monotonic non-decrease), but the buggy empty body leaves the balance unchanged while msg.value is lost forever, so the invariant balance_after >= balance_before + msg.value (for the caller) fails.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the entire function body of addToBalance, making it a no-op that never updates userBalance.",
+ "mutated_unit_code": "function addToBalance() public nonReentrant_ payable {\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n    function testFuzz_property(address caller, uint256 amount, address other) public {\n        vm.assume(caller != address(0));\n        vm.assume(other != address(0));\n        vm.assume(caller != other);\n        vm.assume(amount > 0);\n        vm.assume(amount <= type(uint256).max / 2);\n\n        uint256 callerBefore = c.getBalance(caller);\n        uint256 otherBefore = c.getBalance(other);\n\n        vm.deal(caller, amount);\n        vm.prank(caller);\n        c.addToBalance{value: amount}();\n\n        uint256 callerAfter = c.getBalance(caller);\n        uint256 otherAfter = c.getBalance(other);\n\n        assertTrue(callerAfter >= callerBefore + amount && otherAfter >= otherBefore);\n    }\n}"
+}

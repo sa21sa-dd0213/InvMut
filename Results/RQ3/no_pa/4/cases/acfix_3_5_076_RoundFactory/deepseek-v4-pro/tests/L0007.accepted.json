@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0007",
+ "property_summary": "After calling C.initialize() twice (once via a program operator after first initializing C), the reference version's initializer modifier prevents re-initialization and thus the second call to initialize() is reverted; the buggy version allows re-initialization, so the second call succeeds, and reading the public variable initialized version via the _getInitializedVersion() internal function is not available, but the state variable _initialized is private. The observable difference is that in the reference, a call to C.initialize() after the first initialization will revert, whereas in the buggy version it will not revert. The concrete scenario: deploy C, then call c.initialize() (first call), then call c.initialize() again; the reference reverts on the second call, the buggy version does not. The assertion uses try/catch around the second initialize call to capture the revert behavior.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Remove the require that checks _initialized < 1 to allow repeated initialization.",
+ "mutated_unit_code": "    modifier initializer() {\n        bool isTopLevelCall = !_initializing;\n        require(\n            (isTopLevelCall) || (!AddressUpgradeable.isContract(address(this)) && _initialized == 1),\n            \"Initializable: contract is already initialized\"\n        );\n        _initialized = 1;\n        if (isTopLevelCall) {\n            _initializing = true;\n        }\n        _;\n        if (isTopLevelCall) {\n            _initializing = false;\n            emit Initialized(1);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.17;\nimport {Test} from \"forge-std/Test.sol\";\nimport {RoundFactory} from \"../src/RoundFactory.sol\";\n\ncontract InvMutTest is Test {\n    RoundFactory c;\n    function setUp() public { c = new RoundFactory(); }\n    function testRegression_property() public {\n        c.initialize();\n        bool ok;\n        try c.initialize() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        assertTrue(!ok, \"Second initialize should revert\");\n    }\n}\n"
+}

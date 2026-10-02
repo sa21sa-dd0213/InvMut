@@ -1,0 +1,12 @@
+{
+ "difference_id": "T82070b27",
+ "property_summary": "For any recipient and amount, calling withdrawReward twice in a row (after funding rewardsForA and ensuring a non-reverting recipient) succeeds both times on the correct contract because the reentrancy lock is reset, but the mutant that never resets the lock causes the second withdrawReward call to revert for some inputs (same recipient twice).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Remove resetting of the lock after function execution (_locked = false), leaving the contract permanently locked after the first guarded call.",
+ "mutated_unit_code": "modifier _nonReentrant() {\n    require(!_locked);\n    _locked = true;\n    _;\n}\n",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrancy_bonus} from \"../src/Reentrancy_bonus.sol\";\n\ncontract InvMutTest is Test {\n    Reentrancy_bonus c;\n\n    function setUp() public { c = new Reentrancy_bonus(); }\n\n    function testFuzz_property(address recipientAddr, uint256 fundAmount) public {\n        fundAmount = bound(fundAmount, 1, 1 ether);\n\n        Receiver r = new Receiver();\n\n        vm.deal(address(this), fundAmount);\n\n        Setter helper = new Setter(address(c));\n\n        bool ok1;\n        try c.withdrawReward(address(r)) {\n            ok1 = true;\n        } catch {\n            ok1 = false;\n        }\n\n        bool ok2;\n        try c.withdrawReward(address(r)) {\n            ok2 = true;\n        } catch {\n            ok2 = false;\n        }\n\n        assertTrue(!(ok1 && !ok2));\n    }\n}\n\ncontract Receiver {\n    receive() external payable {}\n}\n\ncontract Setter {\n    Reentrancy_bonus c;\n    constructor(address _c) { c = Reentrancy_bonus(_c); }\n    function callGetFirstWithdrawalBonus(address recipient) external {\n        c.getFirstWithdrawalBonus(recipient);\n    }\n}\n"
+}

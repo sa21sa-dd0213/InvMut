@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0004",
+ "property_summary": "When calling transfer with from=alice, caddress pointing to a token contract that records the last caller, the reference contract calls transferFrom from alice, while the buggy version uses address(0), so the token's lastCaller recorded differs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "Replace the call argument 'from' with a constant address (e.g., address(0)) to change the transfer source.",
+ "mutated_unit_code": "    function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0;i<_tos.length;i++){\n\n            caddress.call(abi.encodeWithSelector(id,address(0),_tos[i],v));\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {demo} from \"../src/demo.sol\";\n\ncontract InvMutTest is Test {\n    demo c;\n    function setUp() public { c = new demo(); }\n    function testRegression_property() public {\n        Token token = new Token();\n        address alice = address(0x1234);\n        address[] memory tos = new address[](1);\n        tos[0] = alice;\n        c.transfer(alice, address(token), tos, 100);\n        assertTrue(token.lastCaller() == alice, \"lastCaller should be alice in correct version\");\n    }\n}\n\ncontract Token {\n    address public lastCaller;\n    function transferFrom(address from, address to, uint256 value) external returns (bool) {\n        lastCaller = from;\n        return true;\n    }\n}"
+}

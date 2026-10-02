@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract airDrop:
+        Contract Code: pragma solidity ^0.8.0; contract airDrop { function transfer(address from, address caddress, address[] memory _tos, uint v, uint _decimals)  public returns (bool) { require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); uint _value = v * 10 ** _decimals; for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], _value)); _d; if (! _s) { revert();} } } return true; } }
+
+    Consider the following mutant of airDrop:
+        Mutant m8430d772 of function transfer replaces * with +
+        Mutant Diff: ---| 	uint _value = v * 10 ** _decimals; +++| 	uint _value = v + 10 ** _decimals;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the multiplication operator `*` to the addition operator `+` in the calculation of `_value = v * 10 ** _decimals`. This means the mutant will compute a much smaller value than intended when `v` is greater than 1, because it adds instead of multiplying.  
+
+**Hypothesis**: A test case that calls the `transfer` function with `v` set to a value greater than 1 (e.g., `v = 10`) and `_decimals` set to a value like 18, then verifies that the actual amount transferred to the recipient matches the expected large product (e.g., `10 * 10^18`), should kill the mutant. In the mutant, the transferred amount will be significantly smaller (e.g., `10 + 10^18`), causing the test to detect the discrepancy.

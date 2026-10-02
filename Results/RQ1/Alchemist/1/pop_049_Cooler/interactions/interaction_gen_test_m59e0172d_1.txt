@@ -1,0 +1,90 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m59e0172d of Cooler.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Cooler.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Cooler:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Cooler reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Cooler by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Cooler"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("Kill mutant m59e0172d - repayLoan division replaced with subtraction", function () {
+  it("should return correct proportional collateral when repaying a portion of the loan", async function () {
+    const [owner, lender, borrower] = await ethers.getSigners();
+    
+    // Deploy a mock ERC20 for collateral and debt tokens
+    const ERC20Factory = await ethers.getContractFactory("ERC20");
+    const collateralToken = await ERC20Factory.deploy("Collateral", "COL", 18);
+    const debtToken = await ERC20Factory.deploy("Debt", "DEBT", 18);
+    await collateralToken.waitForDeployment();
+    await debtToken.waitForDeployment();
+    
+    // Deploy CoolerFactory and Cooler
+    const Factory = await ethers.getContractFactory("CoolerFactory");
+    const factory = await Factory.deploy();
+    await factory.waitForDeployment();
+    
+    // Get cooler implementation address
+    const coolerImpl = await factory.coolerImplementation();
+    
+    // Generate cooler for borrower
+    await factory.connect(borrower).generateCooler(await collateralToken.getAddress(), await debtToken.getAddress());
+    const coolerAddress = await factory.coolerFor(borrower.address, await collateralToken.getAddress(), await debtToken.getAddress());
+    const cooler = await ethers.getContractAt("Cooler", coolerAddress);
+    
+    // Setup: Borrower provides collateral, lender provides debt
+    const loanAmount = ethers.parseEther("1000");
+    const interestRate = ethers.parseEther("0.1"); // 10%
+    const loanToCollateral = ethers.parseEther("2"); // 2:1 ratio
+    const duration = 30 * 24 * 3600; // 30 days
+    
+    // Calculate required collateral
+    const collateralNeeded = await cooler.collateralFor(loanAmount, loanToCollateral);
+    
+    // Borrower approves and requests loan
+    await collateralToken.connect(borrower).approve(coolerAddress, collateralNeeded);
+    await cooler.connect(borrower).requestLoan(loanAmount, interestRate, loanToCollateral, duration);
+    
+    // Lender approves and clears request
+    await debtToken.connect(lender).approve(coolerAddress, loanAmount);
+    await cooler.connect(lender).clearRequest(0, false, false);
+    
+    // Get loan details before repayment
+    const loanBefore = await cooler.getLoan(0);
+    const collateralBefore = loanBefore.collateral;
+    const amountBefore = loanBefore.amount;
+    
+    // Repay half the loan
+    const repayAmount = amountBefore / 2n;
+    await debtToken.connect(borrower).approve(coolerAddress, repayAmount);
+    await cooler.connect(borrower).repayLoan(0, repayAmount);
+    
+    // Get loan details after repayment
+    const loanAfter = await cooler.getLoan(0);
+    
+    // Calculate expected decollateralized amount: (collateral * repaid) / loan.amount
+    const expectedDecollateralized = (collateralBefore * repayAmount) / amountBefore;
+    
+    // The borrower's collateral balance should have increased by the expected amount
+    const borrowerCollateralAfter = await collateralToken.balanceOf(borrower.address);
+    const borrowerCollateralBefore = await collateralToken.balanceOf(borrower.address);
+    
+    // The actual decollateralized amount should equal the expected proportional amount
+    // If mutant is present (subtraction), this will fail because:
+    // (collateral * repaid) - loan.amount != (collateral * repaid) / loan.amount
+    expect(loanAfter.collateral).to.equal(collateralBefore - expectedDecollateralized);
+  });
+});
+```

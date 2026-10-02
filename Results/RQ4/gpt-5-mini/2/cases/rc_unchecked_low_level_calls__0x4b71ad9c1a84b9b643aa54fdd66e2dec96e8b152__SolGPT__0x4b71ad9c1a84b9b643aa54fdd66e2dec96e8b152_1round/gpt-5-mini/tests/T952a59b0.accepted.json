@@ -1,0 +1,12 @@
+{
+ "difference_id": "T952a59b0",
+ "property_summary": "For every call to transfer with a non-empty _tos array, the reference C always returns true (call completes and returns true); the mutant returns false for some non-empty _tos, so the return value property (transfer(...) == true) is violated for those inputs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Invert the final returned boolean: return false when loop runs, otherwise true (changes returned value for any non-empty _tos).",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0; i<_tos.length; i++){\n            { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); require(_s); }\n        }\n        if(_tos.length > 0) return false; else return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airPort} from \"../src/airPort.sol\";\n\ncontract InvMutTest is Test {\n    airPort c;\n    function setUp() public { c = new airPort(); }\n\n    function testFuzz_property(address from, address to, uint256 v) public {\n        vm.assume(to != address(0));\n\n        address[] memory tos = new address[](1);\n        tos[0] = to;\n\n        HelperReceiver helper = new HelperReceiver();\n\n        address caddress = to;\n        if (to == address(0) || to == address(1)) {\n            caddress = address(helper);\n        }\n        bool ok;\n        try c.transfer(from, caddress, tos, v) returns (bool ret) {\n            ok = ret;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok);\n    }\n}\n\ncontract HelperReceiver {\n    function transferFrom(address, address, uint256) external pure returns (bool) {\n        return true;\n    }\n\n    fallback() external payable {\n    }\n}\n"
+}

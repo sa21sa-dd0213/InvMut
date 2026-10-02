@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0002",
+ "property_summary": "The contract's sendTo call always REVERTS (fails) when invoked by ANY non-owner address because transfer will fail unless the contract has sufficient balance and only the owner is allowed to call; the mutant allows non-owners so there exist non-owner calls that succeed on the mutant but must revert on the reference — we instead frame a universal property that for any caller != owner, calling sendTo should revert iff the contract has zero balance (reference: non-owner is blocked by require, so call always reverts regardless of balance), and the mutant breaks this by permitting non-owner calls to proceed when balance suffices.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Invert the require to block the owner and allow only non-owners to call sendTo.",
+ "mutated_unit_code": "function sendTo(address receiver, uint amount) public {\n\n        require(msg.sender != owner);\n        payable(receiver).transfer(amount);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MyContract} from \"../src/MyContract.sol\";\n\ncontract InvMutTest is Test {\n    MyContract c;\n    function setUp() public { c = new MyContract(); }\n\n    function testFuzz_property(address caller, uint256 amount) public {\n        vm.assume(caller != address(0));\n        amount = bound(amount, 0, 1 ether);\n\n        vm.deal(address(c), 1 ether);\n        vm.deal(caller, 1 ether);\n\n        vm.assume(caller != address(this));\n\n        bool ok;\n        vm.prank(caller);\n        try c.sendTo(address(0x1234), amount) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok == false);\n    }\n}\n"
+}

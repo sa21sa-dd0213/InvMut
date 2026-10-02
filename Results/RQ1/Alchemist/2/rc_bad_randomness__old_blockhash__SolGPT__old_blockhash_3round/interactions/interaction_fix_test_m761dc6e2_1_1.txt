@@ -1,0 +1,47 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("PredictTheBlockHashChallenge mutant detection", function () {   it("should kill mutant m761dc6e2 by testing that settle reverts when block == 0 is required", async function () {     const [owner, player] = await ethers.getSigners();          // Deploy contract with 1 ether     const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge");     const contract = await Factory.deploy({ value: ethers.parseEther("1") });     await contract.waitForDeployment();          // Player locks in a guess with 1 ether     const guessHash = ethers.keccak256(ethers.toUtf8Bytes("test"));     const lockTx = await contract.connect(player).lockInGuess(guessHash, { value: ethers.parseEther("1") });     await lockTx.wait();          // Get the block number where guess was locked     const lockBlock = await ethers.provider.getBlock(lockTx.blockNumber);     const targetBlock = lockBlock.number + 1;          // Mine enough blocks to surpass the target block     await ethers.provider.send("hardhat_mine", [ethers.toQuantity(2)]);          // Now try to settle - should revert because the mutant requires guesses[msg.sender].block == 0     // but the player's block is set to a non-zero value from lockInGuess     await expect(       contract.connect(player).settle()     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PredictTheBlockHashChallenge { struct Guess { uint block; bytes32 guess; } mapping(address => Guess) guesses; constructor() public payable { require(msg.value == 1 ether); } function lockInGuess(bytes32 hash) public payable { require(guesses[msg.sender].block == 0); require(msg.value == 1 ether); guesses[msg.sender].guess = hash; guesses[msg.sender].block = block.number + 1; } function settle() public { require(guesses[msg.sender].block != 0); require(block.number > guesses[msg.sender].block); bytes32 answer = keccak256(abi.encodePacked(blockhash(guesses[msg.sender].block))); guesses[msg.sender].block = 0; if (guesses[msg.sender].guess == answer) { payable(msg.sender).transfer(2 ether); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PredictTheBlockHashChallenge mutant detection", function () {
+  it("should kill mutant m761dc6e2 by testing that settle reverts when block == 0 is required", async function () {
+    const [owner, player] = await ethers.getSigners();
+    
+    // Deploy contract with 1 ether
+    const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge");
+    const contract = await Factory.deploy({ value: ethers.parseEther("1") });
+    await contract.waitForDeployment();
+    
+    // Player locks in a guess with 1 ether
+    const guessHash = ethers.keccak256(ethers.toUtf8Bytes("test"));
+    const lockTx = await contract.connect(player).lockInGuess(guessHash, { value: ethers.parseEther("1") });
+    await lockTx.wait();
+    
+    // Get the block number where guess was locked
+    const lockBlock = await ethers.provider.getBlock(lockTx.blockNumber);
+    const targetBlock = lockBlock.number + 1;
+    
+    // Mine enough blocks to surpass the target block
+    await ethers.provider.send("hardhat_mine", [ethers.toQuantity(2)]);
+    
+    // Now try to settle - should revert because the mutant requires guesses[msg.sender].block == 0
+    // but the player's block is set to a non-zero value from lockInGuess
+    await expect(
+      contract.connect(player).settle()
+    ).to.be.reverted;
+  });
+});
+```

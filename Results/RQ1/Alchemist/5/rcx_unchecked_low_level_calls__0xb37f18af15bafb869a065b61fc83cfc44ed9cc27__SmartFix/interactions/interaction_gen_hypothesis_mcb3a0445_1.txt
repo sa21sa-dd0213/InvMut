@@ -1,0 +1,29 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract SimpleWallet:
+        Contract Code: pragma solidity ^0.8.0; contract SimpleWallet { address public owner = msg.sender; uint public depositsCount; modifier onlyOwner { require(msg.sender == owner); _; } receive() external payable { require(((depositsCount + 1) >= depositsCount)); depositsCount++; } function withdrawAll() public onlyOwner { withdraw(address(this).balance); } function withdraw(uint _value) public onlyOwner { payable(msg.sender).transfer(_value); } function sendMoney(address _target, uint _value) public onlyOwner { _target.call{value: _value}(""); } }
+
+    Consider the following mutant of SimpleWallet:
+        Mutant mcb3a0445 of function receive replaces >= with >
+        Mutant Diff: ---|         require(((depositsCount + 1) >= depositsCount)); +++|         require(((depositsCount + 1)  > depositsCount));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original code uses `>=` in the require statement, which always passes because `depositsCount + 1` is always greater than or equal to `depositsCount` (it's actually always strictly greater unless an overflow occurs, but in Solidity 0.8.x overflow reverts automatically). The mutant changes it to `>`, which also always passes under normal circumstances. However, the critical difference is the edge case of integer overflow: if `depositsCount` reaches the maximum uint value (2^256 - 1), then `depositsCount + 1` would overflow and revert in Solidity 0.8.x before even evaluating the comparison. The original `>=` would never be reached in that overflow scenario, but the mutant's `>` also would never be reached.  
+
+A more practical difference: the original `>=` would pass even if `depositsCount` somehow became abnormally large (though impossible in practice), while `>` would fail if `depositsCount + 1` ever equaled `depositsCount` (impossible). The real exploitable difference is that the mutant is more restrictive in a meaningless way that doesn't affect normal behavior.  
+
+To kill this mutant, the test must exploit a scenario where `>=` passes but `>` fails. The only mathematical case is when `depositsCount + 1 == depositsCount`, which never happens. However, since the original `>=` is always true, any valid deposit should pass. The mutant also always passes for any valid deposit.  
+
+The key insight: the mutant changes the condition in a way that **does not change observable behavior** for any realistic input. This is a "stubborn" mutant that survives functional testing. To kill it, we must test an edge case that triggers a different execution path—specifically, a scenario where the arithmetic would cause an overflow revert in the original, but the mutant might behave differently. But both revert on overflow in Solidity 0.8.x.  
+
+Wait—consider the case where `depositsCount` is at its maximum (type(uint).max). In the original: `depositsCount + 1` overflows and reverts before `>=` is evaluated. In the mutant: same overflow revert. Both revert.  
+
+Thus, no test can distinguish them under normal execution. This mutant is **equivalent** in behavior. However, if the

@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tb5fe90d6",
+ "property_summary": "For every non-empty _tos array and any callee address, the reference C.transfer(...) always returns true (it ignores failures of low-level calls), but the mutant returns false if any low-level call returns false — so there exists a callee that makes the mutant return false while the reference still returns true.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Capture and check the boolean success returned by the low-level call and return false if any call fails, altering the function's returned value for some inputs.",
+ "mutated_unit_code": "function transfer(address from,address caddress, address[] memory _tos, uint[] memory v)public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0;i<_tos.length;i++){\n\n            (bool ok, ) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v[i]));\n            if(!ok) return false;\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EBU} from \"../src/EBU.sol\";\n\ncontract InvMutTest is Test {\n    EBU c;\n    function setUp() public { c = new EBU(); }\n\n    function testFuzz_property(address from, uint256 n, uint256 val) public {\n        uint256 len = bound(n, 1, 5);\n\n        address[] memory tos = new address[](len);\n        uint256[] memory vs = new uint256[](len);\n        for (uint i = 0; i < len; i++) {\n            tos[i] = address(new Reverter());\n            vs[i] = val;\n        }\n\n        bool okRef;\n        bool retRef;\n        try c.transfer(from, address(tos[0]), tos, vs) returns (bool r) {\n            okRef = true;\n            retRef = r;\n        } catch {\n            okRef = false;\n            retRef = false;\n        }\n\n        assertTrue(okRef && retRef);\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"bad\");\n    }\n}\n"
+}

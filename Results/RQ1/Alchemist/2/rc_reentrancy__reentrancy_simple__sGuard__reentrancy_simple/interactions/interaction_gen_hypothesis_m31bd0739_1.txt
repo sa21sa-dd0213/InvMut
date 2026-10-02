@@ -1,0 +1,35 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Reentrance:
+        Contract Code: pragma solidity ^0.8.0; contract sGuard{ function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } } contract Reentrance  is sGuard { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public nonReentrant_ payable { userBalance[msg.sender] = add_uint256(userBalance[msg.sender], msg.value); } function withdrawBalance()  public nonReentrant_ { { (bool _s, bytes memory _d) = msg.sender.call{value: userBalance[msg.sender]}(""); _d; if (! _s) { revert(); } } userBalance[msg.sender] = 0; } }
+
+    Consider the following mutant of Reentrance:
+        Mutant m31bd0739 of function withdrawBalance replaces ! _s with false
+        Mutant Diff: ---|          { (bool _s, bytes memory _d) = msg.sender.call{value: userBalance[msg.sender]}(""); _d; if (! _s) { +++|          { (bool _s, bytes memory _d) = msg.sender.call{value: userBalance[msg.sender]}(""); _d; if (false) {
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's reason through this step-by-step.
+
+**Original behavior:**  
+In `withdrawBalance`, after sending Ether via `call`, the return value `_s` indicates success (`true`) or failure (`false`).  
+The original code checks `if (! _s) { revert(); }` — meaning if the external call fails, the whole transaction reverts.  
+Crucially, the balance mapping `userBalance[msg.sender] = 0;` is only reached *after* this check passes (i.e., after successful send).
+
+**Mutant behavior:**  
+The mutant changes `if (! _s)` to `if (false)`.  
+This means the revert on failure is *never* triggered — even if the `call` fails (e.g., because the recipient is a contract that rejects incoming Ether), the execution continues and `userBalance[msg.sender]` is still set to `0`.  
+This allows an attacker to call `withdrawBalance`, have the Ether transfer fail (so they don't actually receive funds), yet still have their recorded balance zeroed out. However, more importantly, it breaks the *reentrancy protection* pattern: in the original, if the call re-enters `withdrawBalance` before the balance is set to zero, the `nonReentrant_` modifier prevents it; but in the mutant, the critical difference is that a *failed* call still clears the balance, which can be exploited.
+
+**Key insight for a test:**  
+A test that triggers a failed external call (e.g., by making the recipient a contract that reverts on `receive()`) and then checks that the user's balance is *not* zeroed out (because the original would revert entirely) would pass on the original but fail on the mutant (since the mutant incorrectly zeroes the balance).
+
+**Hypothesis:**  
+"The mutant removes the revert on failed external call. Therefore, a test case that calls `withdrawBalance` from a contract that rejects incoming Ether and then checks that the user's balance remains unchanged should kill the mutant."

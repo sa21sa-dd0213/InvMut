@@ -1,0 +1,27 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract SimpleWallet:
+        Contract Code: pragma solidity ^0.8.0; contract SimpleWallet  { address  public   owner = payable(msg.sender); uint  public   depositsCount; modifier onlyOwner { require(msg.sender==owner); _; } fallback() external payable { depositsCount ++ ; } function withdrawAll () public onlyOwner  { withdraw(address(this).balance); } function withdraw (uint    _value) public onlyOwner  { payable(msg.sender).transfer(_value); } function sendMoney (address    _target,uint    _value, bytes memory _data) public onlyOwner  { (bool __sent_result100, ) = _target.call{value: _value}(_data); require(__sent_result100); } }
+
+    Consider the following mutant of SimpleWallet:
+        Mutant m05573959 of function modifier:onlyOwner replaces == with !=
+        Mutant Diff: ---| require(msg.sender==owner); +++| require(msg.sender!=owner);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+**Step-by-step reasoning:**
+
+1. The original `onlyOwner` modifier uses `require(msg.sender == owner)`, which allows execution only when the caller is the owner.
+2. The mutant changes `==` to `!=`, so the modifier now requires the caller **not** to be the owner. This means only non-owner addresses can call `onlyOwner` functions.
+3. If the owner calls any `onlyOwner` function (like `withdrawAll`, `withdraw`, or `sendMoney`), the mutant will revert instead of succeeding.
+4. Conversely, if a non-owner calls these functions, the mutant will allow execution when it should revert.
+5. The simplest and most direct test to kill this mutant: call a `onlyOwner` function **from the owner's address** and expect it to succeed. In the original, it succeeds; in the mutant, it reverts.
+
+**Hypothesis:** A test case that calls the `withdrawAll` function from the owner's address and expects the transaction to succeed (no revert) should kill the mutant, because the mutant incorrectly reverses the access control logic and will revert when the owner tries to call it.

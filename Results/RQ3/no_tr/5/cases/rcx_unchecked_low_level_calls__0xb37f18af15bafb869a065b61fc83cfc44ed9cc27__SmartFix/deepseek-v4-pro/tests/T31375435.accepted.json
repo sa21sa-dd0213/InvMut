@@ -1,0 +1,12 @@
+{
+ "difference_id": "T31375435",
+ "property_summary": "After any number of receive calls, the depositsCount in the reference contract is always >=0 and equals the number of successful deposits (non-negative invariant), but the buggy version decrements it, making depositsCount drop below zero and become inconsistent with the number of deposits.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the increment with a decrement, so depositsCount decreases instead of increasing.",
+ "mutated_unit_code": "receive() external payable {\n        require(((depositsCount + 1) >= depositsCount));\n        depositsCount--;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    uint256 internal depositCounter;\n\n    function setUp() public {\n        c = new SimpleWallet();\n    }\n\n    function testFuzz_property(uint256 numCalls, uint256[] calldata values) public {\n        numCalls = bound(numCalls, 1, 50);\n\n        vm.assume(values.length >= numCalls);\n\n        depositCounter = 0;\n\n        for (uint256 i = 0; i < numCalls; i++) {\n            uint256 val = bound(values[i], 1, 100 ether);\n            vm.deal(address(this), val);\n            (bool ok,) = address(c).call{value: val}(\"\");\n            assertTrue(ok, \"receive reverted unexpectedly\");\n            depositCounter++;\n        }\n\n        assertEq(c.depositsCount(), depositCounter);\n    }\n}\n"
+}

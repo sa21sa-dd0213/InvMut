@@ -1,0 +1,196 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PoCGame mutant mb04700c3 detection", function () {
+  it("should detect mutant where % is replaced with / by verifying payout occurs when winning condition is met", async function () {
+    const [owner, whale, player] = await ethers.getSigners();
+    
+    // Deploy with constructor arguments: whaleAddress, wagerLimit
+    const wagerLimit = ethers.parseEther("1");
+    const Factory = await ethers.getContractFactory("PoCGame");
+    const instance = await Factory.deploy(whale.address, wagerLimit);
+    await instance.waitForDeployment();
+    
+    // Open the game to the public
+    await (await instance.connect(owner).OpenToThePublic()).wait();
+    
+    // Set difficulty to a known value (e.g., 10) so we can predict winning condition
+    await (await instance.connect(owner).AdjustDifficulty(10)).wait();
+    
+    // Player places a wager
+    await (await instance.connect(player).wager({ value: wagerLimit })).wait();
+    
+    // Get the block number when wager was placed
+    const wagerBlock = await ethers.provider.getBlockNumber();
+    
+    // Mine a new block so block.number > wagerBlock
+    await ethers.provider.send("evm_mine", []);
+    
+    // Record contract balance before play
+    const balanceBefore = await ethers.provider.getBalance(instance.target);
+    
+    // Calculate what winningNumber would be with ORIGINAL code (%)
+    // For mutant (/), the winningNumber would be astronomically larger
+    // The winning condition is winningNumber == difficulty/2 (i.e., 5)
+    // With original code, there's a 1/10 chance to win
+    // With mutant, winningNumber = hash/10 + 1, which is huge, so never equals 5
+    
+    // Try playing multiple times to see if payout ever occurs
+    let payoutReceived = false;
+    for (let i = 0; i < 20; i++) {
+      // Player places another wager
+      await (await instance.connect(player).wager({ value: wagerLimit })).wait();
+      await ethers.provider.send("evm_mine", []);
+      
+      const balanceBeforePlay = await ethers.provider.getBalance(instance.target);
+      
+      try {
+        await (await instance.connect(player).play()).wait();
+        const balanceAfterPlay = await ethers.provider.getBalance(instance.target);
+        
+        // If balance decreased by half (payout occurred), player won
+        if (balanceAfterPlay < balanceBeforePlay) {
+          payoutReceived = true;
+          break;
+        }
+      } catch {
+        // play() reverts or player loses - continue
+        continue;
+      }
+    }
+    
+    // With the ORIGINAL code, there should be at least some chance of winning
+    // With the MUTANT, it's impossible to win (hash/difficulty + 1 can never equal difficulty/2 for reasonable difficulty values)
+    // This test will PASS on original (payoutReceived may be true or false, but mutant is broken differently)
+    // Actually, let's test more directly - we know the mutant ALWAYS loses
+    
+    // Better approach: test that the mutant can never pay out
+    // Reset and try with specific difficulty where we can verify
+    const Factory2 = await ethers.getContractFactory("PoCGame");
+    const instance2 = await Factory2.deploy(whale.address, wagerLimit);
+    await instance2.waitForDeployment();
+    await (await instance2.connect(owner).OpenToThePublic()).wait();
+    await (await instance2.connect(owner).AdjustDifficulty(2)).wait(); // difficulty/2 = 1
+    
+    // Player wagers
+    await (await instance2.connect(player).wager({ value: wagerLimit })).wait();
+    await ethers.provider.send("evm_mine", []);
+    
+    const balanceBeforePlay2 = await ethers.provider.getBalance(instance2.target);
+    
+    // Play - with mutant, winningNumber = hash/2 + 1 which is huge, never equals 1
+    // With original, winningNumber = hash%2 + 1 which can be 1 or 2
+    await (await instance2.connect(player).play()).wait();
+    
+    const balanceAfterPlay2 = await ethers.provider.getBalance(instance2.target);
+    
+    // With original code, there's a 50% chance balance decreased by half (payout)
+    // With mutant, balance will ALWAYS decrease by exactly betLimit/2 (loseWager amount)
+    // The test assertion: the mutant can NEVER produce a payout (balance decrease of half)
+    // While original CAN produce a payout
+    
+    // For detection: we check that the balance decrease was exactly betLimit/2 (loss)
+    // not half the contract balance (win)
+    const expectedLoss = wagerLimit / 2n; // betLimit/2
+    const expectedWin = balanceBeforePlay2 / 2n;
+    const actualDecrease = balanceBeforePlay2 - balanceAfterPlay2;
+    
+    // If mutant, actualDecrease will always equal expectedLoss
+    // If original, sometimes actualDecrease will equal expectedWin
+    
+    // The test will detect the mutant by verifying that after multiple attempts,
+    // no payout (expectedWin decrease) ever occurs
+    // This test FAILS on the mutant (mutant never pays out)
+    // This test PASSES on original (mutant occasionally pays out)
+    
+    // To reliably kill the mutant, we test that a payout CAN occur
+    // Since mutant CAN NEVER pay out, we need to prove it by showing
+    // that after enough tries, original would have paid out
+    
+    // Actually simplest approach: check that after playing with difficulty=2,
+    // if player wins (50% chance with original), balance decreases by half
+    // With mutant (0% chance), balance always decreases by betLimit/2
+    
+    // We'll run this multiple times and check that we never see a "win" pattern
+    let sawWinPattern = false;
+    for (let i = 0; i < 10; i++) {
+      const inst = await (await ethers.getContractFactory("PoCGame")).deploy(whale.address, wagerLimit);
+      await inst.waitForDeployment();
+      await (await inst.connect(owner).OpenToThePublic()).wait();
+      await (await inst.connect(owner).AdjustDifficulty(2)).wait();
+      
+      await (await inst.connect(player).wager({ value: wagerLimit })).wait();
+      await ethers.provider.send("evm_mine", []);
+      
+      const balBefore = await ethers.provider.getBalance(inst.target);
+      await (await inst.connect(player).play()).wait();
+      const balAfter = await ethers.provider.getBalance(inst.target);
+      
+      const decrease = balBefore - balAfter;
+      if (decrease === balBefore / 2n) {
+        sawWinPattern = true;
+        break;
+      }
+    }
+    
+    // On original, sawWinPattern should be true (50% chance per iteration)
+    // On mutant, sawWinPattern will ALWAYS be false
+    // This test kills the mutant by proving it can never produce a win
+    
+    // Actually the test needs to PASS on original and FAIL on mutant
+    // If we assert sawWinPattern is true, it will PASS on original (sometimes)
+    // and FAIL on mutant (always) - that's what we want
+    
+    // But for deterministic testing, we need a different approach
+    // Let's instead verify the behavior is mathematically impossible with mutant
+    
+    // Final approach: check that with difficulty=1, difficulty/2 = 0.5 (truncated to 0)
+    // Original: winningNumber = hash%1 + 1 = 1 (since hash%1 = 0) → always wins
+    // Mutant: winningNumber = hash/1 + 1 = hash + 1 → never equals 0
+    
+    const inst3 = await (await ethers.getContractFactory("PoCGame")).deploy(whale.address, wagerLimit);
+    await inst3.waitForDeployment();
+    await (await inst3.connect(owner).OpenToThePublic()).wait();
+    await (await inst3.connect(owner).AdjustDifficulty(1)).wait();
+    
+    await (await inst3.connect(player).wager({ value: wagerLimit })).wait();
+    await ethers.provider.send("evm_mine", []);
+    
+    const balBefore3 = await ethers.provider.getBalance(inst3.target);
+    await (await inst3.connect(player).play()).wait();
+    const balAfter3 = await ethers.provider.getBalance(inst3.target);
+    
+    // Original: winningNumber = 1, difficulty/2 = 0, 1 != 0 → player loses
+    // That won't work either
+    
+    // Simplest: use difficulty=3, difficulty/2 = 1 (integer division)
+    // Original: winningNumber = hash%3 + 1 (1,2,3) → wins when =1 (33% chance)
+    // Mutant: winningNumber = hash/3 + 1 (huge) → never =1
+    
+    // Run 20 iterations, check if ANY win occurred
+    let anyWin = false;
+    for (let i = 0; i < 20; i++) {
+      const inst = await (await ethers.getContractFactory("PoCGame")).deploy(whale.address, wagerLimit);
+      await inst.waitForDeployment();
+      await (await inst.connect(owner).OpenToThePublic()).wait();
+      await (await inst.connect(owner).AdjustDifficulty(3)).wait();
+      
+      await (await inst.connect(player).wager({ value: wagerLimit })).wait();
+      await ethers.provider.send("evm_mine", []);
+      
+      const balBefore = await ethers.provider.getBalance(inst.target);
+      await (await inst.connect(player).play()).wait();
+      const balAfter = await ethers.provider.getBalance(inst.target);
+      
+      if (balAfter > balBefore - (wagerLimit / 2n)) {
+        anyWin = true;
+        break;
+      }
+    }
+    
+    // Original: anyWin should be true with high probability (1 - (2/3)^20 ≈ 99.97%)
+    // Mutant: anyWin will ALWAYS be false
+    // This test PASSES on original and FAILS on mutant → kills the mutant
+    expect(anyWin).to.be.true;
+  });
+});

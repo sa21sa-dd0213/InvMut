@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0006",
+ "property_summary": "For any owner-invoked sendMoney(target, value) where target is a contract with a payable fallback that records received ether, the reference forwards the funds to that target (so target's balance increases by value), whereas the mutant that calls msg.sender sends the funds back to the owner instead and thus the target's balance will not increase for some inputs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change the target of the call to msg.sender instead of the provided _target, causing funds to be sent back to the caller rather than the specified address.",
+ "mutated_unit_code": "function sendMoney (address    _target,uint    _value) public onlyOwner  {\n    (bool __sent_result100, ) = msg.sender.call{value: _value}(\"\");\n    require(__sent_result100);\n}\n",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n\n    function testFuzz_property(uint256 amount, bool willAccept) public {\n        amount = bound(amount, 0, 1 ether);\n\n        Receiver helper = new Receiver(willAccept);\n\n        vm.deal(address(c), amount);\n\n        bool ok;\n        try c.sendMoney(address(helper), amount) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        if (willAccept) {\n            assertTrue(address(helper).balance == amount);\n        } else {\n            assertTrue(address(helper).balance == 0);\n        }\n    }\n}\n\ncontract Receiver {\n    bool public accept;\n    constructor(bool _accept) payable {\n        accept = _accept;\n    }\n    fallback() external payable {\n        if (!accept) revert(\"nope\");\n    }\n    receive() external payable {\n        if (!accept) revert(\"nope\");\n    }\n}\n"
+}

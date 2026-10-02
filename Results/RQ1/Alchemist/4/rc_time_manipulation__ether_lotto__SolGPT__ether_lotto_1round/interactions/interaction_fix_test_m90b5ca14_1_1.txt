@@ -1,0 +1,70 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EtherLotto mutant detection - m90b5ca14", function () {   it("should detect mutant that adds 1 extra wei to pot (msg.value+1)", async function () {     const [owner, player] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("EtherLotto");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const TICKET_AMOUNT = 10n; // 10 wei     const FEE_AMOUNT = 1n; // 1 wei      // Play and win scenario: We need to force random == 0.     // Since randomness depends on block.timestamp and block.difficulty,     // we can mine blocks until we get a win.     // Alternative approach: play many times and check the first win.      // Record balances before     const playerBalanceBefore = await ethers.provider.getBalance(player.address);     const ownerBalanceBefore = await ethers.provider.getBalance(owner.address);      // Play until we win (random == 0)     let won = false;     let tx;     while (!won) {       tx = await instance.connect(player).play({ value: TICKET_AMOUNT });       const receipt = await tx.wait();        // Check if the player won by examining the pot after transaction       // If pot is 0, it means the win condition triggered       const potAfter = await instance.pot();       if (potAfter === 0n) {         won = true;       }     }      // After a win, player should have received: pot - fee     // Original pot was 10 (msg.value), so player gets 9 wei     // Mutant pot becomes 11 (msg.value+1), so player would get 10 wei     const playerBalanceAfter = await ethers.provider.getBalance(player.address);     const ownerBalanceAfter = await ethers.provider.getBalance(owner.address);      const playerNetChange = playerBalanceAfter - playerBalanceBefore;     const ownerNetChange = ownerBalanceAfter - ownerBalanceBefore;      // Player paid 10 wei for the ticket     // Under original: player receives 9 wei, net change = -1 wei     // Under mutant: player receives 10 wei, net change = 0 wei     // Owner receives 1 wei fee under both versions     expect(playerNetChange).to.equal(-1n); // -1 wei (paid 10, got 9 back)     expect(ownerNetChange).to.equal(1n); // +1 wei fee   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant detection - m90b5ca14", function () {
+  it("should detect mutant that adds 1 extra wei to pot (msg.value+1)", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = 10n; // 10 wei
+    const FEE_AMOUNT = 1n; // 1 wei
+
+    // Play and win scenario: We need to force random == 0.
+    // Since randomness depends on block.timestamp and block.difficulty,
+    // we can mine blocks until we get a win.
+    // Alternative approach: play many times and check the first win.
+
+    // Record balances before
+    const playerBalanceBefore = await ethers.provider.getBalance(player.address);
+    const ownerBalanceBefore = await ethers.provider.getBalance(owner.address);
+
+    // Play until we win (random == 0)
+    let won = false;
+    let tx;
+    while (!won) {
+      tx = await instance.connect(player).play({ value: TICKET_AMOUNT });
+      const receipt = await tx.wait();
+
+      // Check if the player won by examining the pot after transaction
+      // If pot is 0, it means the win condition triggered
+      const potAfter = await instance.pot();
+      if (potAfter === 0n) {
+        won = true;
+      }
+    }
+
+    // After a win, player should have received: pot - fee
+    // Original pot was 10 (msg.value), so player gets 9 wei
+    // Mutant pot becomes 11 (msg.value+1), so player would get 10 wei
+    const playerBalanceAfter = await ethers.provider.getBalance(player.address);
+    const ownerBalanceAfter = await ethers.provider.getBalance(owner.address);
+
+    const playerNetChange = playerBalanceAfter - playerBalanceBefore;
+    const ownerNetChange = ownerBalanceAfter - ownerBalanceBefore;
+
+    // Player paid 10 wei for the ticket
+    // Under original: player receives 9 wei, net change = -1 wei
+    // Under mutant: player receives 10 wei, net change = 0 wei
+    // Owner receives 1 wei fee under both versions
+    expect(playerNetChange).to.equal(-1n); // -1 wei (paid 10, got 9 back)
+    expect(ownerNetChange).to.equal(1n); // +1 wei fee
+  });
+});
+```

@@ -1,0 +1,60 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("airPort mutant m4b20d086 detection", function () {   it("should execute transfers when _tos array has elements, mutant fails because loop condition is inverted", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy the contract (no constructor arguments needed)     const Factory = await ethers.getContractFactory("airPort");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Create a mock ERC20 token to test transferFrom     const TokenFactory = await ethers.getContractFactory("ERC20Mock");     const token = await TokenFactory.deploy("Mock", "MCK", ethers.parseEther("1000"));     await token.waitForDeployment();          // Fund addr1 with tokens and approve the airPort contract to spend them     await token.transfer(addr1.address, ethers.parseEther("100"));     await token.connect(addr1).approve(instance.target, ethers.parseEther("100"));          // Prepare test data: transfer 10 tokens from addr1 to addr2     const recipients = [addr2.address];     const amount = ethers.parseEther("10");          // Record balances before     const balanceBefore = await token.balanceOf(addr2.address);          // Execute transfer via airPort contract     await instance.connect(owner).transfer(       addr1.address,       token.target,       recipients,       amount     );          // Check balance after - original contract should transfer, mutant should not     const balanceAfter = await token.balanceOf(addr2.address);          // The original contract would increase addr2's balance by 10 tokens     // The mutant with i>_tos.length would never execute the loop, so balance stays same     expect(balanceAfter).to.equal(balanceBefore + amount);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract airPort{ function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){ require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0; i<_tos.length; i++){ { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); require(_s); } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airPort mutant m4b20d086 detection", function () {
+  it("should execute transfers when _tos array has elements, mutant fails because loop condition is inverted", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy the contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("airPort");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Create a mock ERC20 token to test transferFrom
+    const TokenFactory = await ethers.getContractFactory("ERC20Mock");
+    const token = await TokenFactory.deploy("Mock", "MCK", ethers.parseEther("1000"));
+    await token.waitForDeployment();
+
+    // Fund addr1 with tokens and approve the airPort contract to spend them
+    await token.transfer(addr1.address, ethers.parseEther("100"));
+    await token.connect(addr1).approve(instance.target, ethers.parseEther("100"));
+
+    // Prepare test data: transfer 10 tokens from addr1 to addr2
+    const recipients = [addr2.address];
+    const amount = ethers.parseEther("10");
+
+    // Record balances before
+    const balanceBefore = await token.balanceOf(addr2.address);
+
+    // Execute transfer via airPort contract
+    await instance.connect(owner).transfer(
+      addr1.address,
+      token.target,
+      recipients,
+      amount
+    );
+
+    // Check balance after - original contract should transfer, mutant should not
+    const balanceAfter = await token.balanceOf(addr2.address);
+
+    // The original contract would increase addr2's balance by 10 tokens
+    // The mutant with i>_tos.length would never execute the loop, so balance stays same
+    expect(balanceAfter).to.equal(balanceBefore + amount);
+  });
+});
+```

@@ -1,0 +1,23 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Phishable:
+        Contract Code: pragma solidity ^0.8.0; contract sGuard{ } contract Phishable  is sGuard { address public owner; constructor (address _owner) { owner = _owner; } fallback() external payable {} function withdrawAll(address _recipient) public { require(msg.sender == owner); payable(_recipient).transfer(address(this).balance); } }
+
+    Consider the following mutant of Phishable:
+        Mutant mde2573f5 of function constructor replaces _owner with address(this)
+        Mutant Diff: ---|         owner = _owner; +++|         owner = address(this);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract sets the owner to the address passed as a constructor argument (`_owner`), while the mutant sets the owner to the contract's own address (`address(this)`).  
+
+This means that in the mutant, `owner` will always be the contract itself, not the deployer or any external address. The `withdrawAll` function requires `msg.sender == owner`, so in the mutant only the contract itself could call it — but a contract cannot call its own function externally in this pattern without a self-call mechanism.  
+
+**Hypothesis:** A test case that deploys the contract with a specific external address as `_owner`, then calls `withdrawAll` from that same external address and expects the withdrawal to succeed (i.e., the balance to be transferred) should pass on the original contract. On the mutant, this call will revert because `msg.sender` (the external address) does not equal `address(this)` (the contract's own address), thus killing the mutant.

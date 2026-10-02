@@ -1,0 +1,12 @@
+{
+ "difference_id": "T0ba7acc3",
+ "property_summary": "After any sequence of calls to addToBalance and withdrawBalance, the sum of userBalance of all addresses must equal address(c).balance. The bug version sets the sent amount to 0 but zeroes the user's balance, so the sum of userBalance becomes lower than the contract's ETH balance, violating the invariant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the transfer amount tmp__1 with 0 in the call, so no ETH is sent.",
+ "mutated_unit_code": "function withdrawBalance() public{\n\n         uint256 tmp__1 = userBalance[msg.sender];\n         userBalance[msg.sender] = 0;\n         { (bool _s, bytes memory _d) = msg.sender.call{value: 0}(\"\"); _d; if (! _s) {\n             revert();\n         } }\n\n     }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n    function testFuzz_property(uint256 depositAmount, uint256 seed) public {\n        depositAmount = bound(depositAmount, 1, type(uint128).max);\n\n        address alice = address(uint160(uint256(keccak256(abi.encode(\"alice\", seed)))));\n        address bob = address(uint160(uint256(keccak256(abi.encode(\"bob\", seed)))));\n        vm.assume(alice != bob && alice != address(0) && bob != address(0));\n\n        vm.deal(alice, depositAmount);\n        vm.deal(bob, depositAmount);\n\n        vm.prank(alice);\n        c.addToBalance{value: depositAmount}();\n\n        vm.prank(bob);\n        c.addToBalance{value: depositAmount}();\n\n        vm.prank(alice);\n        c.withdrawBalance();\n\n        uint256 bobBalance = c.getBalance(bob);\n        uint256 aliceBalance = c.getBalance(alice);\n        uint256 totalTracked = bobBalance + aliceBalance;\n\n        assertTrue(totalTracked == address(c).balance);\n    }\n}"
+}

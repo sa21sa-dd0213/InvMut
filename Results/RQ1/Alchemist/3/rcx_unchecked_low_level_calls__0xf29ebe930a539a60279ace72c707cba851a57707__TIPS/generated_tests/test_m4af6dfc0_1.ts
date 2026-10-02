@@ -1,0 +1,42 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("B mutant m4af6dfc0 test", function () {
+  it("should detect mutant where if (true) always reverts, preventing owner balance increase", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("B");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    const contractAddress = await instance.getAddress();
+
+    // Fund the contract with some Ether via fallback
+    const fundAmount = ethers.parseEther("1.0");
+    await owner.sendTransaction({
+      to: contractAddress,
+      value: fundAmount
+    });
+
+    // Get owner's balance before calling go()
+    const ownerBalanceBefore = await ethers.provider.getBalance(owner.address);
+
+    // Call go() - the target address is hardcoded in the contract
+    // We need a target that will accept the call without reverting
+    // Since the target is fixed (0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C), 
+    // we send minimal value to avoid issues if target rejects
+    const callAmount = ethers.parseEther("0.001");
+    
+    // Execute go() from owner
+    const tx = await instance.connect(owner).go({ value: callAmount });
+    await tx.wait();
+
+    // Check owner's balance after call
+    const ownerBalanceAfter = await ethers.provider.getBalance(owner.address);
+    
+    // On original: owner receives contract balance (1.001 ETH minus gas)
+    // On mutant: transaction always reverts, so balance should remain unchanged
+    // The mutant will fail this assertion because it reverts before transfer
+    expect(ownerBalanceAfter).to.be.gt(ownerBalanceBefore);
+  });
+});

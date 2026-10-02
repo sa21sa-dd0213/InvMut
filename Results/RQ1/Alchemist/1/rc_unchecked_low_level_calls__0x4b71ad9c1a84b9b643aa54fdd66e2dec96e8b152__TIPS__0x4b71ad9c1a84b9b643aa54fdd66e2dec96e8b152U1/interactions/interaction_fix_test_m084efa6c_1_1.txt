@@ -1,0 +1,54 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("airPort mutant m084efa6c test", function () {   it("should revert when one transferFrom call fails (original behavior), but mutant silently succeeds", async function () {     const [owner, from, unauthorizedReceiver] = await ethers.getSigners();          // Deploy a mock token that will make transferFrom fail for unauthorizedReceiver     const MockToken = await ethers.getContractFactory("MockToken");     const token = await MockToken.deploy();     await token.waitForDeployment();          // Deploy the airPort contract     const Factory = await ethers.getContractFactory("airPort");     const airPort = await Factory.deploy();     await airPort.waitForDeployment();          // Setup: from address approves airPort to transfer tokens     await token.connect(from).approve(await airPort.getAddress(), ethers.parseEther("100"));          // Create recipients array where first is authorized, second is not     const recipients = [owner.address, unauthorizedReceiver.address];          // Call transfer with from having insufficient balance for unauthorizedReceiver     // The original contract would revert because transferFrom fails for unauthorizedReceiver     // The mutant would silently continue and return true     const tx = await airPort.connect(owner).transfer(       from.address,       await token.getAddress(),       recipients,       ethers.parseEther("10")     );          // For the original contract, this would revert     // For the mutant, it succeeds (but we can detect it by checking no tokens were transferred)     await expect(tx).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract airPort{ function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){ require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0; i<_tos.length; i++){ { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); require(_s); } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airPort mutant m084efa6c test", function () {
+  it("should revert when one transferFrom call fails (original behavior), but mutant silently succeeds", async function () {
+    const [owner, from, unauthorizedReceiver] = await ethers.getSigners();
+    
+    // Deploy a mock token that will make transferFrom fail for unauthorizedReceiver
+    const MockToken = await ethers.getContractFactory("MockToken");
+    const token = await MockToken.deploy();
+    await token.waitForDeployment();
+    
+    // Deploy the airPort contract
+    const Factory = await ethers.getContractFactory("airPort");
+    const airPort = await Factory.deploy();
+    await airPort.waitForDeployment();
+    
+    // Setup: from address approves airPort to transfer tokens
+    await token.connect(from).approve(await airPort.getAddress(), ethers.parseEther("100"));
+    
+    // Create recipients array where first is authorized, second is not
+    const recipients = [owner.address, unauthorizedReceiver.address];
+    
+    // Call transfer with from having insufficient balance for unauthorizedReceiver
+    // The original contract would revert because transferFrom fails for unauthorizedReceiver
+    // The mutant would silently continue and return true
+    const tx = await airPort.connect(owner).transfer(
+      from.address,
+      await token.getAddress(),
+      recipients,
+      ethers.parseEther("10")
+    );
+    
+    // For the original contract, this would revert
+    // For the mutant, it succeeds (but we can detect it by checking no tokens were transferred)
+    await expect(tx).to.be.reverted;
+  });
+});
+```

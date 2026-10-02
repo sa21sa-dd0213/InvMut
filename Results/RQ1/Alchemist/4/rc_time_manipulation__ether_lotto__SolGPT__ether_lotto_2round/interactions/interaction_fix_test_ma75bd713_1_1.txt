@@ -1,0 +1,54 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EtherLotto mutant test - block.prevrandao vs block.timestamp", function () {   it("should detect mutant that uses block.prevrandao by observing identical outcomes in same block", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("EtherLotto");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const TICKET_AMOUNT = ethers.parseEther("10");          // Mine a block to ensure clean state     await ethers.provider.send("evm_mine", []);      // Perform two calls in the same block     await ethers.provider.send("evm_setAutomine", [false]);          const tx1 = await instance.connect(addr1).play({ value: TICKET_AMOUNT });     const tx2 = await instance.connect(addr2).play({ value: TICKET_AMOUNT });          await ethers.provider.send("evm_mine", []);          const receipt1 = await tx1.wait();     const receipt2 = await tx2.wait();          // In the original contract, block.timestamp changes between calls (even within same block, miners can adjust)     // In the mutant, block.prevrandao is constant within a block, causing identical random results     // The transfer events will show who won - if both won or both lost, the mutant is exposed     const potAfter = await instance.pot();          // If mutant is active, both players get the same outcome (both win or both lose)     // Either pot is 0 (both won) or pot is 20 (both lost) - both impossible with fair randomness     // In original, one wins and one loses, so pot is always 10 after two plays     const expectedFairPot = ethers.parseEther("10");     expect(potAfter).to.equal(expectedFairPot);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant test - block.prevrandao vs block.timestamp", function () {
+  it("should detect mutant that uses block.prevrandao by observing identical outcomes in same block", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = ethers.parseEther("10");
+    
+    // Mine a block to ensure clean state
+    await ethers.provider.send("evm_mine", []);
+
+    // Perform two calls in the same block
+    await ethers.provider.send("evm_setAutomine", [false]);
+    
+    const tx1 = await instance.connect(addr1).play({ value: TICKET_AMOUNT });
+    const tx2 = await instance.connect(addr2).play({ value: TICKET_AMOUNT });
+    
+    await ethers.provider.send("evm_mine", []);
+
+    const receipt1 = await tx1.wait();
+    const receipt2 = await tx2.wait();
+    
+    // In the original contract, block.timestamp changes between calls (even within same block, miners can adjust)
+    // In the mutant, block.prevrandao is constant within a block, causing identical random results
+    // The transfer events will show who won - if both won or both lost, the mutant is exposed
+    const potAfter = await instance.pot();
+    
+    // If mutant is active, both players get the same outcome (both win or both lose)
+    // Either pot is 0 (both won) or pot is 20 (both lost) - both impossible with fair randomness
+    // In original, one wins and one loses, so pot is always 10 after two plays
+    const expectedFairPot = ethers.parseEther("10");
+    expect(potAfter).to.equal(expectedFairPot);
+  });
+});
+```

@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EBU:
+        Contract Code: pragma solidity ^0.8.0; contract EBU{ function transfer(address from,address caddress, address[] memory _tos, uint[] memory v)public returns (bool){ require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ caddress.call(abi.encodeWithSelector(id,from,_tos[i],v[i])); } return true; } }
+
+    Consider the following mutant of EBU:
+        Mutant mb4475f88 of function transfer replaces < with <=
+        Mutant Diff: ---|         for(uint i=0;i<_tos.length;i++){ +++|         for(uint i=0;i<=_tos.length;i++){
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract loops through `_tos` with `i < _tos.length`, meaning it processes each element exactly once. The mutant changes the condition to `i <= _tos.length`, which causes the loop to iterate one additional time when `i` equals `_tos.length`, at which point `_tos[i]` and `v[i]` are out of bounds and will read undefined values (zero address and zero value in Solidity).  
+
+**Hypothesis:** A test case that provides an array with at least one element should detect the mutant. Specifically, if the test calls `transfer` with a single recipient and a non-zero value, the original contract will execute exactly one `transferFrom` call to that recipient. The mutant will attempt an extra call with a zero address and zero value, which either causes a revert (if the token contract checks for zero address) or produces an unintended side effect (e.g., burning tokens or transferring to address(0)). Therefore, a test case that verifies the exact number of token transfers or checks that no transfer to the zero address occurred will pass on the original but fail on the mutant.

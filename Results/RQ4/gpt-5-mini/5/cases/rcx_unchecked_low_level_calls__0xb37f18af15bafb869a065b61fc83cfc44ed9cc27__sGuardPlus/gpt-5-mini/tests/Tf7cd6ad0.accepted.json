@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tf7cd6ad0",
+ "property_summary": "For every caller and value, only the contract deployer (owner) can successfully call withdraw and cause the contract balance to decrease by that value; the mutant inverts the check and therefore allows a non-owner caller to withdraw (or prevents the owner), so there exists some caller/value where behavior differs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Invert the onlyOwner check to require caller is NOT owner, changing authorization and allowing owner-protected withdrawals to behave differently.",
+ "mutated_unit_code": "modifier onlyOwner {\n    require(msg.sender!=owner);\n    _;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n\n    function setUp() public { c = new SimpleWallet(); }\n\n    function testFuzz_property(address caller, uint256 amt) public {\n        vm.assume(caller != address(0));\n\n        uint256 seedFund = 1 ether;\n        amt = bound(amt, 0, seedFund);\n\n        vm.deal(address(this), seedFund);\n        (bool okFund, ) = address(c).call{value: seedFund}(\"\");\n        require(okFund);\n\n        assertEq(address(c).balance, seedFund);\n\n        bool success;\n        vm.deal(caller, 1 wei);\n        vm.prank(caller);\n        try c.withdraw(amt) {\n            success = true;\n        } catch {\n            success = false;\n        }\n\n        assertTrue(success == (caller == address(this)));\n    }\n}\n"
+}

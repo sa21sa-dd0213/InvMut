@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract ReentrancyDAO:
+        Contract Code: pragma solidity ^0.8.0; contract ReentrancyDAO { mapping (address => uint) credit; uint balance; function withdrawAll() public { uint oCredit = credit[msg.sender]; if (oCredit > 0) { balance -= oCredit; credit[msg.sender] = 0; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); } } function deposit() public payable { credit[msg.sender] += msg.value; balance += msg.value; } }
+
+    Consider the following mutant of ReentrancyDAO:
+        Mutant mb087e86e of function deposit replaces msg.value with msg.value-1
+        Mutant Diff: ---|         balance += msg.value; +++|         balance += msg.value-1;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes `balance += msg.value` to `balance += msg.value - 1`, which means the contract’s internal `balance` variable will be undercounted by 1 wei for every deposit.
+
+**Hypothesis:** A test case that deposits 1 wei into the contract and then checks that the contract’s `balance` state variable equals exactly the total amount deposited (1 wei) should pass on the original contract, but will fail on the mutant because the mutant will record the balance as 0 wei instead of 1 wei.

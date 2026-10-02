@@ -1,0 +1,86 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("VaultAdapter mutant m0852465b - multiplier cap bypass", function () {
+  it("should cap multiplier at maxMultiplier when utilization exceeds kink and calculated multiplier exceeds maxMultiplier", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy VaultAdapter (constructor takes no arguments, uses _disableInitializers)
+    const Factory = await ethers.getContractFactory("VaultAdapter");
+    const vaultAdapter = await Factory.deploy();
+    await vaultAdapter.waitForDeployment();
+    
+    // Deploy a mock vault for testing (we need an actual contract at the vault address)
+    const MockVault = await ethers.getContractFactory("MockVault");
+    const mockVault = await MockVault.deploy();
+    await mockVault.waitForDeployment();
+    
+    // Initialize the VaultAdapter with access control
+    const AccessControlFactory = await ethers.getContractFactory("AccessControlMock");
+    const accessControl = await AccessControlFactory.deploy();
+    await accessControl.waitForDeployment();
+    
+    await vaultAdapter.initialize(await accessControl.getAddress());
+    
+    // Grant access to owner for setSlopes and setLimits
+    const setSlopesSelector = vaultAdapter.interface.getFunction("setSlopes").selector;
+    const setLimitsSelector = vaultAdapter.interface.getFunction("setLimits").selector;
+    const rateSelector = vaultAdapter.interface.getFunction("rate").selector;
+    
+    await accessControl.grantAccess(setSlopesSelector, await vaultAdapter.getAddress(), owner.address);
+    await accessControl.grantAccess(setLimitsSelector, await vaultAdapter.getAddress(), owner.address);
+    await accessControl.grantAccess(rateSelector, await vaultAdapter.getAddress(), owner.address);
+    
+    // Setup slopes with a kink value
+    const kink = ethers.parseEther("0.5"); // 50% utilization kink
+    const slope0 = ethers.parseEther("0.05"); // 5% base slope
+    const slope1 = ethers.parseEther("0.1"); // 10% slope above kink
+    
+    const assetAddress = addr1.address; // Use a random address as asset
+    await vaultAdapter.setSlopes(assetAddress, {
+      kink: kink,
+      slope0: slope0,
+      slope1: slope1
+    });
+    
+    // Set limits - maxMultiplier should be low enough that we can exceed it
+    const maxMultiplier = ethers.parseEther("2"); // 2x max multiplier
+    const minMultiplier = ethers.parseEther("0.5"); // 0.5x min multiplier
+    const rate = ethers.parseEther("0.1"); // 10% rate parameter
+    
+    await vaultAdapter.setLimits(maxMultiplier, minMultiplier, rate);
+    
+    // Setup mock vault to return specific utilization values
+    // First call to rate() will use currentUtilizationIndex to calculate utilization
+    const vaultAddress = await mockVault.getAddress();
+    
+    // Set initial state - high utilization (80%) to be above kink (50%)
+    const highUtilization = ethers.parseEther("0.8"); // 80% utilization
+    await mockVault.setUtilization(highUtilization);
+    await mockVault.setCurrentUtilizationIndex(ethers.parseEther("1000")); // Some initial index
+    
+    // Fast forward time to create a meaningful elapsed time
+    await ethers.provider.send("evm_increaseTime", [3600]); // 1 hour
+    await ethers.provider.send("evm_mine", []);
+    
+    // Call rate() - this should trigger the multiplier update and cap
+    // The elapsed time will cause multiplier to grow, potentially exceeding maxMultiplier
+    const interestRate = await vaultAdapter.rate(vaultAddress, assetAddress);
+    
+    // Now calculate what the rate SHOULD be with the cap applied
+    // If multiplier was capped at maxMultiplier, the rate should be:
+    // interestRate = (slope0 + (slope1 * excess / 1e27)) * maxMultiplier / 1e27
+    // where excess = utilization - kink = 0.8 - 0.5 = 0.3
+    
+    const excess = highUtilization - kink;
+    const expectedRateWithCap = (slope0 + (slope1 * excess / ethers.parseEther("1"))) * maxMultiplier / ethers.parseEther("1");
+    
+    // The rate should be exactly equal to the capped rate, not higher
+    // If the mutant is present (cap removed), the rate would be higher
+    expect(interestRate).to.equal(expectedRateWithCap);
+    
+    // Additional verification: call rate again to check multiplier persistence
+    const interestRate2 = await vaultAdapter.rate(vaultAddress, assetAddress);
+    expect(interestRate2).to.equal(expectedRateWithCap);
+  });
+});

@@ -1,0 +1,50 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m54b331b0 of AirDropContract.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test AirDropContract.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for AirDropContract:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("AirDropContract reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy AirDropContract by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("AirDropContract"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("AirDropContract mutant test - m54b331b0", function () {
+  it("should revert when vs array is empty (original behavior) but pass on mutant", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("AirDropContract");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy a simple ERC20 token to use as the contract_address parameter
+    const TokenFactory = await ethers.getContractFactory("ERC20Mock");
+    const token = await TokenFactory.deploy("Test", "TST", 18);
+    await token.waitForDeployment();
+
+    // Approve the AirDropContract to transfer tokens from owner
+    await token.approve(await instance.getAddress(), ethers.parseEther("1000"));
+
+    // Test with empty vs array and non-empty tos array
+    const tos = [addr1.address];
+    const vs = []; // empty array - should pass on mutant, revert on original
+
+    // On the original contract, this should revert because vs.length > 0 is required
+    // On the mutant, vs.length >= 0 is always true, so it will proceed and then revert
+    // because tos.length (1) != vs.length (0)
+    await expect(
+      instance.transfer(await token.getAddress(), tos, vs)
+    ).to.be.reverted;
+  });
+});
+```

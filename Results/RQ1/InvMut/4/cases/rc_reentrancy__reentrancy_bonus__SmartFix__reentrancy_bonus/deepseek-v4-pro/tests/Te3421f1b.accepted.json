@@ -1,0 +1,12 @@
+{
+ "difference_id": "Te3421f1b",
+ "property_summary": "After a successful call to withdrawReward(recipient), the contract's balance must decrease by exactly the amount that was recorded in rewardsForA[recipient] before the call; the buggy version fails to decrease the balance by that amount because it does not reset the reward mapping, allowing a second withdrawal that drains extra Ether.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the line that resets rewardsForA[recipient] to 0 before the external call.",
+ "mutated_unit_code": "function withdrawReward(address recipient)  public _nonReentrant  {\n        uint amountToWithdraw = rewardsForA[recipient];\n        (bool success, ) = recipient.call{value: amountToWithdraw}(\"\");\n        require(success);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrancy_bonus} from \"../src/Reentrancy_bonus.sol\";\n\ncontract InvMutTest is Test {\n    Reentrancy_bonus c;\n    function setUp() public { c = new Reentrancy_bonus(); }\n    function testFuzz_property(address recipient, uint256 startingBalance) public {\n        vm.assume(recipient != address(this) && recipient != address(c) && recipient.code.length == 0 && recipient != address(0));\n        vm.deal(address(c), 1000 ether);\n        uint256 contractBalanceBefore = address(c).balance;\n\n        vm.deal(recipient, 0);\n        vm.assume(recipient != address(0) && recipient != address(c) && recipient != address(this) && recipient.code.length == 0);\n        vm.deal(address(c), 200 ether);\n        c.getFirstWithdrawalBonus(recipient);\n        uint256 balBefore = address(c).balance;\n        c.withdrawReward(recipient);\n        uint256 balAfter = address(c).balance;\n        assertTrue(balAfter == balBefore, \"contract balance should not change on second withdraw\");\n    }\n}\n\n"
+}

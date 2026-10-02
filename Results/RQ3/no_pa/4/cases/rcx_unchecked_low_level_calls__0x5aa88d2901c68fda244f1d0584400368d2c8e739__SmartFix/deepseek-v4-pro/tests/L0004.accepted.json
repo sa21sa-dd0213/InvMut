@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0004",
+ "property_summary": "After setting the contract balance to 1 ether via Command, calling multiplicate with msg.value exactly equal to the contract balance (1 ether) causes the reference to transfer all balance to the recipient (balance becomes 0) and the bug to revert (balance stays 1 ether), observable by comparing the balance before and after.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Replace the require statement with require(false) so the transfer inside the if block will always revert.",
+ "mutated_unit_code": "    function multiplicate(address adr)\n    public\n    payable\n    {\n        if(msg.value>=address(this).balance)\n        {\n            require(false);\n            payable(adr).transfer(address(this).balance+msg.value);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MultiplicatorX3} from \"../src/MultiplicatorX3.sol\";\n\ncontract InvMutTest is Test {\n    MultiplicatorX3 c;\n    function setUp() public { c = new MultiplicatorX3(); }\n    function testRegression_property() public {\n        vm.deal(address(this), 2 ether);\n        vm.prank(address(this));\n        c.Command{value: 1 ether}(address(0), \"\");\n        uint256 balanceBefore = address(c).balance;\n        address recipient = address(0x1234);\n        vm.deal(address(this), address(c).balance);\n        vm.prank(address(this));\n        bool ok = false;\n        try c.multiplicate{value: address(c).balance}(recipient) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        uint256 balanceAfter = address(c).balance;\n        assertTrue(ok && balanceAfter == 0);\n    }\n}\n"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T9fb9f3a4",
+ "property_summary": "For any caller address X and newOwner Y, when X is the current owner the reference contract always allows setOwner(Y) to succeed (owner becomes Y); the mutant that additionally requires tx.origin == owner prevents calls that originate from a different tx.origin even if msg.sender == owner (e.g., when owner is a contract), thus breaking this rule for some inputs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Insert an additional require in onlyOwner that also requires tx.origin == owner, making the guard stricter and changing which calls to setOwner succeed.",
+ "mutated_unit_code": "modifier onlyOwner {\n    require(msg.sender == owner);\n    require(tx.origin == owner);\n    _;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Owned} from \"../src/Owned.sol\";\n\ncontract InvMutTest is Test {\n    Owned c;\n\n    function setUp() public { c = new Owned(); }\n\n    function testFuzz_property(bool callerAsContract, address newOwner) public {\n        vm.assume(newOwner != address(0));\n\n        if (!callerAsContract) {\n            bool ok;\n            try c.setOwner(newOwner) returns (bool res) { ok = res; } catch { ok = false; }\n            assertTrue(c.owner() == newOwner);\n            return;\n        } else {\n            Forwarder f = new Forwarder(c);\n            bool ok1;\n            try c.setOwner(address(f)) returns (bool res1) { ok1 = res1; } catch { ok1 = false; }\n            bool ok2;\n            try f.callSetOwner(newOwner) returns (bool res2) { ok2 = res2; } catch { ok2 = false; }\n\n            assertTrue(c.owner() == newOwner);\n            return;\n        }\n    }\n}\n\ncontract Forwarder {\n    Owned immutable target;\n    constructor(Owned _target) { target = _target; }\n    function callSetOwner(address _owner) external returns (bool) {\n        return target.setOwner(_owner);\n    }\n}\n"
+}

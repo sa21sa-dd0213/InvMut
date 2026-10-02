@@ -1,0 +1,12 @@
+{
+ "difference_id": "T330cbfcb",
+ "property_summary": "After getFirstWithdrawalBonus(recipient) completes without revert, a subsequent identical call must revert because claimedBonus became true; the bug leaves it false, so the second call also succeeds.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace claimedBonus[recipient] = true; with claimedBonus[recipient] = false; so the bonus can be claimed repeatedly, changing rewardsForA and thus getFirstWithdrawalBonus.",
+ "mutated_unit_code": "function getFirstWithdrawalBonus(address recipient) public {\n        require(!claimedBonus[recipient]);\n\n        rewardsForA[recipient] += 100;\n\n        withdrawReward(recipient);\n        claimedBonus[recipient] = false;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrancy_bonus} from \"../src/Reentrancy_bonus.sol\";\n\ncontract InvMutTest is Test {\n    Reentrancy_bonus c;\n    function setUp() public { c = new Reentrancy_bonus(); }\n    function testFuzz_property(address recipient) public {\n        vm.assume(recipient != address(0));\n        vm.assume(recipient != address(c));\n\n        vm.deal(address(c), 200 ether);\n\n        vm.prank(address(this));\n        try c.getFirstWithdrawalBonus(recipient) {\n            bool secondReverted = false;\n            vm.prank(address(this));\n            try c.getFirstWithdrawalBonus(recipient) {\n            } catch {\n                secondReverted = true;\n            }\n            assertTrue(secondReverted);\n        } catch {\n        }\n    }\n}\n"
+}

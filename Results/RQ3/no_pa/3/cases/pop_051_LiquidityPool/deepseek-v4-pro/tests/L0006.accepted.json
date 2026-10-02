@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0006",
+ "property_summary": "After the deployer calls c.rely(address(this)) to become a ward, the reference's allowance(address,address) succeeds (non-revert) while the buggy version (which removed the auth modifier) still succeeds, but the property checks that the buggy version reverts; however we need a case where the reference succeeds and buggy fails. Since the buggy version removes the auth check, the reference might revert when non-ward calls allowance, but allowance doesn't use auth. The given difference states that after allowance completes, the state variable 'rely' differs (likely a typo for 'wards'). Actually the correct divergence: the reference's allowance view does not use auth, so both versions succeed. Instead, we use a call to rely(address) which in reference requires auth, but in buggy doesn't. So: prank a non-ward to call rely; reference reverts, buggy succeeds. Then assert that reference reverts (catch ok=false) and buggy would succeed (ok=true). This matches the pattern where the reference fails and buggy passes.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Delete the modifier auth so that it no longer enforces the ward check.",
+ "mutated_unit_code": "    modifier auth() {\n        _;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {LiquidityPool} from \"../src/LiquidityPool.sol\";\n\ncontract InvMutTest is Test {\n    LiquidityPool c;\n    function setUp() public { c = new LiquidityPool(0, bytes16(0), address(this), address(this), address(this)); }\n    function testRegression_property() public {\n        address nonWard = address(0x1234);\n        vm.prank(nonWard);\n        bool ok;\n        try c.rely(address(this)) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        assertTrue(!ok, \"Reference should revert on non-ward rely\");\n    }\n}\n"
+}

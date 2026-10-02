@@ -1,0 +1,61 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU reference (ethers v6; deploy may require constructor arguments)", function () {
+  it("should kill mutant m790d1ff1 by calling transfer with non-overflowing value and expecting success", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // The contract has hardcoded addresses, so we need to call from the authorized address
+    // The from address is 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9
+    // We need to impersonate this address or use a signer with that private key
+    // For testing purposes, we'll use the owner as a proxy (but the require checks msg.sender)
+    
+    // Since we cannot easily impersonate the hardcoded address, we deploy a new contract
+    // that will be called by the authorized address in a forked environment
+    // Alternatively, we can test the logic directly by understanding the require condition
+    
+    // The key insight: the mutant changes == to != in the overflow check
+    // For v[i] = 1: original requires (1 * 1e18 / 1) == 1e18 (true, passes)
+    //               mutant requires (1 * 1e18 / 1) != 1e18 (false, reverts)
+    
+    // To kill the mutant, we need a value that passes original but fails mutant
+    // v[i] = 1 is such a value
+    
+    // Since the contract checks msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9
+    // we need to use hardhat's ability to impersonate accounts
+    // In a test environment, we can set the next caller
+    
+    // Use hardhat_impersonateAccount to act as the authorized address
+    await hre.network.provider.request({
+      method: "hardhat_impersonateAccount",
+      params: ["0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9"],
+    });
+    
+    const authorizedSigner = await ethers.getSigner("0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9");
+    
+    // Fund the authorized address with some ETH for gas
+    await owner.sendTransaction({
+      to: "0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9",
+      value: ethers.parseEther("1.0"),
+    });
+    
+    // Test with v = [1] which should pass on original but revert on mutant
+    const tx = instance.connect(authorizedSigner).transfer(
+      [addr1.address],
+      [1]
+    );
+    
+    // On original: tx should succeed
+    // On mutant: tx should revert because condition becomes false
+    await expect(tx).to.not.be.reverted;
+    
+    // Stop impersonating
+    await hre.network.provider.request({
+      method: "hardhat_stopImpersonatingAccount",
+      params: ["0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9"],
+    });
+  });
+});

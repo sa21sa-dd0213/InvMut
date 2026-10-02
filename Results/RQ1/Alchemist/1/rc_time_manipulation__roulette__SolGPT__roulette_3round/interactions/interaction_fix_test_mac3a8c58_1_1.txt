@@ -1,0 +1,68 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Roulette - Kill mutant mac3a8c58", function () {   it("should fail on mutant when block.number % 15 == 0 and balance is transferred", async function () {     const [owner, player] = await ethers.getSigners();          // Deploy contract with initial funding of 10 ether (to have balance to transfer)     const Factory = await ethers.getContractFactory("Roulette");     const instance = await Factory.deploy({ value: ethers.parseEther("10") });     await instance.waitForDeployment();          const contractAddress = await instance.getAddress();          // Get current block number and find the next block where block.number % 15 == 0     let currentBlock = await ethers.provider.getBlock("latest");     let targetBlockNumber = currentBlock.number + 1;     // Advance to a block where block.number % 15 == 0     while (targetBlockNumber % 15 !== 0) {       targetBlockNumber++;     }          // Mine blocks to reach the target block number     const blocksToMine = targetBlockNumber - currentBlock.number;     for (let i = 0; i < blocksToMine; i++) {       await ethers.provider.send("evm_mine", []);     }          // Record player's balance before the call     const playerBalanceBefore = await ethers.provider.getBalance(player.address);          // Get contract balance (should be 10 ether)     const contractBalance = await ethers.provider.getBalance(contractAddress);          // Player sends exactly 10 ether to trigger fallback with correct condition     const tx = await player.sendTransaction({       to: contractAddress,       value: ethers.parseEther("10")     });     await tx.wait();          // Verify block number is divisible by 15     const blockAfterTx = await ethers.provider.getBlock(tx.blockNumber);     expect(blockAfterTx.number % 15).to.equal(0);          // On original: player receives contract balance (10 ether)     // On mutant (if block.number % 15 != 0): player receives nothing     const playerBalanceAfter = await ethers.provider.getBalance(player.address);     const expectedBalance = playerBalanceBefore + contractBalance - ethers.parseEther("10"); // received balance minus sent 10 ether     expect(playerBalanceAfter).to.equal(expectedBalance);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp + 1; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette - Kill mutant mac3a8c58", function () {
+  it("should fail on mutant when block.number % 15 == 0 and balance is transferred", async function () {
+    const [owner, player] = await ethers.getSigners();
+
+    // Deploy contract with initial funding of 10 ether (to have balance to transfer)
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy({ value: ethers.parseEther("10") });
+    await instance.waitForDeployment();
+
+    const contractAddress = await instance.getAddress();
+
+    // Get current block number and find the next block where block.number % 15 == 0
+    let currentBlock = await ethers.provider.getBlock("latest");
+    let targetBlockNumber = currentBlock.number + 1;
+    // Advance to a block where block.number % 15 == 0
+    while (targetBlockNumber % 15 !== 0) {
+      targetBlockNumber++;
+    }
+
+    // Mine blocks to reach the target block number
+    const blocksToMine = targetBlockNumber - currentBlock.number;
+    for (let i = 0; i < blocksToMine; i++) {
+      await ethers.provider.send("evm_mine", []);
+    }
+
+    // Record player's balance before the call
+    const playerBalanceBefore = await ethers.provider.getBalance(player.address);
+
+    // Get contract balance (should be 10 ether)
+    const contractBalance = await ethers.provider.getBalance(contractAddress);
+
+    // Player sends exactly 10 ether to trigger fallback with correct condition
+    const tx = await player.sendTransaction({
+      to: contractAddress,
+      value: ethers.parseEther("10")
+    });
+    await tx.wait();
+
+    // Verify block number is divisible by 15
+    const blockAfterTx = await ethers.provider.getBlock(tx.blockNumber);
+    expect(blockAfterTx.number % 15).to.equal(0);
+
+    // On original: player receives contract balance (10 ether)
+    // On mutant (if block.number % 15 != 0): player receives nothing
+    const playerBalanceAfter = await ethers.provider.getBalance(player.address);
+    const expectedBalance = playerBalanceBefore + contractBalance - ethers.parseEther("10"); // received balance minus sent 10 ether
+    expect(playerBalanceAfter).to.equal(expectedBalance);
+  });
+});
+```

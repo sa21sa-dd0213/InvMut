@@ -1,0 +1,48 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m83b7c193 of DCF.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test DCF.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for DCF:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("DCF reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy DCF by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("DCF"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DCF mutant m83b7c193 - distributeToken without onlyCaller modifier", function () {
+  it("should revert when non-cfo calls distributeToken on original, but pass on mutant", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const liquidityReceiveAddress = addr2.address;
+    
+    const Factory = await ethers.getContractFactory("DCF");
+    const instance = await Factory.deploy(liquidityReceiveAddress);
+    await instance.waitForDeployment();
+
+    // Set the distribute address first (required by distributeToken)
+    await instance.setCaller(owner.address);
+    await instance.setDistributeAddress(addr2.address);
+
+    // Transfer some tokens to the contract for distribution
+    const initialSupply = ethers.parseEther("2000000");
+    await instance.transfer(await instance.getAddress(), ethers.parseEther("5000"));
+
+    // Try to call distributeToken from an unauthorized address (addr1)
+    // The original contract should revert because addr1 is not the cfo
+    // The mutant (without onlyCaller) would allow this call to succeed
+    await expect(
+      instance.connect(addr1).distributeToken()
+    ).to.be.revertedWith("onlyCaller");
+  });
+});
+```

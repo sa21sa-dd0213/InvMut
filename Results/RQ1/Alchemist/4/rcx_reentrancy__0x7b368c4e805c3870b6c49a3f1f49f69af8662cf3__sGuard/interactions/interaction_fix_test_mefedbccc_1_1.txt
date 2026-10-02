@@ -1,0 +1,71 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("W_WALLET - Kill mutant mefedbccc (Collect always succeeds)", function () {   it("should not deduct balance when external call fails, but mutant deducts anyway", async function () {     const [owner, attacker] = await ethers.getSigners();          // Deploy the Log contract first (required constructor argument for W_WALLET)     const LogFactory = await ethers.getContractFactory("Log");     const logInstance = await LogFactory.deploy();     await logInstance.waitForDeployment();          // Deploy W_WALLET with Log address     const WalletFactory = await ethers.getContractFactory("W_WALLET");     const wallet = await WalletFactory.deploy(await logInstance.getAddress());     await wallet.waitForDeployment();          // Deploy a malicious contract that rejects incoming Ether     const RejectorFactory = await ethers.getContractFactory("Rejector");     const rejector = await RejectorFactory.deploy();     await rejector.waitForDeployment();          // Fund the wallet from attacker     const depositAmount = ethers.parseEther("2");     await attacker.sendTransaction({       to: await wallet.getAddress(),       value: depositAmount     });          // Set unlock time to past so Collect can be called     const unlockTime = Math.floor(Date.now() / 1000) - 3600; // 1 hour ago     await wallet.connect(attacker).Put(unlockTime);          // Get initial balance of attacker in wallet     const holderBefore = await wallet.Acc(attacker.address);     const initialBalance = holderBefore.balance;          // Attempt to collect 1 ether - this call will fail because rejector rejects Ether     const collectAmount = ethers.parseEther("1");          // Check that the call to rejector reverts (it will reject)     await expect(       wallet.connect(attacker).Collect(collectAmount)     ).to.not.be.reverted; // The transaction itself doesn't revert, but the internal call fails          // Get balance after the attempt     const holderAfter = await wallet.Acc(attacker.address);          // In the ORIGINAL: balance should remain unchanged because _s was false     // In the MUTANT: balance will be deducted because condition is always true     // So if balance decreased, the mutant is detected     expect(holderAfter.balance).to.equal(initialBalance);   }); });  // Helper contract that rejects all incoming Ether contract("Rejector", function() {   // No receive or fallback function - any Ether transfer will revert });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } } contract W_WALLET is sGuard { function Put(uint _unlockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); LogFile.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("W_WALLET - Kill mutant mefedbccc (Collect always succeeds)", function () {
+  it("should not deduct balance when external call fails, but mutant deducts anyway", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the Log contract first (required constructor argument for W_WALLET)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+    
+    // Deploy W_WALLET with Log address
+    const WalletFactory = await ethers.getContractFactory("W_WALLET");
+    const wallet = await WalletFactory.deploy(await logInstance.getAddress());
+    await wallet.waitForDeployment();
+    
+    // Deploy a malicious contract that rejects incoming Ether
+    // We need to deploy a simple contract that has no receive/fallback
+    const RejectorFactory = await ethers.getContractFactory("Rejector");
+    const rejector = await RejectorFactory.deploy();
+    await rejector.waitForDeployment();
+    
+    // Fund the wallet from attacker
+    const depositAmount = ethers.parseEther("2");
+    await attacker.sendTransaction({
+      to: await wallet.getAddress(),
+      value: depositAmount
+    });
+    
+    // Set unlock time to past so Collect can be called
+    const unlockTime = Math.floor(Date.now() / 1000) - 3600; // 1 hour ago
+    await wallet.connect(attacker).Put(unlockTime);
+    
+    // Get initial balance of attacker in wallet
+    const holderBefore = await wallet.Acc(attacker.address);
+    const initialBalance = holderBefore.balance;
+    
+    // Attempt to collect 1 ether - this call will fail because rejector rejects Ether
+    const collectAmount = ethers.parseEther("1");
+    
+    // Check that the call to rejector reverts (it will reject)
+    await expect(
+      wallet.connect(attacker).Collect(collectAmount)
+    ).to.not.be.reverted; // The transaction itself doesn't revert, but the internal call fails
+    
+    // Get balance after the attempt
+    const holderAfter = await wallet.Acc(attacker.address);
+    
+    // In the ORIGINAL: balance should remain unchanged because _s was false
+    // In the MUTANT: balance will be deducted because condition is always true
+    // So if balance decreased, the mutant is detected
+    expect(holderAfter.balance).to.equal(initialBalance);
+  });
+});
+```

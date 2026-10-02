@@ -1,0 +1,12 @@
+{
+ "difference_id": "T27559e17",
+ "property_summary": "For every caller context that successfully calls C.proxiableUUID(), the correct contract returns ERC1967Utils.IMPLEMENTATION_SLOT; the mutant returns a different bytes32 (bytes32(0)) for some callers, so there exists a caller for which proxiableUUID() != ERC1967Utils.IMPLEMENTATION_SLOT.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change returned slot from ERC1967Utils.IMPLEMENTATION_SLOT to a different constant (zero) so proxiableUUID() returns a different bytes32 value.",
+ "mutated_unit_code": "function proxiableUUID() external view virtual notDelegated returns (bytes32) {\n        return bytes32(0);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {VaultAdapter} from \"../src/VaultAdapter.sol\";\n\ncontract InvMutTest is Test {\n    VaultAdapter c;\n    function setUp() public { c = new VaultAdapter(); }\n\n    function testFuzz_property(address caller) public {\n        vm.assume(caller != address(0));\n\n        Forwarder f = new Forwarder();\n\n        bool ok;\n        if (uint160(caller) % 2 == 0) {\n            vm.prank(caller);\n            try c.proxiableUUID() returns (bytes32 slot) {\n                bytes32 expected = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;\n                ok = (slot == expected);\n            } catch {\n                ok = false;\n            }\n        } else {\n            try f.callProxiable(address(c)) returns (bytes32 slot) {\n                bytes32 expected = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;\n                ok = (slot == expected);\n            } catch {\n                ok = false;\n            }\n        }\n\n        assertTrue(ok);\n    }\n}\n\ncontract Forwarder {\n    function callProxiable(address target) external returns (bytes32 slot) {\n        (bool success, bytes memory ret) = target.call(abi.encodeWithSelector(bytes4(keccak256(\"proxiableUUID()\"))));\n        if (!success) revert();\n        slot = abi.decode(ret, (bytes32));\n    }\n}\n"
+}

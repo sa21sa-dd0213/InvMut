@@ -1,0 +1,54 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("keepMyEther reference (ethers v6; deploy may require constructor arguments)", function () {   it("should revert on withdraw when extra wei is added by mutant", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("keepMyEther");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Send exactly 1 ether via fallback     const sendAmount = ethers.parseEther("1");     const tx = await addr1.sendTransaction({       to: await instance.getAddress(),       value: sendAmount     });     await tx.wait();      // In the original, balance should be exactly sendAmount     // In the mutant, balance is sendAmount + 1 wei     // Attempt to withdraw - original succeeds, mutant should revert due to insufficient contract balance     const contractBalance = await ethers.provider.getBalance(await instance.getAddress());     const userBalance = await instance.balances(addr1.address);      // The mutant records sendAmount + 1, but contract only has sendAmount     if (userBalance > contractBalance) {       // This condition only holds for the mutant       await expect(         instance.connect(addr1).withdraw()       ).to.be.reverted;     } else {       // Original: withdraw should succeed       await expect(         instance.connect(addr1).withdraw()       ).to.not.be.reverted;     }   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuardPlus { constructor() { __lock_modifier0_lock = false; } bool private __lock_modifier0_lock; modifier __lock_modifier0() { require(!__lock_modifier0_lock); __lock_modifier0_lock = true; _; __lock_modifier0_lock = false; } } contract keepMyEther is sGuardPlus { mapping (address  => uint256 ) public   balances; fallback() external payable { balances[msg.sender]+=msg.value; } function withdraw () public __lock_modifier0  { (bool __sent_result100, ) = msg.sender.call{value: balances[msg.sender]}(""); require(__sent_result100); balances[msg.sender]=0; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("keepMyEther reference (ethers v6; deploy may require constructor arguments)", function () {
+  it("should revert on withdraw when extra wei is added by mutant", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("keepMyEther");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Send exactly 1 ether via fallback
+    const sendAmount = ethers.parseEther("1");
+    const tx = await addr1.sendTransaction({
+      to: await instance.getAddress(),
+      value: sendAmount
+    });
+    await tx.wait();
+
+    // In the original, balance should be exactly sendAmount
+    // In the mutant, balance is sendAmount + 1 wei
+    // Attempt to withdraw - original succeeds, mutant should revert due to insufficient contract balance
+    const contractBalance = await ethers.provider.getBalance(await instance.getAddress());
+    const userBalance = await instance.balances(addr1.address);
+
+    // The mutant records sendAmount + 1, but contract only has sendAmount
+    if (userBalance > contractBalance) {
+      // This condition only holds for the mutant
+      await expect(
+        instance.connect(addr1).withdraw()
+      ).to.be.reverted;
+    } else {
+      // Original: withdraw should succeed
+      await expect(
+        instance.connect(addr1).withdraw()
+      ).to.not.be.reverted;
+    }
+  });
+});
+```

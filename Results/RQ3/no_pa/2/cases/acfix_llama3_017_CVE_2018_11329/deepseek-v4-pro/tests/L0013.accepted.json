@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0013",
+ "property_summary": "After calling seedMarket, getFreeKilo, and collectDrugs with a referrer address different from the caller, the reference assigns the referrer and gives the referrer a 20% bonus of drugsUsed in claimedDrugs, while the mutant never sets the referrer, so claimedDrugs[referrals[caller]] remains 0 instead of receiving the bonus. This causes c.getMyKilo() to differ because the drugs awarded to the referrer affect state, but since the test checks the caller's Kilos, we instead verify that the referrer's claimedDrugs (via c.claimedDrugs(referrer)) is 20% of drugsUsed in the reference and 0 in the bug.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Delete the entire if block that sets the referral, so referrals never get set in collectDrugs.",
+ "mutated_unit_code": "    function collectDrugs(address ref) public{\n        require(initialized);\n        uint256 drugsUsed=getMyDrugs();\n        uint256 newKilo=SafeMath.div(drugsUsed,DRUGS_TO_PRODUCE_1KILO);\n        Kilos[msg.sender]=SafeMath.add(Kilos[msg.sender],newKilo);\n        claimedDrugs[msg.sender]=0;\n        lastCollect[msg.sender]=block.timestamp;\n\n        claimedDrugs[referrals[msg.sender]]=SafeMath.add(claimedDrugs[referrals[msg.sender]],SafeMath.div(drugsUsed,5));\n\n        marketDrugs=SafeMath.add(marketDrugs,SafeMath.div(drugsUsed,10));\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherCartel} from \"../src/EtherCartel.sol\";\n\ncontract InvMutTest is Test {\n    EtherCartel c;\n    function setUp() public { c = new EtherCartel(); }\n    function testRegression_property() public {\n        vm.deal(address(this), 1 ether);\n        c.seedMarket{value: 1 ether}(100);\n\n        address caller = address(0x123);\n        address referrer = address(0x456);\n\n        vm.prank(caller);\n        c.getFreeKilo();\n\n        vm.warp(block.timestamp + 86400);\n\n        vm.prank(caller);\n        c.collectDrugs(referrer);\n\n        uint256 drugsUsed = 25_920_000;\n        uint256 expectedBonus = drugsUsed / 5;\n\n        assertTrue(c.claimedDrugs(referrer) == expectedBonus);\n    }\n}\n"
+}

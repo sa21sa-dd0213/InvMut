@@ -1,0 +1,71 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m32349c6a of Roulette.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Roulette.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Roulette:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Roulette reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Roulette by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Roulette"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant kill test - inequality vs equality", function () {
+  it("should kill the mutant by proving transfer occurs only on block.number % 15 == 0", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Fund the contract with 10 ether to have balance to transfer
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+
+    // Capture initial balance of owner
+    const initialBalance = await ethers.provider.getBalance(owner.address);
+
+    // Get current block number and find next block that is a multiple of 15
+    let currentBlock = await ethers.provider.getBlockNumber();
+    let targetBlock = currentBlock;
+    while (targetBlock % 15 !== 0) {
+      targetBlock++;
+    }
+
+    // Mine blocks until we reach a block number divisible by 15
+    while ((await ethers.provider.getBlockNumber()) < targetBlock) {
+      await ethers.provider.send("evm_mine", []);
+    }
+
+    // Call fallback with exactly 10 ether and timestamp > pastBlockTime
+    const tx = await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    await tx.wait();
+
+    // Check balance after transfer - if mutant is alive (uses !=), no transfer happens
+    // If original (uses ==), transfer happens and balance decreases
+    const finalBalance = await ethers.provider.getBalance(owner.address);
+
+    // The original contract would transfer the entire balance back, so owner's net change
+    // should be approximately zero (paid 10 ether, received back ~10 ether minus gas)
+    // The mutant would NOT transfer, so owner would lose 10 ether
+    // We expect the original behavior: owner's balance should not be less than initial - 10 ether
+    expect(finalBalance).to.be.greaterThan(
+      initialBalance - ethers.parseEther("10") - ethers.parseEther("1")
+    );
+  });
+});
+```

@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract airdrop:
+        Contract Code: pragma solidity ^0.8.0; contract airdrop{ function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){ require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ { (bool _s,) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v)); require(_s); } } return true; } }
+
+    Consider the following mutant of airdrop:
+        Mutant m61dcc4f5 of function transfer replaces keccak256 with sha256
+        Mutant Diff: ---| bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); +++| bytes4 id=bytes4(sha256("transferFrom(address,address,uint256)"));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract uses `keccak256` to compute the function selector for `transferFrom`, which produces a 4-byte identifier matching the Ethereum ABI specification. The mutant replaces `keccak256` with `sha256`, which produces a completely different hash and thus a different 4-byte selector. This means the mutated contract will call a nonexistent or incorrect function on the target token contract, causing the call to fail or behave unexpectedly.
+
+**Hypothesis**: "The mutant replaces `keccak256` with `sha256`, which generates an incorrect function selector. Therefore, a test case that calls the `transfer` function with a valid ERC20 token contract and valid parameters, then verifies that the token transfer actually occurred (e.g., by checking the recipient's balance increased and the sender's balance decreased), should pass on the original but fail on the mutant because the mutated contract will call the wrong function and the transfer will not execute."

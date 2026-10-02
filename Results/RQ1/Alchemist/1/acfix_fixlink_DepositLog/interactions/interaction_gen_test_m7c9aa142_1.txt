@@ -1,0 +1,67 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m7c9aa142 of DepositLog.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test DepositLog.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for DepositLog:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("DepositLog reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy DepositLog by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("DepositLog"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DepositLog - kill mutant m7c9aa142", function () {
+    it("should emit FraudDuringSetup with block.timestamp, not block.prevrandao", async function () {
+        const [owner, logger] = await ethers.getSigners();
+        const Factory = await ethers.getContractFactory("DepositLog");
+        const instance = await Factory.deploy();
+        await instance.waitForDeployment();
+
+        // Owner approves logger
+        await instance.connect(owner).setApprovedLogger(logger.address, true);
+
+        // Capture block timestamp before calling
+        const blockBefore = await ethers.provider.getBlock("latest");
+        const timestampBefore = blockBefore!.timestamp;
+
+        // Call logFraudDuringSetup from approved logger
+        const tx = await instance.connect(logger).logFraudDuringSetup();
+        const receipt = await tx.wait();
+
+        // Get the event
+        const event = receipt!.logs.find(
+            (log: any) => log.topics[0] === ethers.id("FraudDuringSetup(address,uint256)")
+        );
+        expect(event).to.not.be.undefined;
+
+        // Decode the event
+        const iface = new ethers.Interface([
+            "event FraudDuringSetup(address indexed _depositContractAddress, uint256 _timestamp)"
+        ]);
+        const decoded = iface.parseLog({
+            topics: [...event!.topics],
+            data: event!.data
+        });
+
+        // Assert timestamp is close to block.timestamp (within 2 seconds for safety)
+        const emittedTimestamp = decoded!.args._timestamp;
+        const blockAfter = await ethers.provider.getBlock(receipt!.blockNumber);
+        const expectedTimestamp = blockAfter!.timestamp;
+
+        // The timestamp should match block.timestamp, not block.prevrandao (which would be a large random number)
+        expect(emittedTimestamp).to.be.closeTo(expectedTimestamp, 2);
+        // Additionally, prevrandao is typically a huge 256-bit value, so timestamp should be much smaller
+        expect(emittedTimestamp).to.be.lessThan(2**64); // sanity check that it's not prevrandao
+    });
+});
+```

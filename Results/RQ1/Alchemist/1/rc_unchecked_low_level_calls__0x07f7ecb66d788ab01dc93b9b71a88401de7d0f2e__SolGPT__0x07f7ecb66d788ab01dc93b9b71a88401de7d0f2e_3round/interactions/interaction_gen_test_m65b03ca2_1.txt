@@ -1,0 +1,240 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m65b03ca2 of PoCGame.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PoCGame.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PoCGame:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PoCGame reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PoCGame by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PoCGame"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PoCGame mutant m65b03ca2 test", function () {
+  it("should kill mutant by verifying that only exact winning number triggers payout (not <=)", async function () {
+    const [owner, player] = await ethers.getSigners();
+    
+    // Deploy with constructor arguments: whaleAddress, wagerLimit
+    const whaleAddress = ethers.Wallet.createRandom().address;
+    const wagerLimit = ethers.parseEther("1");
+    const Factory = await ethers.getContractFactory("PoCGame");
+    const instance = await Factory.deploy(whaleAddress, wagerLimit);
+    await instance.waitForDeployment();
+    
+    // Open to public
+    await instance.connect(owner).OpenToThePublic();
+    
+    // Set difficulty to 10 so difficulty/2 = 5
+    // Winning numbers in original: only 5
+    // Winning numbers in mutant: 0,1,2,3,4,5
+    await instance.connect(owner).AdjustDifficulty(10);
+    
+    // Player wagers exactly betLimit (1 ether)
+    await instance.connect(player).wager({ value: wagerLimit });
+    
+    // We need to advance one block so that block.number > timestamps[player]
+    await ethers.provider.send("evm_mine", []);
+    
+    // Now play - we cannot control the winning number directly,
+    // but we can run multiple iterations to cover both cases
+    
+    // First, we'll test that when winningNumber <= difficulty/2 but != difficulty/2
+    // the player does NOT get the payout (original behavior)
+    // Since we can't control randomness, we'll simulate by checking
+    // that the contract doesn't lose balance incorrectly
+    
+    const balanceBefore = await ethers.provider.getBalance(instance.target);
+    const playerBalanceBefore = await ethers.provider.getBalance(player.address);
+    
+    // Play the game
+    const tx = await instance.connect(player).play();
+    const receipt = await tx.wait();
+    
+    const balanceAfter = await ethers.provider.getBalance(instance.target);
+    const playerBalanceAfter = await ethers.provider.getBalance(player.address);
+    
+    // Calculate gas cost
+    const gasCost = receipt.gasUsed * receipt.gasPrice;
+    
+    // The key insight: if the winning number is <= difficulty/2 but != difficulty/2,
+    // the mutant would incorrectly send half the contract balance to the player.
+    // In the original, only winningNumber == 5 triggers payout.
+    // 
+    // We can't directly observe the winning number, but we can observe the balance change.
+    // If player balance increased by more than gas cost (meaning they received payout),
+    // and the winning number was actually < difficulty/2, the mutant is active.
+    //
+    // To reliably kill the mutant, we should run the test multiple times
+    // and expect that sometimes the player wins (when winningNumber == 5)
+    // but NEVER wins when winningNumber < 5.
+    //
+    // Since we can't control randomness, we'll use a statistical approach:
+    // Run many iterations and verify the win rate is approximately 1/difficulty (10%)
+    // not approximately (difficulty/2 + 1)/difficulty (60%)
+    
+    // For a single deterministic test, we'll check that:
+    // - If player didn't win (balance didn't increase beyond gas), that's valid for both
+    // - If player did win, we need to verify it was a legitimate win
+    
+    const playerNetChange = playerBalanceAfter - playerBalanceBefore + gasCost;
+    
+    if (playerNetChange > 0n) {
+      // Player received payout - this is only valid in original if winningNumber == 5
+      // In mutant, this could happen for any winningNumber <= 5
+      // We'll check that the payout equals winnersPot() which is half the contract balance
+      const winnersPot = await instance.winnersPot();
+      // The payout should equal exactly half the contract balance at time of play
+      // This doesn't kill the mutant directly, but verifies payout mechanics
+      expect(playerNetChange).to.equal(winnersPot);
+    }
+    
+    // To truly kill the mutant, we need to verify that the win condition is exact
+    // We'll deploy a fresh instance and manipulate the blockhash to force a specific winning number
+    // However, blockhash manipulation is not possible in Hardhat directly
+    // 
+    // Alternative: We can verify the mutant by checking that the contract doesn't lose
+    // more ether than expected through legitimate wins
+    //
+    // Most reliable approach: test that when player wagers and plays, 
+    // the contract balance only decreases by exactly betLimit/2 (the lose amount)
+    // unless the winning number was exactly difficulty/2
+    
+    // Let's run a series of games and check total losses don't exceed expected
+    // Reset and run multiple times
+    const Factory2 = await ethers.getContractFactory("PoCGame");
+    const instance2 = await Factory2.deploy(whaleAddress, wagerLimit);
+    await instance2.waitForDeployment();
+    await instance2.connect(owner).OpenToThePublic();
+    await instance2.connect(owner).AdjustDifficulty(10);
+    
+    // Fund contract with some ether for payouts
+    await owner.sendTransaction({ to: instance2.target, value: ethers.parseEther("10") });
+    
+    let totalPlayerGains = 0n;
+    const iterations = 20;
+    
+    for (let i = 0; i < iterations; i++) {
+      const [newPlayer] = await ethers.getSigners();
+      // Need new players since each can only wager once
+      // Actually we need to create new accounts - use the existing ones differently
+      // For simplicity, we'll use a single player and just check the win rate
+    }
+    
+    // Simpler deterministic test: verify that when winningNumber != difficulty/2,
+    // the loseWager function is called instead of payout
+    // We can verify this by checking the Lose event vs Win event
+    
+    // Reset with a fresh instance
+    const Factory3 = await ethers.getContractFactory("PoCGame");
+    const instance3 = await Factory3.deploy(whaleAddress, wagerLimit);
+    await instance3.waitForDeployment();
+    await instance3.connect(owner).OpenToThePublic();
+    await instance3.connect(owner).AdjustDifficulty(10);
+    
+    // Fund the contract
+    await owner.sendTransaction({ to: instance3.target, value: ethers.parseEther("10") });
+    
+    // Have player wager
+    await instance3.connect(player).wager({ value: wagerLimit });
+    await ethers.provider.send("evm_mine", []);
+    
+    // Listen for events
+    const winEvents: any[] = [];
+    const loseEvents: any[] = [];
+    
+    instance3.on("Win", (amount, paidTo) => {
+      winEvents.push({ amount, paidTo });
+    });
+    
+    instance3.on("Lose", (amount, loser) => {
+      loseEvents.push({ amount, loser });
+    });
+    
+    // Play
+    await instance3.connect(player).play();
+    
+    // Wait a bit for events
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Remove listener
+    instance3.removeAllListeners();
+    
+    // The mutant will fire Win events for winningNumber <= 5
+    // The original only fires Win for winningNumber == 5
+    // If we see a Win event, we can't be sure it's a mutant kill
+    // But if we see a Lose event, both behave the same
+    //
+    // Key test: verify that the totalDonated increases by betLimit/2 on a loss
+    // and by 0 on a win (since payout comes from contract balance, not donation)
+    
+    const totalDonated = await instance3.totalDonated();
+    
+    if (loseEvents.length > 0) {
+      // Lost - totalDonated should increase by betLimit/2 = 0.5 ether
+      expect(totalDonated).to.equal(ethers.parseEther("0.5"));
+    }
+    
+    // To definitively kill the mutant, we need to verify the exact comparison
+    // Since we can't control randomness, we'll use the fact that in the mutant,
+    // the probability of winning is much higher (60% vs 10%)
+    // Run 100 games and check if win rate exceeds 30% (should be ~10% in original)
+    // This statistical test would fail on the mutant
+    
+    // Reset
+    const Factory4 = await ethers.getContractFactory("PoCGame");
+    const instance4 = await Factory4.deploy(whaleAddress, wagerLimit);
+    await instance4.waitForDeployment();
+    await instance4.connect(owner).OpenToThePublic();
+    await instance4.connect(owner).AdjustDifficulty(100); // 1% win chance in original
+    await owner.sendTransaction({ to: instance4.target, value: ethers.parseEther("100") });
+    
+    let winCount = 0;
+    const totalGames = 50;
+    
+    for (let i = 0; i < totalGames; i++) {
+      // Create unique player for each game (since wagers[msg.sender] must be 0)
+      // In Hardhat we can use the same player by resetting wagers - but we can't
+      // Instead use different signers from getSigners
+      const signers = await ethers.getSigners();
+      const currentPlayer = signers[(i + 2) % signers.length]; // avoid owner and first player
+      
+      // Skip if this player already wagered (unlikely in small test)
+      const hasWagered = await instance4.hasPlayerWagered(currentPlayer.address);
+      if (hasWagered) continue;
+      
+      await instance4.connect(currentPlayer).wager({ value: wagerLimit });
+      await ethers.provider.send("evm_mine", []);
+      
+      const balBefore = await ethers.provider.getBalance(currentPlayer.address);
+      
+      try {
+        await instance4.connect(currentPlayer).play();
+      } catch {
+        continue;
+      }
+      
+      const balAfter = await ethers.provider.getBalance(currentPlayer.address);
+      
+      // If balance increased significantly (more than gas), they won
+      if (balAfter > balBefore + ethers.parseEther("0.01")) {
+        winCount++;
+      }
+    }
+    
+    // In original with difficulty=100, expected wins ~0-2 out of 50
+    // In mutant, expected wins ~25-30 out of 50
+    // If winCount > 10, mutant is almost certainly active
+    expect(winCount).to.be.lessThan(10);
+  });
+});
+```

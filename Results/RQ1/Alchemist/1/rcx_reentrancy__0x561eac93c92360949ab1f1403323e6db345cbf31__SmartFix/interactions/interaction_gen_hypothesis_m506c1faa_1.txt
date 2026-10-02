@@ -1,0 +1,36 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract BANK_SAFE:
+        Contract Code: pragma solidity ^0.8.0; contract BANK_SAFE { mapping (address=>uint256) public balances; uint public MinSum; LogFile Log; bool intitalized; function SetMinSum(uint _val) public { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log) public { if(intitalized)revert(); Log = LogFile(_log); } function Initialized() public { intitalized = true; } function Deposit() public payable { require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); balances[msg.sender]+= msg.value; Log.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { if(balances[msg.sender]>=MinSum && balances[msg.sender]>=_am) { balances[msg.sender] = (balances[msg.sender] - _am); (bool _veri_ok,) = msg.sender.call{value: _am}(""); if(_veri_ok) { Log.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } receive() external payable { Deposit(); } } contract LogFile { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val,string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+
+    Consider the following mutant of BANK_SAFE:
+        Mutant m506c1faa of function Collect replaces - with /
+        Mutant Diff: ---|             balances[msg.sender] = (balances[msg.sender] - _am); +++|             balances[msg.sender] = (balances[msg.sender] / _am);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's break it down.
+
+In the original `Collect` function, the balance is reduced by `_am` using subtraction:  
+`balances[msg.sender] = balances[msg.sender] - _am;`
+
+In the mutant, subtraction is replaced by division:  
+`balances[msg.sender] = balances[msg.sender] / _am;`
+
+This change drastically alters the contract's behavior:
+- In the original, withdrawing a smaller amount (e.g., 5 from a balance of 100) leaves a remainder (95).
+- In the mutant, dividing 100 by 5 gives 20 — a completely different, unintended result.
+
+A test that would detect this should:
+- Deposit a specific amount.
+- Then call `Collect` with an amount that is **not a divisor** of the current balance, and check that the remaining balance is correct (original) vs. wrong (mutant).
+
+**Hypothesis**:  
+A test case that deposits a specific amount (e.g., 100 wei), then calls `Collect` with a value (e.g., 30 wei), and finally checks that the sender's remaining balance is exactly the original amount minus the withdrawn amount (70 wei) should kill the mutant. On the original contract, the balance would be 70; on the mutant, the balance would be `100 / 30 = 3` (due to integer division), which would cause the assertion to fail.

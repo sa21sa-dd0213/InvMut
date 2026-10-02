@@ -1,0 +1,12 @@
+{
+ "difference_id": "T4a47d6f6",
+ "property_summary": "After any number of successful fallback calls, C's pastBlockTime equals block.timestamp of the latest call, ensuring sequential calls require increasing timestamps. The mutant sets pastBlockTime before the check, causing the require to always fail under the same block.timestamp, thus leaving pastBlockTime unchanged and breaking the invariant that pastBlockTime must reflect the last successful call's block.timestamp.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Move 'pastBlockTime = block.timestamp' before the second require statement",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        pastBlockTime = block.timestamp;\n        require(block.timestamp > pastBlockTime);\n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 timestamp1, uint256 timestamp2, uint256 blockNumber) public {\n        vm.assume(timestamp1 < timestamp2);\n        vm.assume(blockNumber % 15 != 0);\n        timestamp1 = bound(timestamp1, 1, type(uint256).max - 1);\n        timestamp2 = bound(timestamp2, timestamp1 + 1, type(uint256).max);\n\n        address actor = address(0x1234);\n        vm.deal(actor, 20 ether);\n\n        vm.roll(blockNumber);\n        vm.warp(timestamp1);\n        vm.prank(actor);\n        (bool ok1, ) = address(c).call{value: 10 ether}(\"\");\n        assertTrue(ok1, \"First call should succeed\");\n\n        vm.warp(timestamp2);\n        vm.prank(actor);\n        (bool ok2, ) = address(c).call{value: 10 ether}(\"\");\n        assertTrue(ok2, \"Second call should succeed\");\n\n        assertTrue(c.pastBlockTime() == timestamp2, \"pastBlockTime must equal the last call's timestamp\");\n    }\n}"
+}

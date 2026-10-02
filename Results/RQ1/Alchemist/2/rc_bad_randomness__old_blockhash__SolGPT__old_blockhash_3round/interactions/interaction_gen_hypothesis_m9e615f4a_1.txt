@@ -1,0 +1,47 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract PredictTheBlockHashChallenge:
+        Contract Code: pragma solidity ^0.8.0; contract PredictTheBlockHashChallenge { struct Guess { uint block; bytes32 guess; } mapping(address => Guess) guesses; constructor() public payable { require(msg.value == 1 ether); } function lockInGuess(bytes32 hash) public payable { require(guesses[msg.sender].block == 0); require(msg.value == 1 ether); guesses[msg.sender].guess = hash; guesses[msg.sender].block = block.number + 1; } function settle() public { require(guesses[msg.sender].block != 0); require(block.number > guesses[msg.sender].block); bytes32 answer = keccak256(abi.encodePacked(blockhash(guesses[msg.sender].block))); guesses[msg.sender].block = 0; if (guesses[msg.sender].guess == answer) { payable(msg.sender).transfer(2 ether); } } }
+
+    Consider the following mutant of PredictTheBlockHashChallenge:
+        Mutant m9e615f4a of function lockInGuess replaces block.number with block.number-1
+        Mutant Diff: ---|         guesses[msg.sender].block = block.number + 1; +++|         guesses[msg.sender].block = block.number-1 + 1;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let’s break this down step by step.
+
+In the **original** `lockInGuess` function, the line:
+```
+guesses[msg.sender].block = block.number + 1;
+```
+stores the block number *after the current one* as the target block whose hash must be guessed.
+
+In the **mutant**, the line becomes:
+```
+guesses[msg.sender].block = block.number - 1 + 1;
+```
+which simplifies to:
+```
+guesses[msg.sender].block = block.number;
+```
+
+This means the mutant incorrectly sets the target block to the **current** block number instead of the **next** block number.
+
+**Consequence**:  
+- In the original, the user locks in a guess for the next block’s hash, and `settle()` requires `block.number > guesses[msg.sender].block` (i.e., at least one block later).  
+- In the mutant, the target block is the *current* block. Since `settle()` requires `block.number > guesses[msg.sender].block`, and the current block number equals `guesses[msg.sender].block`, this condition will be **false** in the same block, so `settle()` will revert immediately.  
+- If the user waits one block, `block.number` will be greater than the stored block, but the `blockhash(guesses[msg.sender].block)` will now return the hash of an already-mined block, which is still available — but the real issue is that the user intended to guess a *future* block’s hash, not a *past* one. The mutant changes the semantics entirely.
+
+**Hypothesis**:  
+A test case that locks in a guess in block N, then mines one block (to block N+1), and calls `settle()` expecting it to succeed (since the guess was for the hash of block N+1) will **fail on the mutant** because the mutant stored block N instead of N+1, making the condition `block.number > guesses[msg.sender].block` false at block N+1 (since N+1 is not greater than N+1), and the transaction will revert.  
+
+**Final hypothesis**:
+"Hypothesis": The mutant changes the stored block from `block.number + 1` to `block.number`. Therefore, a test case that locks in a guess, mines exactly one block

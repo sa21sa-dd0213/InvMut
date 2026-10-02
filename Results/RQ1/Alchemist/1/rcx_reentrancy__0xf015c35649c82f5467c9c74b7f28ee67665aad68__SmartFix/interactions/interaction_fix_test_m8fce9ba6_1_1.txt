@@ -1,0 +1,59 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MY_BANK mutant detection - m8fce9ba6", function () {   it("should detect the mutant that subtracts 1 from msg.value when depositing", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy the Log contract first (required constructor argument for MY_BANK)     const LogFactory = await ethers.getContractFactory("Log");     const logInstance = await LogFactory.deploy();     await logInstance.waitForDeployment();          // Deploy MY_BANK with the Log contract address     const BankFactory = await ethers.getContractFactory("MY_BANK");     const bankInstance = await BankFactory.deploy(await logInstance.getAddress());     await bankInstance.waitForDeployment();          // Send exactly 1 wei to the Put function via addr1     const depositAmount = ethers.parseEther("0.000000000000000001"); // 1 wei     const currentBlock = await ethers.provider.getBlock("latest");     const unlockTime = currentBlock!.timestamp + 100; // Future unlock time          const tx = await bankInstance.connect(addr1).Put(unlockTime, { value: depositAmount });     await tx.wait();          // Check the stored balance - should be 1 wei in original, 0 wei in mutant     const holder = await bankInstance.Acc(addr1.address);     const storedBalance = holder.balance;          // In the original contract, balance would be 1 wei     // In the mutant, balance would be 0 wei (1 wei - 1 wei)     expect(storedBalance).to.equal(depositAmount);          // Additional verification: try to collect the deposited amount     // Set MinSum to 0 for testing (it's 1 ether by default)     // We need to check if balance >= MinSum requirement prevents withdrawal     // Since MinSum is 1 ether and we only deposited 1 wei, we can't withdraw     // But we can verify the balance discrepancy directly          // The test passes if balance equals the deposited amount (original behavior)     // The test fails if balance is 0 (mutant behavior)   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract MY_BANK { function Put(uint _unlockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant detection - m8fce9ba6", function () {
+  it("should detect the mutant that subtracts 1 from msg.value when depositing", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy the Log contract first (required constructor argument for MY_BANK)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+
+    // Deploy MY_BANK with the Log contract address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bankInstance = await BankFactory.deploy(await logInstance.getAddress());
+    await bankInstance.waitForDeployment();
+
+    // Send exactly 1 wei to the Put function via addr1
+    const depositAmount = ethers.parseEther("0.000000000000000001"); // 1 wei
+    const currentBlock = await ethers.provider.getBlock("latest");
+    const unlockTime = currentBlock!.timestamp + 100; // Future unlock time
+
+    const tx = await bankInstance.connect(addr1).Put(unlockTime, { value: depositAmount });
+    await tx.wait();
+
+    // Check the stored balance - should be 1 wei in original, 0 wei in mutant
+    const holder = await bankInstance.Acc(addr1.address);
+    const storedBalance = holder.balance;
+
+    // In the original contract, balance would be 1 wei
+    // In the mutant, balance would be 0 wei (1 wei - 1 wei)
+    expect(storedBalance).to.equal(depositAmount);
+
+    // Additional verification: try to collect the deposited amount
+    // Set MinSum to 0 for testing (it's 1 ether by default)
+    // We need to check if balance >= MinSum requirement prevents withdrawal
+    // Since MinSum is 1 ether and we only deposited 1 wei, we can't withdraw
+    // But we can verify the balance discrepancy directly
+
+    // The test passes if balance equals the deposited amount (original behavior)
+    // The test fails if balance is 0 (mutant behavior)
+  });
+});
+```

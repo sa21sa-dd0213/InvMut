@@ -1,0 +1,22 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract airPort:
+        Contract Code: pragma solidity ^0.8.0; contract airPort{ function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){ require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0; i<_tos.length; i++){ { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); require(_s); } } return true; } }
+
+    Consider the following mutant of airPort:
+        Mutant m4b20d086 of function transfer replaces < with >
+        Mutant Diff: ---|         for(uint i=0; i<_tos.length; i++){ +++|         for(uint i=0; i>_tos.length; i++){
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original loop condition `i < _tos.length` ensures the loop iterates over each element in the `_tos` array. The mutant changes this to `i > _tos.length`, which means the loop will never execute (since `i` starts at 0, and 0 is never greater than any positive array length), so no token transfers will be attempted.  
+
+**Hypothesis:**  
+A test case that calls the `transfer` function with a non-empty array of recipient addresses and then checks that the token transfers were actually executed (e.g., by verifying token balances of the recipients after the call) should pass on the original contract (transfers occur) but fail on the mutant (no transfers occur, balances remain unchanged), thereby killing the mutant.

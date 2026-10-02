@@ -1,0 +1,43 @@
+{
+ "difference_id": "N0016",
+ "property_summary": "After addToBalance with a zero amount, both the caller's and any observer's stored balances remain unchanged, and c's Ether balance remains unchanged.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill:m_no_cex_within_bound",
+ "origin": "primary",
+ "success_route": null,
+ "oracle_origin": null,
+ "kill_entrypoint": null,
+ "property_based_core": null,
+ "standalone_replay": null,
+ "oracle_reach": "proved",
+ "ce_id": null,
+ "source_difference_id": null,
+ "source_property_focus": null,
+ "confirmed_difference": {
+  "validation_level": "reference_validated",
+  "arm": "no_mg",
+  "focus": {
+   "index": 0,
+   "target_id": "T0000",
+   "boundary": "addToBalance",
+   "category": "state",
+   "locus": "C.userBalance",
+   "state_kind": "mapping",
+   "passes": 4
+  },
+  "thread_focus": "the value of `userBalance` at some key after a call to `addToBalance(...)` completes (the key need not be the caller's own)",
+  "boundary": "addToBalance",
+  "target_id": "T0000",
+  "test_hash": "4ce796cd6330994c",
+  "assert_fingerprint": "f292d469ca198522"
+ },
+ "oracle_asset": null,
+ "change_summary": null,
+ "mutated_unit_code": null,
+ "esbmc_test_source": "contract InvMutTest {\n    C c;\n\n    constructor() { c = new C(); }\n    function __ESBMC_reverted() internal returns (bool) {}\n    function __ESBMC_assume(bool) internal pure {}\n\n    function run(address u, uint amount) public payable { __ESBMC_assume(address(c).balance >= 1000000000000000000000000); require(address(this).balance >= (amount)); require(amount <= 1000000000000000000000000000000);\n        require(amount == 0);\n        require(address(this).balance >= amount);\n\n        uint beforeC = address(c).balance;\n        uint beforeU = c.getBalance(u); if (__ESBMC_reverted()) return;\n        uint beforeCaller = c.getBalance(msg.sender); if (__ESBMC_reverted()) return;\n\n        c.addToBalance{value: amount}(); if (__ESBMC_reverted()) return;\n\n        uint afterC = address(c).balance;\n        uint afterU = c.getBalance(u); if (__ESBMC_reverted()) return;\n        uint afterCaller = c.getBalance(msg.sender); if (__ESBMC_reverted()) return;\n\n        assert(afterC == beforeC && afterU == beforeU && afterCaller == beforeCaller);\n    }\n\n    receive() external payable {}\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    Reentrance c;\n\n    function setUp() public {\n        c = new Reentrance();\n    }\n\n    function _run(address u, uint256 amount) internal {\n        amount = bound(amount, 0, 1000000000000000000000000000000);\n        vm.deal(address(this), VALUE_CAP);\n        vm.deal(address(c), VALUE_CAP);\n        amount = 0;\n        vm.assume(address(this).balance >= amount);\n        uint beforeC = address(c).balance;\n        uint256 beforeU;\n        try c.getBalance(u) returns (uint256 __r) { beforeU = __r; } catch { return; }\n        uint256 beforeCaller;\n        try c.getBalance(msg.sender) returns (uint256 __r) { beforeCaller = __r; } catch { return; }\n        try c.addToBalance{value: amount}() {} catch { return; }\n        uint afterC = address(c).balance;\n        uint256 afterU;\n        try c.getBalance(u) returns (uint256 __r) { afterU = __r; } catch { return; }\n        uint256 afterCaller;\n        try c.getBalance(msg.sender) returns (uint256 __r) { afterCaller = __r; } catch { return; }\n        assertTrue(afterC == beforeC && afterU == beforeU && afterCaller == beforeCaller);\n    }\n\n    function testFuzz_run(address u, uint256 amount) public {\n        vm.assume(u.code.length == 0 && uint160(u) > 0xffff && u != address(this) && u != address(c) && u != 0x7109709ECfa91a80626fF3989D68f67F5b1DD12D && u != 0x000000000000000000636F6e736F6c652e6c6f67 && u != 0x4e59b44847b379578588920cA78FbF26c0B4956C && u != 0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38);\n        _run(u, amount);\n    }\n\n    receive() external payable {}\n}\n",
+ "workspace_P_log": "{\"test/InvMutTest.t.sol:InvMutTest\":{\"duration\":\"193ms 365µs 232ns\",\"test_results\":{\"testFuzz_run(address,uint256)\":{\"status\":\"Success\",\"reason\":null,\"counterexample\":null,\"logs\":[],\"decoded_logs\":[],\"kind\":{\"Fuzz\":{\"first_case\":{\"gas\":51618,\"stipend\":21704},\"runs\":10000,\"mean_gas\":30753,\"median_gas\":31385,\"failed_corpus_replays\":0}},\"traces\":[],\"labeled_addresses\":{},\"duration\":\"192ms 882µs 213ns\",\"breakpoints\":{},\"gas_snapshots\":{}}},\"warnings\":[]}}\n",
+ "workspace_M_log": null
+}

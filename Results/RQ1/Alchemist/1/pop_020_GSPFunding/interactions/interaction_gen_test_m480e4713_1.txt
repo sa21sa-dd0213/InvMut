@@ -1,0 +1,117 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m480e4713 of GSPFunding.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test GSPFunding.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for GSPFunding:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("GSPFunding reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy GSPFunding by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("GSPFunding"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("GSPFunding mutant detection - sellShares multiplication vs addition", function () {
+  it("should correctly reduce _QUOTE_TARGET_ proportionally when selling shares, killing the mutant that uses addition instead of multiplication", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy mock ERC20 tokens for base and quote
+    const MockERC20 = await ethers.getContractFactory("MockERC20");
+    const baseToken = await MockERC20.deploy("Base", "BASE", 18);
+    await baseToken.waitForDeployment();
+    const quoteToken = await MockERC20.deploy("Quote", "QUOTE", 18);
+    await quoteToken.waitForDeployment();
+
+    // Deploy GSPFunding
+    const Factory = await ethers.getContractFactory("GSPFunding");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Initialize the GSP with tokens and initial parameters
+    // Set base token, quote token, I (initial price), K (curve parameter)
+    const I = ethers.parseEther("1"); // 1:1 price ratio
+    const K = ethers.parseEther("0.5"); // 50% curve parameter
+
+    // Mint initial tokens to contract for initialization
+    const initialBase = ethers.parseEther("10000");
+    const initialQuote = ethers.parseEther("10000");
+    
+    await baseToken.mint(owner.address, initialBase);
+    await quoteToken.mint(owner.address, initialQuote);
+    
+    await baseToken.approve(instance.target, initialBase);
+    await quoteToken.approve(instance.target, initialQuote);
+
+    // Initialize the pool (first buyShares call sets up the initial state)
+    await instance.connect(owner).buyShares(owner.address);
+
+    // Get initial state after first buy
+    const initialQuoteTarget = await instance._QUOTE_TARGET_();
+    const totalSupplyInitial = await instance.totalSupply();
+
+    // Now buy more shares to have meaningful state for testing
+    const additionalBase = ethers.parseEther("5000");
+    const additionalQuote = ethers.parseEther("5000");
+    await baseToken.mint(owner.address, additionalBase);
+    await quoteToken.mint(owner.address, additionalQuote);
+    await baseToken.approve(instance.target, additionalBase);
+    await quoteToken.approve(instance.target, additionalQuote);
+    
+    await instance.connect(owner).buyShares(owner.address);
+
+    // Get state after second buy
+    const totalSupplyAfterBuy = await instance.totalSupply();
+    const quoteTargetBeforeSell = await instance._QUOTE_TARGET_();
+    
+    // Sell a specific number of shares (e.g., 10% of total supply)
+    const shareAmount = totalSupplyAfterBuy / 10n;
+    
+    // Calculate expected new quote target after proportional reduction
+    // Original: _QUOTE_TARGET_ - _divCeil((_QUOTE_TARGET_ * shareAmount), totalSupply)
+    // Mutant: _QUOTE_TARGET_ - _divCeil((_QUOTE_TARGET_ + shareAmount), totalSupply)
+    const expectedNewQuoteTarget = quoteTargetBeforeSell - 
+      ((quoteTargetBeforeSell * shareAmount + totalSupplyAfterBuy - 1n) / totalSupplyAfterBuy);
+
+    // Approve shares transfer for selling
+    await instance.connect(owner).approve(instance.target, shareAmount);
+
+    // Execute sellShares with zero min amounts and empty data
+    const baseMinAmount = 0n;
+    const quoteMinAmount = 0n;
+    const deadline = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
+
+    await instance.connect(owner).sellShares(
+      shareAmount,
+      owner.address,
+      baseMinAmount,
+      quoteMinAmount,
+      "0x",
+      deadline
+    );
+
+    // Get actual quote target after sell
+    const actualQuoteTarget = await instance._QUOTE_TARGET_();
+
+    // Verify the quote target was reduced proportionally (not by addition-based calculation)
+    // The mutant would produce a different result because it uses addition instead of multiplication
+    expect(actualQuoteTarget).to.equal(expectedNewQuoteTarget);
+    
+    // Additional verification: the mutant would give _divCeil((_QUOTE_TARGET_ + shareAmount), totalSupply)
+    // which would be a much smaller reduction, leaving _QUOTE_TARGET_ larger than expected
+    const mutantQuoteTarget = quoteTargetBeforeSell - 
+      ((quoteTargetBeforeSell + shareAmount + totalSupplyAfterBuy - 1n) / totalSupplyAfterBuy);
+    
+    // Assert that the actual value is NOT equal to the mutant value
+    expect(actualQuoteTarget).to.not.equal(mutantQuoteTarget);
+  });
+});
+```

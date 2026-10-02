@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0009",
+ "property_summary": "After sending 1 ether via fallback, then the owner calls sendMoney with a target that reverts on data but not on empty calldata; reference records the deposit count correctly and the balance remains after revert, while second version's empty call consumes gas and fails to pass data, causing the deposit count to mismatch and the balance to differ.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "-_target.call{value: _value}(_data);; +_target.call{value: _value}(\"\");",
+ "mutated_unit_code": "    function sendMoney(address _target, uint _value, bytes memory _data) public onlyOwner {\n        _target.call{value: _value}(\"\");\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n\n    function testRegression_property() public {\n        vm.deal(address(this), 1 ether);\n        (bool ok1,) = address(c).call{value: 1 ether}(\"\");\n        assertTrue(ok1);\n        assertEq(c.depositsCount(), 1);\n        assertEq(address(c).balance, 1 ether);\n\n        address target = address(new RevertOnData());\n\n        bool ok2;\n        try c.sendMoney(target, 0.5 ether, hex\"deadbeef\") {\n            ok2 = true;\n        } catch {\n            ok2 = false;\n        }\n        assertTrue(ok2);\n        assertEq(c.depositsCount(), 1);\n        assertEq(address(c).balance, 1 ether);\n    }\n}\n\ncontract RevertOnData {\n    fallback(bytes calldata data) external payable returns (bytes memory) {\n        if (data.length > 0) {\n            revert(\"data not empty\");\n        }\n        return \"\";\n    }\n}"
+}

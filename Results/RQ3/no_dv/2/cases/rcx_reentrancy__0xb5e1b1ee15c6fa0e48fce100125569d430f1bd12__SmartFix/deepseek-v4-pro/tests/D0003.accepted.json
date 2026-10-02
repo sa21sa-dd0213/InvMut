@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0003",
+ "property_summary": "After a successful Deposit where msg.value > MinDeposit, the caller's balance must increase by at least msg.value.",
+ "render_status": "rendered",
+ "validation_status": "skipped",
+ "validation_error": null,
+ "kill": "bug_no_kill:m_no_cex_within_bound",
+ "origin": "primary",
+ "change_summary": "Replace the addition to balances with a subtraction, drastically altering the resulting balance.",
+ "mutated_unit_code": "    function Deposit()\n    public\n    payable\n    {\n        if(msg.value > MinDeposit)\n        {\n            require(((balances[msg.sender] + msg.value) >= balances[msg.sender]));\n            balances[msg.sender]-=msg.value;\n            TransferLog.AddMessage(msg.sender,msg.value,\"Deposit\");\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {Private_Bank} from \"../src/Private_Bank.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    Private_Bank c;\n\n    function setUp() public {\n        c = new Private_Bank(address(this));\n    }\n\n    function _testDepositIncreasesBalance(address user, uint256 amount) internal {\n        amount = bound(amount, 0, 1000000000000000000000000000000);\n        vm.deal(address(this), VALUE_CAP);\n        vm.deal(address(c), VALUE_CAP);\n        vm.assume(amount > c.MinDeposit());\n        vm.assume(user != address(0));\n        vm.assume(c.balances(user) + amount >= c.balances(user));\n        user = address(this);\n        uint256 pre;\n        try c.balances(user) returns (uint256 __r) { pre = __r; } catch { return; }\n        try c.Deposit{value: amount}() {} catch { return; }\n        uint256 post;\n        try c.balances(user) returns (uint256 __r) { post = __r; } catch { return; }\n        assertTrue(post >= pre + amount);\n    }\n\n    function testFuzz_testDepositIncreasesBalance(address user, uint256 amount) public {\n        _testDepositIncreasesBalance(user, amount);\n    }\n\n    receive() external payable {}\n}\n"
+}

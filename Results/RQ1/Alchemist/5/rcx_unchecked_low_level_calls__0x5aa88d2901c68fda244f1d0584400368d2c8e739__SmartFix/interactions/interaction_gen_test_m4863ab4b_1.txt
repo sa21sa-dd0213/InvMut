@@ -1,0 +1,73 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m4863ab4b of MultiplicatorX3.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test MultiplicatorX3.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for MultiplicatorX3:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("MultiplicatorX3 reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy MultiplicatorX3 by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("MultiplicatorX3"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MultiplicatorX3 mutant detection - m4863ab4b", function () {
+  it("should kill mutant by exploiting overflow boundary shift in require condition", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("MultiplicatorX3");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    const contractAddress = await instance.getAddress();
+    
+    // First fund the contract with some ether to have a non-zero balance
+    await owner.sendTransaction({
+      to: contractAddress,
+      value: ethers.parseEther("1")
+    });
+    
+    // Get current contract balance
+    const balanceBefore = await ethers.provider.getBalance(contractAddress);
+    
+    // Calculate exact amount that causes overflow in original:
+    // In original: require((balance + msg.value) >= balance)
+    // Overflow when balance + msg.value > type(uint256).max
+    // So msg.value = type(uint256).max - balance + 1 causes overflow in original
+    // In mutant: require((balance + msg.value + 1) >= balance) 
+    // Overflow when balance + msg.value + 1 > type(uint256).max
+    // So msg.value = type(uint256).max - balance causes overflow in mutant
+    // We send msg.value = type(uint256).max - balance (which overflows mutant but not original)
+    const maxUint = ethers.MaxUint256;
+    const overflowValue = maxUint - balanceBefore;
+    
+    // The mutant should NOT revert for this value (original would revert)
+    // But the mutant's require will revert because:
+    // (balance + (maxUint - balance) + 1) = maxUint + 1 > maxUint -> overflow
+    // Actually let's recalculate: mutant overflows when msg.value = maxUint - balance
+    // Because balance + (maxUint - balance) + 1 = maxUint + 1 -> overflow -> require fails
+    // So this test will fail on mutant (require reverts) but pass on original (require passes)
+    
+    // Send the overflow-causing value from owner (who is authorized)
+    const tx = instance.connect(owner).multiplicate(addr1.address, {
+      value: overflowValue
+    });
+    
+    // Mutant: require should revert (overflow), killing the mutant
+    // Original: require passes, transfer happens
+    await expect(tx).to.be.reverted;
+    
+    // Verify balance unchanged - mutant should have reverted
+    const balanceAfter = await ethers.provider.getBalance(contractAddress);
+    expect(balanceAfter).to.equal(balanceBefore);
+  });
+});
+```

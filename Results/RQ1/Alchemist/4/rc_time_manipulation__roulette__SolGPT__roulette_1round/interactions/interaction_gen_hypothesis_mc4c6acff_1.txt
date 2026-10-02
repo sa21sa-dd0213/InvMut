@@ -1,0 +1,28 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Roulette:
+        Contract Code: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+
+    Consider the following mutant of Roulette:
+        Mutant mc4c6acff of function fallback replaces block.number with block.number-1
+        Mutant Diff: ---|         if(block.number % 15 == 0) { +++|         if(block.number-1 % 15 == 0) {
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's think through this step-by-step.
+
+The original contract has a condition `block.number % 15 == 0`, meaning the payout occurs only when the current block number is exactly divisible by 15.
+
+The mutant changes this to `block.number - 1 % 15 == 0`. Due to operator precedence in Solidity, the modulus operator `%` has higher precedence than subtraction, so this is actually interpreted as `block.number - (1 % 15)`, which simplifies to `block.number - 1`. This means the condition is true when `block.number - 1 == 0`, i.e., only in block number 1.
+
+So the mutant will **only** pay out in block number 1, whereas the original pays out every 15th block.
+
+**Hypothesis:**  
+"The mutant changes the payout condition from checking if the current block number is divisible by 15 to checking if the current block number minus 1 equals zero. Therefore, a test case that calls the fallback function in a block where `block.number % 15 == 0` (e.g., block 15, 30, 45, etc.) and expects the contract balance to be transferred to the caller should pass on the original but fail on the mutant, because the mutant will never trigger the payout at those block numbers."

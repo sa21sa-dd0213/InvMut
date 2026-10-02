@@ -1,0 +1,79 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m44c98592 of ReentrancyDAO.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test ReentrancyDAO.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for ReentrancyDAO:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("ReentrancyDAO reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy ReentrancyDAO by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("ReentrancyDAO"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ReentrancyDAO mutant m44c98592 - kill by reverting fallback", function () {
+  it("should revert when withdrawAll is called from a contract that rejects ether", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the ReentrancyDAO contract (no constructor arguments)
+    const Factory = await ethers.getContractFactory("ReentrancyDAO");
+    const dao = await Factory.deploy();
+    await dao.waitForDeployment();
+
+    // Deploy a malicious contract that reverts on receive/fallback
+    const MaliciousFactory = await ethers.getContractFactory("MaliciousRejecter");
+    const malicious = await MaliciousFactory.deploy();
+    await malicious.waitForDeployment();
+
+    // Fund the malicious contract with some ETH
+    await owner.sendTransaction({
+      to: malicious.target,
+      value: ethers.parseEther("1.0")
+    });
+
+    // Attacker (malicious contract) deposits ETH into DAO
+    const depositTx = await malicious.connect(attacker).depositIntoDAO(dao.target, { value: ethers.parseEther("0.5") });
+    await depositTx.wait();
+
+    // Now attempt to withdraw - should revert because malicious contract rejects ether
+    await expect(
+      malicious.connect(attacker).attack(dao.target)
+    ).to.be.reverted;
+
+    // Verify state is unchanged (mutant would have changed it, so this assertion would fail on mutant)
+    const balance = await ethers.provider.getBalance(dao.target);
+    expect(balance).to.equal(ethers.parseEther("0.5"));
+  });
+});
+
+// Helper contract that reverts on receive and exposes attack function
+// This must be deployed as a separate contract
+contract MaliciousRejecter {
+  function depositIntoDAO(address dao) external payable {
+    (bool success, ) = dao.call{value: msg.value}(abi.encodeWithSignature("deposit()"));
+    require(success);
+  }
+
+  function attack(address dao) external {
+    (bool success, ) = dao.call(abi.encodeWithSignature("withdrawAll()"));
+    // Do not require success - we want to test the revert
+  }
+
+  receive() external payable {
+    revert("I reject ether");
+  }
+
+  fallback() external payable {
+    revert("I reject ether");
+  }
+}
+```

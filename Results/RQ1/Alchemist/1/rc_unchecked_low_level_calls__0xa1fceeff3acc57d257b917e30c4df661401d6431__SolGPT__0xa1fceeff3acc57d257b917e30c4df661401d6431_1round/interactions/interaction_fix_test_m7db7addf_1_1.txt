@@ -1,0 +1,46 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("AirDropContract mutant m7db7addf test", function () {   it("should revert when loop exceeds array bounds (i <= tos.length)", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("AirDropContract");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Deploy a simple ERC20-like token for testing transferFrom     const TokenFactory = await ethers.getContractFactory("contracts/ERC20.sol:ERC20");     const token = await TokenFactory.deploy("Test", "TST", 18);     await token.waitForDeployment();          // Approve the AirDropContract to spend tokens on behalf of owner     const amount = ethers.parseEther("10");     await token.approve(await instance.getAddress(), amount);          // Fund addr1 with tokens via transferFrom     const tos = [await addr1.getAddress()];     const vs = [amount];          // The original contract would succeed with i < tos.length (0 < 1)     // The mutant uses i <= tos.length (0 <= 1, then 1 <= 1) causing out-of-bounds     await expect(       instance.transfer(await token.getAddress(), tos, vs)     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract AirDropContract{ constructor() public { } modifier validAddress( address addr ) { require(addr != address(0x0)); require(addr != address(this)); _; } function transfer(address contract_address, address[] memory tos, uint[] memory vs) public validAddress(contract_address) returns (bool) { require(tos.length > 0); require(vs.length > 0); require(tos.length == vs.length); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0 ; i < tos.length; i++){ { (bool _s,) = contract_address.call(abi.encodeWithSelector(id, msg.sender, tos[i], vs[i])); require(_s); } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("AirDropContract mutant m7db7addf test", function () {
+  it("should revert when loop exceeds array bounds (i <= tos.length)", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("AirDropContract");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy a simple ERC20-like token for testing transferFrom
+    const TokenFactory = await ethers.getContractFactory("contracts/ERC20.sol:ERC20");
+    const token = await TokenFactory.deploy("Test", "TST", 18);
+    await token.waitForDeployment();
+
+    // Approve the AirDropContract to spend tokens on behalf of owner
+    const amount = ethers.parseEther("10");
+    await token.approve(await instance.getAddress(), amount);
+
+    // Fund addr1 with tokens via transferFrom
+    const tos = [await addr1.getAddress()];
+    const vs = [amount];
+
+    // The original contract would succeed with i < tos.length (0 < 1)
+    // The mutant uses i <= tos.length (0 <= 1, then 1 <= 1) causing out-of-bounds
+    await expect(
+      instance.transfer(await token.getAddress(), tos, vs)
+    ).to.be.reverted;
+  });
+});
+```

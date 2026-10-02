@@ -1,0 +1,74 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EBU mutant mf0d1d7a3 test", function () {   it("should kill the mutant by triggering out-of-bounds access with i <= _tos.length", async function () {     const [owner, from, to] = await ethers.getSigners();          // Deploy a simple ERC20 token to use as the caddress parameter     const ERC20Factory = await ethers.getContractFactory("TestERC20");     const token = await ERC20Factory.deploy();     await token.waitForDeployment();          // Give 'from' some tokens and approve the EBU contract to transfer them     await token.mint(from.address, ethers.parseEther("100"));     const EBUFactory = await ethers.getContractFactory("EBU");     const ebu = await EBUFactory.deploy();     await ebu.waitForDeployment();          // Approve the EBU contract to spend tokens from 'from'     await token.connect(from).approve(await ebu.getAddress(), ethers.parseEther("100"));          // Prepare arrays: one recipient, one value     const tos = [to.address];     const values = [ethers.parseEther("10")];          // Call transfer - original succeeds, mutant reverts due to out-of-bounds     // The mutant will attempt to access _tos[1] and v[1] which don't exist     await expect(       ebu.transfer(from.address, await token.getAddress(), tos, values)     ).to.be.reverted;   }); });  // Minimal ERC20 for testing contract TestERC20 {     string public name = "Test";     string public symbol = "TST";     uint8 public decimals = 18;     mapping(address => uint256) public balanceOf;     mapping(address => mapping(address => uint256)) public allowance;          function mint(address to, uint256 amount) external {         balanceOf[to] += amount;     }          function approve(address spender, uint256 amount) external returns (bool) {         allowance[msg.sender][spender] = amount;         return true;     }          function transferFrom(address sender, address recipient, uint256 amount) external returns (bool) {         require(allowance[sender][msg.sender] >= amount);         allowance[sender][msg.sender] -= amount;         balanceOf[sender] -= amount;         balanceOf[recipient] += amount;         return true;     } }
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EBU { function transfer(address from, address caddress, address[] memory _tos, uint[] memory v)  public returns (bool) { require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v[i])); _d; if (! _s) { revert();} } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant mf0d1d7a3 test", function () {
+  it("should kill the mutant by triggering out-of-bounds access with i <= _tos.length", async function () {
+    const [owner, from, to] = await ethers.getSigners();
+
+    // Deploy a simple ERC20 token to use as the caddress parameter
+    const ERC20Factory = await ethers.getContractFactory("TestERC20");
+    const token = await ERC20Factory.deploy();
+    await token.waitForDeployment();
+
+    // Give 'from' some tokens and approve the EBU contract to transfer them
+    await token.mint(from.address, ethers.parseEther("100"));
+    const EBUFactory = await ethers.getContractFactory("EBU");
+    const ebu = await EBUFactory.deploy();
+    await ebu.waitForDeployment();
+
+    // Approve the EBU contract to spend tokens from 'from'
+    await token.connect(from).approve(await ebu.getAddress(), ethers.parseEther("100"));
+
+    // Prepare arrays: one recipient, one value
+    const tos = [to.address];
+    const values = [ethers.parseEther("10")];
+
+    // Call transfer - original succeeds, mutant reverts due to out-of-bounds
+    // The mutant will attempt to access _tos[1] and v[1] which don't exist
+    await expect(
+      ebu.transfer(from.address, await token.getAddress(), tos, values)
+    ).to.be.reverted;
+  });
+});
+
+// Minimal ERC20 for testing
+contract TestERC20 {
+    string public name = "Test";
+    string public symbol = "TST";
+    uint8 public decimals = 18;
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    function mint(address to, uint256 amount) external {
+        balanceOf[to] += amount;
+    }
+
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
+    }
+
+    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool) {
+        require(allowance[sender][msg.sender] >= amount);
+        allowance[sender][msg.sender] -= amount;
+        balanceOf[sender] -= amount;
+        balanceOf[recipient] += amount;
+        return true;
+    }
+}
+```

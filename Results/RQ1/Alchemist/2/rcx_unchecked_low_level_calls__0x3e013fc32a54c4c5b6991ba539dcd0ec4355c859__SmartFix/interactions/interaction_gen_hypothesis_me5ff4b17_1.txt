@@ -1,0 +1,38 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract MultiplicatorX4:
+        Contract Code: pragma solidity ^0.8.0; contract MultiplicatorX4 { address public Owner = msg.sender; receive() external payable {} function withdraw() payable public { require(msg.sender == Owner); payable(Owner).transfer(address(this).balance); } function Command(address adr,bytes memory data) payable public { require(msg.sender == Owner); adr.call{value: msg.value}(data); } function multiplicate(address adr) public payable { if(msg.value>=address(this).balance) { require(((address(this).balance + msg.value) >= address(this).balance)); payable(adr).transfer(address(this).balance+msg.value); } } }
+
+    Consider the following mutant of MultiplicatorX4:
+        Mutant me5ff4b17 of function multiplicate replaces >= with ==
+        Mutant Diff: ---|             require(((address(this).balance + msg.value) >= address(this).balance)); +++|             require(((address(this).balance + msg.value) == address(this).balance));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's break it down step-by-step:
+
+The original `multiplicate` function has this require statement:
+
+```solidity
+require(((address(this).balance + msg.value) >= address(this).balance));
+```
+
+This condition is **always true** when `msg.value >= 0`, because adding a non-negative number to the balance can never make it smaller than the original balance. So the require never reverts under normal conditions.
+
+The mutant changes `>=` to `==`:
+
+```solidity
+require(((address(this).balance + msg.value) == address(this).balance));
+```
+
+Now the condition only holds if `msg.value == 0`. If any positive amount of ether is sent, the left side will be greater than the right side, and the require will **revert**.
+
+**Hypothesis:**  
+The mutant changes the always-true inequality check to an equality check that only passes when `msg.value` is zero. Therefore, a test case that calls `multiplicate` with a non-zero `msg.value` and a valid caller, expecting the function to succeed and transfer the balance, should fail (revert) on the mutant, killing it.

@@ -1,0 +1,47 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Private_Bank mutant detection - m21d7e0f0", function () {   it("should detect the mutant that changes >= to == in Deposit require statement", async function () {     const [owner, user] = await ethers.getSigners();          // Deploy the Log contract first (required constructor argument)     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();          // Deploy Private_Bank with the Log contract address     const PrivateBankFactory = await ethers.getContractFactory("Private_Bank");     const bank = await PrivateBankFactory.deploy(await log.getAddress());     await bank.waitForDeployment();          const depositAmount = ethers.parseEther("2"); // Above MinDeposit (1 ether)     const initialBalance = await bank.balances(user.address);          // Attempt to deposit - should succeed on original, but mutant will revert     // because the mutant require condition (balance + value == balance) only passes for value == 0     await expect(       bank.connect(user).Deposit({ value: depositAmount })     ).to.be.reverted;          // Verify balance did not change (deposit was reverted)     const finalBalance = await bank.balances(user.address);     expect(finalBalance).to.equal(initialBalance);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Private_Bank { mapping (address => uint) public balances; uint public MinDeposit = 1 ether; Log TransferLog; constructor(address _log) { TransferLog = Log(_log); } function Deposit() public payable { if(msg.value > MinDeposit) { require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); balances[msg.sender]+=msg.value; TransferLog.AddMessage(msg.sender,msg.value,"Deposit"); } } function CashOut(uint _am) public payable { if(_am<=balances[msg.sender]) { balances[msg.sender] = (balances[msg.sender] - _am); (bool _veri_ok,) = msg.sender.call{value: _am}(""); if(_veri_ok) { TransferLog.AddMessage(msg.sender,_am,"CashOut"); } else {revert (); } } } receive() external payable {} } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val,string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Private_Bank mutant detection - m21d7e0f0", function () {
+  it("should detect the mutant that changes >= to == in Deposit require statement", async function () {
+    const [owner, user] = await ethers.getSigners();
+
+    // Deploy the Log contract first (required constructor argument)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Deploy Private_Bank with the Log contract address
+    const PrivateBankFactory = await ethers.getContractFactory("Private_Bank");
+    const bank = await PrivateBankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+
+    const depositAmount = ethers.parseEther("2"); // Above MinDeposit (1 ether)
+    const initialBalance = await bank.balances(user.address);
+
+    // Attempt to deposit - should succeed on original, but mutant will revert
+    // because the mutant require condition (balance + value == balance) only passes for value == 0
+    await expect(
+      bank.connect(user).Deposit({ value: depositAmount })
+    ).to.be.reverted;
+
+    // Verify balance did not change (deposit was reverted)
+    const finalBalance = await bank.balances(user.address);
+    expect(finalBalance).to.equal(initialBalance);
+  });
+});
+```

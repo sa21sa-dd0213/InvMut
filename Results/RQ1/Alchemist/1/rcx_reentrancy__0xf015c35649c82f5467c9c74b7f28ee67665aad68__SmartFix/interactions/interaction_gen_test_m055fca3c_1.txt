@@ -1,0 +1,76 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m055fca3c of MY_BANK.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test MY_BANK.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for MY_BANK:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("MY_BANK reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy MY_BANK by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("MY_BANK"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant m055fca3c detection test", function () {
+  it("should detect missing overflow protection in Put function", async function () {
+    const [owner, user] = await ethers.getSigners();
+    
+    // Deploy Log contract first (needed as constructor argument)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy MY_BANK with Log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+    
+    const bankAddress = await bank.getAddress();
+    
+    // Step 1: Make an initial deposit to user's account
+    const initialDeposit = ethers.parseEther("1");
+    await user.sendTransaction({
+      to: bankAddress,
+      value: initialDeposit
+    });
+    
+    // Step 2: Get current balance to verify state
+    const holderBefore = await bank.Acc(user.address);
+    const balanceBefore = holderBefore.balance;
+    
+    // Step 3: Attempt to deposit an amount that would cause overflow
+    // Send max uint256 minus current balance (plus some small amount to ensure overflow)
+    const maxUint = ethers.MaxUint256;
+    const overflowAmount = maxUint - balanceBefore + 1n;
+    
+    // In the original contract, this should revert due to overflow check
+    // In the mutant, it will succeed and wrap around to a small number
+    const tx = user.sendTransaction({
+      to: bankAddress,
+      value: overflowAmount
+    });
+    
+    // The original would revert, but mutant allows the overflow
+    // We expect the transaction to succeed in the mutant
+    await expect(tx).to.not.be.reverted;
+    
+    // Verify the balance has wrapped around (overflow behavior)
+    const holderAfter = await bank.Acc(user.address);
+    const balanceAfter = holderAfter.balance;
+    
+    // After overflow: balance should be (balanceBefore + overflowAmount) mod 2^256
+    // Which equals (balanceBefore + maxUint - balanceBefore + 1) = 0
+    // But due to overflow wrapping, it should be less than initial balance
+    expect(balanceAfter).to.be.lessThan(balanceBefore);
+  });
+});
+```

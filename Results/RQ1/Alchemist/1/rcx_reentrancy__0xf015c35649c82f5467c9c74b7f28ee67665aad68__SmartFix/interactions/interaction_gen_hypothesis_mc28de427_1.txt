@@ -1,0 +1,31 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract MY_BANK:
+        Contract Code: pragma solidity ^0.8.0; contract MY_BANK { function Put(uint _unlockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+
+    Consider the following mutant of MY_BANK:
+        Mutant mc28de427 of function Collect replaces - with /
+        Mutant Diff: ---|             acc.balance = (acc.balance - _am); +++|             acc.balance = (acc.balance / _am);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let’s break this down:
+
+The original `Collect` function subtracts `_am` from `acc.balance`:  
+`acc.balance = (acc.balance - _am);`  
+
+The mutant replaces subtraction with division:  
+`acc.balance = (acc.balance / _am);`  
+
+This means the mutant will produce a completely different resulting balance. For the mutant to be killed, we need a test where the expected behavior relies on the subtraction being correct.  
+
+A strong test would be to deposit a known amount (e.g., 10 ether), then call `Collect` with an amount less than the balance (e.g., 4 ether), and then check that the remaining balance is the original minus the withdrawn amount (6 ether). In the mutant, dividing 10 ether by 4 would give 2.5 ether (truncated to 2 wei in integer division), which is drastically different from 6 ether. The test assertion on the remaining balance would fail for the mutant, thus killing it.
+
+**Hypothesis**: "A test that deposits a specific amount, calls Collect with a valid withdrawal amount less than the balance, and then asserts that the remaining balance equals the original deposit minus the withdrawn amount should kill the mutant, because the mutant uses division instead of subtraction, producing a completely different leftover balance."

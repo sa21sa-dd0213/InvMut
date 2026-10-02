@@ -1,0 +1,12 @@
+{
+ "difference_id": "Ted7fe074",
+ "property_summary": "For any single valid call to fallback() with 10 ether and a strictly greater block.timestamp, if block.number % 15 == 0, then after the call address(c).balance must be 0; the mutant never transfers so its balance remains 10 ether.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Delete the if-statement entirely, so balance is never transferred in fallback.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 timestamp, uint256 blockNum, uint256 value) public {\n        value = bound(value, 10 ether, 10 ether);\n        timestamp = bound(timestamp, 1, type(uint256).max);\n        blockNum = bound(blockNum, 15, type(uint256).max);\n        blockNum = blockNum - (blockNum % 15);\n\n        address caller = address(0x123456);\n        vm.deal(caller, value);\n        vm.warp(timestamp);\n        vm.roll(blockNum);\n\n        vm.prank(caller);\n        (bool ok, ) = address(c).call{value: value}(\"\");\n        require(ok, \"call failed\");\n\n        assertTrue(address(c).balance == 0);\n    }\n}"
+}

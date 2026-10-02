@@ -1,0 +1,59 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("SimpleWallet reference (ethers v6; deploy may require constructor arguments)", function () {   it("should revert when sendMoney fails due to target revert (mutant missing require check)", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("SimpleWallet");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Deploy a simple contract that always reverts on receive     const RevertContract = await ethers.getContractFactory(       "contract RevertOnReceive { receive() external payable { revert(); } }"     );     // Actually deploy a contract with a fallback that reverts     const RevertFactory = await ethers.getContractFactory(       "contract RevertOnReceive { fallback() external payable { revert(); } }"     );     const revertTarget = await RevertFactory.deploy();     await revertTarget.waitForDeployment();      // Fund the wallet with some ether first     await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("1.0")     });      const initialBalance = await ethers.provider.getBalance(await instance.getAddress());      // Attempt sendMoney to the reverting target - in original it reverts, in mutant it silently fails     await expect(       instance.connect(owner).sendMoney(await revertTarget.getAddress(), ethers.parseEther("0.5"))     ).to.be.reverted;      // Check that wallet balance remained unchanged (mutant would have lost ether)     const finalBalance = await ethers.provider.getBalance(await instance.getAddress());     expect(finalBalance).to.equal(initialBalance);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract SimpleWallet  { address  public   owner = payable(msg.sender); uint  public   depositsCount; modifier onlyOwner { require(msg.sender==owner); _; } fallback() external payable { depositsCount ++ ; } function withdrawAll () public onlyOwner  { withdraw(address(this).balance); } function withdraw (uint    _value) public onlyOwner  { payable(msg.sender).transfer(_value); } function sendMoney (address    _target,uint    _value) public onlyOwner  { (bool __sent_result100, ) = _target.call{value: _value}(""); require(__sent_result100); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("SimpleWallet reference (ethers v6; deploy may require constructor arguments)", function () {
+  it("should revert when sendMoney fails due to target revert (mutant missing require check)", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("SimpleWallet");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy a simple contract that always reverts on receive
+    const revertContractArtifact = {
+      contractName: "RevertOnReceive",
+      abi: [],
+      bytecode: "0x6080604052348015600f57600080fd5b5060a38061001e6000396000f3fe60806040526004361060295760003560e01c8063...",
+      deployedBytecode: "0x60806040526004361060295760003560e01c8063..."
+    };
+    
+    // Actually deploy a contract with a fallback that reverts
+    const RevertFactory = await ethers.getContractFactory(
+      "contract RevertOnReceive { fallback() external payable { revert(); } }"
+    );
+    const revertTarget = await RevertFactory.deploy();
+    await revertTarget.waitForDeployment();
+
+    // Fund the wallet with some ether first
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("1.0")
+    });
+
+    const initialBalance = await ethers.provider.getBalance(await instance.getAddress());
+
+    // Attempt sendMoney to the reverting target - in original it reverts, in mutant it silently fails
+    await expect(
+      instance.connect(owner).sendMoney(await revertTarget.getAddress(), ethers.parseEther("0.5"))
+    ).to.be.reverted;
+
+    // Check that wallet balance remained unchanged (mutant would have lost ether)
+    const finalBalance = await ethers.provider.getBalance(await instance.getAddress());
+    expect(finalBalance).to.equal(initialBalance);
+  });
+});
+```

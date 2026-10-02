@@ -1,0 +1,48 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Roulette mutant m79c348ea test", function () {   it("should kill mutant by exploiting block.prevrandao instead of block.timestamp", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Roulette");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Send 10 ether to satisfy first call     const tx1 = await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10")     });     await tx1.wait();      // Mine a block to change timestamp but keep same block number parity     await ethers.provider.send("evm_mine", []);      // Send another 10 ether - on original this should revert because block.timestamp > pastBlockTime     // On mutant, block.prevrandao might be same or different, but the logic is broken     const tx2 = owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10")     });      // The mutant should NOT revert because block.prevrandao is not time-based     // If the test expects revert but it succeeds, the mutant is killed     await expect(tx2).to.not.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp + 1; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant m79c348ea test", function () {
+  it("should kill mutant by exploiting block.prevrandao instead of block.timestamp", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Send 10 ether to satisfy first call
+    const tx1 = await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    await tx1.wait();
+
+    // Mine a block to change timestamp but keep same block number parity
+    await ethers.provider.send("evm_mine", []);
+
+    // Send another 10 ether - on original this should revert because block.timestamp > pastBlockTime
+    // On mutant, block.prevrandao might be same or different, but the logic is broken
+    const tx2 = owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+
+    // The mutant should NOT revert because block.prevrandao is not time-based
+    // If the test expects revert but it succeeds, the mutant is killed
+    await expect(tx2).to.not.be.reverted;
+  });
+});
+```

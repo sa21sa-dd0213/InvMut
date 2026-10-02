@@ -1,0 +1,47 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Reentrance mutant mbac3ac5d test", function () {   it("should detect mutant by sending 1 wei and expecting exact withdrawal", async function () {     const [owner, user] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Reentrance");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Send exactly 1 wei to addToBalance     const tx = await instance.connect(user).addToBalance({ value: ethers.parseEther("0") + 1n });     await tx.wait();      // Get user's recorded balance     const userBalance = await instance.getBalance(user.address);     // In original: userBalance == 1 wei     // In mutant: userBalance == 2 wei (because msg.value+1)      // Now withdraw     const withdrawTx = instance.connect(user).withdrawBalance();      // In original: withdraw succeeds, contract balance becomes 0     // In mutant: contract tries to send 2 wei but only has 1 wei -> reverts     await expect(withdrawTx).to.be.reverted;      // Additional check: user balance should still be recorded as 2 wei (since withdrawal failed)     const finalBalance = await instance.getBalance(user.address);     expect(finalBalance).to.equal(2n); // confirms mutant behavior   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } } contract Reentrance  is sGuard { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public nonReentrant_ payable { userBalance[msg.sender] = add_uint256(userBalance[msg.sender], msg.value); } function withdrawBalance()  public nonReentrant_ { { (bool _s, bytes memory _d) = msg.sender.call{value: userBalance[msg.sender]}(""); _d; if (! _s) { revert(); } } userBalance[msg.sender] = 0; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Reentrance mutant mbac3ac5d test", function () {
+  it("should detect mutant by sending 1 wei and expecting exact withdrawal", async function () {
+    const [owner, user] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Reentrance");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Send exactly 1 wei to addToBalance
+    const tx = await instance.connect(user).addToBalance({ value: ethers.parseEther("0") + 1n });
+    await tx.wait();
+
+    // Get user's recorded balance
+    const userBalance = await instance.getBalance(user.address);
+    // In original: userBalance == 1 wei
+    // In mutant: userBalance == 2 wei (because msg.value+1)
+
+    // Now withdraw
+    const withdrawTx = instance.connect(user).withdrawBalance();
+
+    // In original: withdraw succeeds, contract balance becomes 0
+    // In mutant: contract tries to send 2 wei but only has 1 wei -> reverts
+    await expect(withdrawTx).to.be.reverted;
+
+    // Additional check: user balance should still be recorded as 2 wei (since withdrawal failed)
+    const finalBalance = await instance.getBalance(user.address);
+    expect(finalBalance).to.equal(2n); // confirms mutant behavior
+  });
+});
+```

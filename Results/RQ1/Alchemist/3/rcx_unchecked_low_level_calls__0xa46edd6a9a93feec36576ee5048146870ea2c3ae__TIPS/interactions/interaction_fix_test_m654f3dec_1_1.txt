@@ -1,0 +1,48 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EBU mutant kill test - m654f3dec", function () {   it("should complete transfer successfully when underlying call succeeds, but mutant reverts always", async function () {     // Deploy a simple ERC20 token for testing transferFrom     const tokenFactory = await ethers.getContractFactory("TestToken");     const token = await tokenFactory.deploy();     await token.waitForDeployment();     const tokenAddress = await token.getAddress();      // Deploy EBU contract (no constructor arguments)     const EBUFactory = await ethers.getContractFactory("EBU");     const ebu = await EBUFactory.deploy();     await ebu.waitForDeployment();      const [owner, from, to] = await ethers.getSigners();      // Setup: mint tokens to 'from' and approve EBU contract to spend them     await token.mint(from.address, ethers.parseEther("100"));     await token.connect(from).approve(await ebu.getAddress(), ethers.parseEther("50"));      // Prepare parameters for transfer function     const recipients = [to.address];     const amounts = [ethers.parseEther("10")];      // Execute transfer - should succeed on original, fail on mutant     await expect(       ebu.connect(owner).transfer(from.address, tokenAddress, recipients, amounts)     ).to.not.be.reverted;   }); });  // Helper contract for testing - simple ERC20 with mint and transferFrom // This would be deployed as a separate Solidity contract in the test environment
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EBU { function transfer(address from, address caddress, address[] memory _tos, uint[] memory v)  public returns (bool) { require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v[i])); _d; if (! _s) { revert();} } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant kill test - m654f3dec", function () {
+  it("should complete transfer successfully when underlying call succeeds, but mutant reverts always", async function () {
+    // Deploy a simple ERC20 token for testing transferFrom
+    const tokenFactory = await ethers.getContractFactory("TestToken");
+    const token = await tokenFactory.deploy();
+    await token.waitForDeployment();
+    const tokenAddress = await token.getAddress();
+
+    // Deploy EBU contract (no constructor arguments)
+    const EBUFactory = await ethers.getContractFactory("EBU");
+    const ebu = await EBUFactory.deploy();
+    await ebu.waitForDeployment();
+
+    const [owner, from, to] = await ethers.getSigners();
+
+    // Setup: mint tokens to 'from' and approve EBU contract to spend them
+    await token.mint(from.address, ethers.parseEther("100"));
+    await token.connect(from).approve(await ebu.getAddress(), ethers.parseEther("50"));
+
+    // Prepare parameters for transfer function
+    const recipients = [to.address];
+    const amounts = [ethers.parseEther("10")];
+
+    // Execute transfer - should succeed on original, fail on mutant
+    await expect(
+      ebu.connect(owner).transfer(from.address, tokenAddress, recipients, amounts)
+    ).to.not.be.reverted;
+  });
+});
+```

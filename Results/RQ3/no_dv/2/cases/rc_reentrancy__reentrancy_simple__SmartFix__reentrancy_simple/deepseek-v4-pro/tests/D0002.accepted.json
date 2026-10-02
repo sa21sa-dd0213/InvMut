@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0002",
+ "property_summary": "After any sequence of addToBalance calls, the total Ether held by the contract equals the sum of all recorded userBalances; the mutant breaks this because it adds only 1 to storage regardless of msg.value, creating a discrepancy between actual balance and recorded balance.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change the balance update to a fixed value instead of msg.value, so the stored balance differs from the amount actually sent.",
+ "mutated_unit_code": "function addToBalance() public payable {\n    require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender]));\n    userBalance[msg.sender] += 1;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n    function testFuzz_property(address caller, uint256 amount, address target) public {\n        vm.assume(amount <= type(uint256).max / 2);\n        vm.assume(target != address(c));\n        vm.assume(caller != address(0));\n\n        vm.deal(caller, amount);\n\n        uint256 initialContractBalance = address(c).balance;\n        uint256 initialRecordedBalance = c.getBalance(target);\n\n        vm.prank(caller);\n        c.addToBalance{value: amount}();\n\n        uint256 recordedBalanceIncrease = c.getBalance(caller) - (caller == target ? initialRecordedBalance : c.getBalance(target));\n        uint256 actualContractBalanceIncrease = address(c).balance - initialContractBalance;\n\n        assertTrue(actualContractBalanceIncrease == recordedBalanceIncrease);\n    }\n}\n"
+}

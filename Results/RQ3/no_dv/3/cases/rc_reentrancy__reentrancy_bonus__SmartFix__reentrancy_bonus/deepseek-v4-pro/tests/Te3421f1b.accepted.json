@@ -1,0 +1,12 @@
+{
+ "difference_id": "Te3421f1b",
+ "property_summary": "After a successful withdrawReward, the contract's mapping rewardsForA for the recipient must be zero, but the buggy version leaves it unchanged, allowing the invariant to be violated.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Delete the line setting rewardsForA[recipient] to 0, so the user retains the reward amount after withdrawal and can withdraw it again.",
+ "mutated_unit_code": "function withdrawReward(address recipient)  public _nonReentrant  {\n        uint amountToWithdraw = rewardsForA[recipient];\n        (bool success, ) = recipient.call{value: amountToWithdraw}(\"\");\n        require(success);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrancy_bonus} from \"../src/Reentrancy_bonus.sol\";\n\ncontract InvMutTest is Test {\n    Reentrancy_bonus c;\n    function setUp() public { c = new Reentrancy_bonus(); }\n    function testFuzz_property(address recipient, uint8 bonusCalls) public {\n        vm.assume(recipient != address(0) && recipient != address(c));\n        vm.deal(address(c), 1000 ether);\n        vm.prank(recipient);\n        c.getFirstWithdrawalBonus(recipient);\n        for (uint8 i = 0; i < bonusCalls; i++) {\n            vm.prank(recipient);\n            try c.getFirstWithdrawalBonus(recipient) {} catch {}\n        }\n        vm.prank(recipient);\n        c.withdrawReward(recipient);\n        bool secondCallSucceeded;\n        vm.prank(recipient);\n        try c.withdrawReward(recipient) { secondCallSucceeded = true; } catch { secondCallSucceeded = false; }\n        uint256 balanceBeforeSecond = address(c).balance;\n        vm.prank(recipient);\n        try c.withdrawReward(recipient) {} catch {}\n        uint256 balanceAfterSecond = address(c).balance;\n        assertTrue(balanceBeforeSecond == balanceAfterSecond);\n    }\n}\n"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T1e8db3ba",
+ "property_summary": "For any depositor and any observed key, if the depositor sends a positive msg.value to addToBalance, then the total Ether held by the contract (address(c).balance) increases by exactly that msg.value (the reference increases contract balance; the mutant that writes zero to mapping still receives ETH but leaves internal accounting inconsistent — however both receive ETH so we need a different rule) — instead, use that after a deposit by depositor, the difference between contract balance and the stored sum of all userBalance entries equals zero in the reference (i.e., internal accounting matches actual ETH held), while the mutant breaks this invariant for some inputs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace addition to balance with subtraction so msg.value is subtracted from the stored balance when depositing.",
+ "mutated_unit_code": "function addToBalance()  public nonReentrant_ payable {\n         userBalance[msg.sender] = add_uint256(userBalance[msg.sender], (msg.value * 0));\n     }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n\n    function testFuzz_property(address depositor, address other, uint256 amt) public {\n        amt = bound(amt, 0, 1 ether);\n        vm.assume(depositor != address(0));\n        vm.assume(other != address(0));\n\n        vm.deal(depositor, amt);\n        vm.deal(other, 1 ether);\n\n        if (amt > 0) {\n            vm.startPrank(depositor);\n            c.addToBalance{value: amt}();\n            vm.stopPrank();\n        }\n\n        uint256 amt2 = 1 ether;\n        vm.startPrank(other);\n        c.addToBalance{value: amt2}();\n        vm.stopPrank();\n\n        uint256 balSum = c.getBalance(depositor) + c.getBalance(other);\n        assertTrue(address(c).balance == balSum);\n    }\n}\n\n"
+}

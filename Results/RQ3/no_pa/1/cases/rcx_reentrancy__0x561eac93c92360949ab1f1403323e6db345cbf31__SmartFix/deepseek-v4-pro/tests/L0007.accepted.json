@@ -1,0 +1,11 @@
+{
+ "difference_id": "L0007",
+ "property_summary": "After SetLogFile with a valid log contract, SetMinSum(0), Initialized, and a user deposits 1 wei then calls Collect(1), the reference reverts because Log.AddMessage's push causes a revert due to the LogFile contract's receive() reentrancy causing a revert, while the buggy version with Log set to address(0x123) succeeds because address(0x123) has no code, so the call silently fails and Collect completes.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "change_summary": "Replace the assignment to Log with a different LogFile contract address",
+ "mutated_unit_code": "    function SetLogFile(address _log)\n    public\n    {\n        if(intitalized)revert();\n        Log = LogFile(address(0x123));\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {BANK_SAFE} from \"../src/BANK_SAFE.sol\";\n\ncontract InvMutTest is Test {\n    BANK_SAFE c;\n    function setUp() public { c = new BANK_SAFE(); }\n    function testRegression_property() public {\n        address logAddr = address(new LogFile());\n        c.SetLogFile(logAddr);\n        c.SetMinSum(0);\n        c.Initialized();\n\n        address user = address(0x1);\n        vm.deal(user, 1 wei);\n        vm.prank(user);\n        c.Deposit{value: 1 wei}();\n\n        bool success;\n        vm.prank(user);\n        try c.Collect(1) {\n            success = true;\n        } catch {\n            success = false;\n        }\n\n        assertTrue(success);\n    }\n}\n\ncontract LogFile {\n    struct Message {\n        address Sender;\n        string  Data;\n        uint Val;\n        uint  Time;\n    }\n\n    Message[] public History;\n    Message LastMsg;\n\n    receive() external payable {\n        revert();\n    }\n\n    function AddMessage(address _adr, uint _val, string memory _data) public {\n        LastMsg.Sender = _adr;\n        LastMsg.Time = block.timestamp;\n        LastMsg.Val = _val;\n        LastMsg.Data = _data;\n        History.push(LastMsg);\n    }\n}"
+}

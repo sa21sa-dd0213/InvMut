@@ -1,0 +1,12 @@
+{
+ "difference_id": "T8f23a973",
+ "property_summary": "For any caller without prior balance who calls airDrop, the reference contract always increases that caller's tokenBalance by exactly 20 (so tokenBalance(caller) == 20 afterwards); the mutant that adds 40 violates this by sometimes producing tokenBalance(caller) == 40.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the increment to add 40 instead of 20, doubling the amount awarded by airDrop and changing tokenBalance for the caller (and possibly other observations).",
+ "mutated_unit_code": "function airDrop()  public _nonReentrant  hasNoBalance supportsToken {\n    require(((tokenBalance[msg.sender] + 20) >= tokenBalance[msg.sender]));\n    tokenBalance[msg.sender] += 40;\n  }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ModifierEntrancy} from \"../src/ModifierEntrancy.sol\";\n\ncontract InvMutTest is Test {\n    ModifierEntrancy c;\n    function setUp() public { c = new ModifierEntrancy(); }\n\n    function testFuzz_property(address actor) public {\n        vm.assume(actor != address(0));\n\n        uint256 before = c.tokenBalance(actor);\n        vm.assume(before == 0);\n\n        Supporter sup = new Supporter();\n        address supporterAddr = address(sup);\n\n        uint256 balBefore = c.tokenBalance(supporterAddr);\n        vm.assume(balBefore == 0);\n\n        vm.prank(supporterAddr);\n        bool ok;\n        try c.airDrop() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        if (ok) {\n            assertTrue(c.tokenBalance(supporterAddr) == 20);\n        } else {\n            assertTrue(c.tokenBalance(supporterAddr) == 0);\n        }\n    }\n}\n\ncontract Supporter {\n    function supportsToken() external pure returns (bytes32) {\n        return keccak256(abi.encodePacked(\"Nu Token\"));\n    }\n}\n"
+}

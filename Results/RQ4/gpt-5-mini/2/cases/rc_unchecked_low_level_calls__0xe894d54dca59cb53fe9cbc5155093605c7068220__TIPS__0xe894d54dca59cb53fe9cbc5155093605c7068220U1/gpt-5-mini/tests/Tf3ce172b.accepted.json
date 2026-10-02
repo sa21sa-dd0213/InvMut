@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tf3ce172b",
+ "property_summary": "For any inputs where transfer(...) completes (does not revert), the reference always returns true; the mutant returns false instead for those same inputs, so there exists inputs where the return boolean differs (the mutant breaks the rule).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the final 'return true;' with 'return false;' so function completes but returns opposite boolean.",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v, uint _decimals)  public returns (bool) {\n\trequire(_tos.length > 0);\n\tbytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n\tuint _value = v * 10 ** _decimals;\n\tfor(uint i = 0;i < _tos.length;i++){\n\t{ (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], _value)); _d; if (! _s) {\n\trevert();} }\n\t}\n\treturn false;\n\t}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airDrop} from \"../src/airDrop.sol\";\n\ncontract InvMutTest is Test {\n    airDrop c;\n    function setUp() public { c = new airDrop(); }\n\n    function testFuzz_property(address fromAddr, uint256 v, uint256 decimals, uint256 tosCount) public {\n        vm.assume(decimals <= 18);\n        uint256 n = bound(tosCount, 1, 5);\n\n        CalleeAlwaysSucceeds callee = new CalleeAlwaysSucceeds();\n\n        address[] memory tos = new address[](n);\n        for (uint i = 0; i < n; i++) {\n            tos[i] = address(uint160(uint256(keccak256(abi.encodePacked(fromAddr, i)))));\n        }\n\n        bool ok;\n        bool ret;\n        try c.transfer(fromAddr, address(callee), tos, v, decimals) returns (bool r) {\n            ok = true;\n            ret = r;\n        } catch {\n            ok = false;\n            ret = false;\n        }\n\n        assertTrue(!ok || ret);\n    }\n}\n\ncontract CalleeAlwaysSucceeds {\n    function transferFrom(address, address, uint256) external pure returns (bool) {\n        return true;\n    }\n    fallback() external payable {\n    }\n}\n"
+}

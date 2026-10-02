@@ -1,0 +1,46 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Roulette mutant detection - m277fac66", function () {   it("should detect mutant that changes msg.value == 10 ether to msg.value - 1 == 10 ether", async function () {     const [owner] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Roulette");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Get initial balance of contract     const initialBalance = await ethers.provider.getBalance(instance.target);     expect(initialBalance).to.equal(0);      // Send exactly 10 ether to the contract - this should work in original     // but fail in the mutant (mutant requires 10 ether + 1 wei)     const tx = await owner.sendTransaction({       to: instance.target,       value: ethers.parseEther("10")     });     await tx.wait();      // In the original contract, this transaction succeeds and updates pastBlockTime     // In the mutant, this transaction reverts because msg.value - 1 != 10 ether     // The contract balance should be 0 if the transaction reverted (mutant killed)     // or 10 ether if the transaction succeeded (original behavior)     const finalBalance = await ethers.provider.getBalance(instance.target);     expect(finalBalance).to.equal(ethers.parseEther("10"));   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp + 1; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant detection - m277fac66", function () {
+  it("should detect mutant that changes msg.value == 10 ether to msg.value - 1 == 10 ether", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get initial balance of contract
+    const initialBalance = await ethers.provider.getBalance(instance.target);
+    expect(initialBalance).to.equal(0);
+
+    // Send exactly 10 ether to the contract - this should work in original
+    // but fail in the mutant (mutant requires 10 ether + 1 wei)
+    const tx = await owner.sendTransaction({
+      to: instance.target,
+      value: ethers.parseEther("10")
+    });
+    await tx.wait();
+
+    // In the original contract, this transaction succeeds and updates pastBlockTime
+    // In the mutant, this transaction reverts because msg.value - 1 != 10 ether
+    // The contract balance should be 0 if the transaction reverted (mutant killed)
+    // or 10 ether if the transaction succeeded (original behavior)
+    const finalBalance = await ethers.provider.getBalance(instance.target);
+    expect(finalBalance).to.equal(ethers.parseEther("10"));
+  });
+});
+```

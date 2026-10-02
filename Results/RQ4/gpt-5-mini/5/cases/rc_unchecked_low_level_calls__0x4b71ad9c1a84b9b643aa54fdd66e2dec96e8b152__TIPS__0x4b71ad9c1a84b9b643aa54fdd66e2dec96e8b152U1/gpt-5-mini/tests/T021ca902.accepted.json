@@ -1,0 +1,12 @@
+{
+ "difference_id": "T021ca902",
+ "property_summary": "For any non-empty _tos list and any callee address, the reference contract either reverts if any low-level transferFrom call fails, or returns true only when all calls succeed; the mutant always returns true even if a callee call fails — so there exists inputs (a failing callee and a non-empty _tos) where the mutant returns true but the reference reverts (observable via try/catch).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Ignore call success entirely and always return true even if calls failed (remove require), changing behavior when original would revert on failures to now return true.",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0; i<_tos.length; i++){\n            { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); }\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airPort} from \"../src/airPort.sol\";\n\ncontract InvMutTest is Test {\n    airPort c;\n    function setUp() public { c = new airPort(); }\n\n    function testFuzz_property(address from, uint256 tosLen) public {\n        uint256 len = bound(tosLen, 0, 8);\n        vm.assume(len > 0);\n\n        Reverter rev = new Reverter();\n\n        address[] memory tos = new address[](len);\n        for (uint i = 0; i < len; i++) tos[i] = address(rev);\n\n        bool ok;\n        try c.transfer(from, address(rev), tos, 1) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(!ok);\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"revert\");\n    }\n    receive() external payable {\n        revert(\"revert\");\n    }\n}"
+}

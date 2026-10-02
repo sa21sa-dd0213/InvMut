@@ -1,0 +1,55 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PENNY_BY_PENNY mutant mf9bf0799 test", function () {
+  it("should kill mutant by showing balance <= _am condition allows invalid withdrawal", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy LogFile first (required by PENNY_BY_PENNY)
+    const LogFileFactory = await ethers.getContractFactory("LogFile");
+    const logFile = await LogFileFactory.deploy();
+    await logFile.waitForDeployment();
+    
+    // Deploy PENNY_BY_PENNY
+    const Factory = await ethers.getContractFactory("PENNY_BY_PENNY");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Setup: Set MinSum, set LogFile, and initialize
+    await instance.connect(owner).SetMinSum(ethers.parseEther("1"));
+    await instance.connect(owner).SetLogFile(await logFile.getAddress());
+    await instance.connect(owner).Initialized();
+    
+    // addr1 deposits 10 ether
+    const depositAmount = ethers.parseEther("10");
+    await instance.connect(addr1).Put(0, { value: depositAmount });
+    
+    // Attempt to collect 5 ether (balance >= MinSum, balance >= _am, unlockTime passed)
+    const collectAmount = ethers.parseEther("5");
+    
+    // On original: should succeed because 10 >= 5
+    // On mutant: condition becomes acc.balance <= _am => 10 <= 5 is false, so revert
+    await expect(
+      instance.connect(addr1).Collect(collectAmount)
+    ).to.be.reverted;
+    
+    // Also test the edge case where balance equals _am
+    // This should pass on original, but mutant condition balance <= _am would be true (10 <= 10)
+    // Reset state by deploying new contract for clean test
+    const instance2 = await Factory.deploy();
+    await instance2.waitForDeployment();
+    await instance2.connect(owner).SetMinSum(ethers.parseEther("1"));
+    await instance2.connect(owner).SetLogFile(await logFile.getAddress());
+    await instance2.connect(owner).Initialized();
+    
+    await instance2.connect(addr1).Put(0, { value: ethers.parseEther("10") });
+    
+    // Try collecting exactly balance amount - should succeed on original
+    // On mutant: balance <= _am (10 <= 10) is true, so it would proceed incorrectly
+    // This confirms the mutant allows collection when balance is too low
+    const exactAmount = ethers.parseEther("10");
+    await expect(
+      instance2.connect(addr1).Collect(exactAmount)
+    ).to.not.be.reverted;
+  });
+});

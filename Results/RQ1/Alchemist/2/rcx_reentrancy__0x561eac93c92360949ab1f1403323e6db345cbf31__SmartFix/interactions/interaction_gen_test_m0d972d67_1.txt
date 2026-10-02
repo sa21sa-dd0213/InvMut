@@ -1,0 +1,73 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m0d972d67 of BANK_SAFE.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test BANK_SAFE.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for BANK_SAFE:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("BANK_SAFE reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy BANK_SAFE by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("BANK_SAFE"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("BANK_SAFE mutant test - m0d972d67", function () {
+  it("should detect mutant that always sets _veri_ok to false by verifying LogFile history after successful Collect", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy LogFile first (no constructor args)
+    const LogFileFactory = await ethers.getContractFactory("LogFile");
+    const logFile = await LogFileFactory.deploy();
+    await logFile.waitForDeployment();
+    
+    // Deploy BANK_SAFE with constructor args: LogFile address
+    const BankSafeFactory = await ethers.getContractFactory("BANK_SAFE");
+    const bankSafe = await BankSafeFactory.deploy();
+    await bankSafe.waitForDeployment();
+    
+    // Initialize the contract and set required parameters
+    await bankSafe.SetMinSum(ethers.parseEther("1"));
+    await bankSafe.SetLogFile(await logFile.getAddress());
+    await bankSafe.Initialized();
+    
+    // Fund addr1 with sufficient balance
+    await owner.sendTransaction({
+      to: await bankSafe.getAddress(),
+      value: ethers.parseEther("5")
+    });
+    
+    // Transfer balance to addr1 via Deposit
+    await bankSafe.connect(addr1).Deposit({ value: ethers.parseEther("3") });
+    
+    // Verify addr1 has sufficient balance
+    expect(await bankSafe.balances(addr1.address)).to.equal(ethers.parseEther("3"));
+    
+    // Collect funds - this should succeed as balance >= MinSum (1 ETH) and amount (2 ETH)
+    const collectAmount = ethers.parseEther("2");
+    await bankSafe.connect(addr1).Collect(collectAmount);
+    
+    // Check that the LogFile's History array has the "Collect" message
+    // In original, the push would happen; in mutant, it won't
+    const historyLength = await logFile.History.length();
+    
+    // If mutant is active, history length will be 0 (no "Collect" message added)
+    // If original, history length will be >= 1
+    expect(historyLength).to.be.at.least(1);
+    
+    // Verify the last message in history is the Collect message
+    const lastMessage = await logFile.History(historyLength - 1n);
+    expect(lastMessage.Sender).to.equal(addr1.address);
+    expect(lastMessage.Val).to.equal(collectAmount);
+    expect(lastMessage.Data).to.equal("Collect");
+  });
+});
+```

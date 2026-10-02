@@ -1,0 +1,112 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("VaultAdapter mutant med2b2946 test", function () {
+  it("should kill mutant by triggering exponentiation overflow in else branch of _applySlopes", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy VaultAdapter (no constructor arguments)
+    const Factory = await ethers.getContractFactory("VaultAdapter");
+    const vaultAdapter = await Factory.deploy();
+    await vaultAdapter.waitForDeployment();
+    
+    // Deploy a mock vault contract that implements IVault interface
+    const MockVaultFactory = await ethers.getContractFactory("MockVault");
+    const mockVault = await MockVaultFactory.deploy();
+    await mockVault.waitForDeployment();
+    
+    // Initialize the vault adapter with access control
+    // Deploy a simple access control contract
+    const AccessControlFactory = await ethers.getContractFactory("SimpleAccessControl");
+    const accessControl = await AccessControlFactory.deploy();
+    await accessControl.waitForDeployment();
+    
+    await vaultAdapter.initialize(await accessControl.getAddress());
+    
+    // Grant access to owner for setSlopes and setLimits
+    const setSlopesSelector = ethers.id("setSlopes(address,(uint256,uint256,uint256))").substring(0, 10);
+    const setLimitsSelector = ethers.id("setLimits(uint256,uint256,uint256)").substring(0, 10);
+    await accessControl.grantAccess(setSlopesSelector, await vaultAdapter.getAddress(), owner.address);
+    await accessControl.grantAccess(setLimitsSelector, await vaultAdapter.getAddress(), owner.address);
+    
+    // Set slopes with slope0 = 2 (greater than 1 to trigger exponentiation difference)
+    const slopes = {
+      kink: ethers.parseEther("0.5"), // 50% utilization kink
+      slope0: 2, // slope0 = 2 (small value > 1)
+      slope1: ethers.parseEther("1")
+    };
+    
+    await vaultAdapter.connect(owner).setSlopes(await mockVault.getAddress(), slopes);
+    
+    // Set limits to allow multiplier changes
+    await vaultAdapter.connect(owner).setLimits(
+      ethers.parseEther("10"), // maxMultiplier
+      ethers.parseEther("0.1"), // minMultiplier
+      ethers.parseEther("0.01") // rate
+    );
+    
+    // Setup vault to return utilization below kink (e.g., 10% = 0.1 ether)
+    await mockVault.setUtilization(ethers.parseEther("0.1"));
+    await mockVault.setCurrentUtilizationIndex(1000);
+    
+    // First call to rate() to initialize utilizationData
+    await vaultAdapter.connect(owner).rate(await mockVault.getAddress(), await mockVault.getAddress());
+    
+    // Wait some time so elapsed > 0
+    await ethers.provider.send("evm_increaseTime", [3600]); // 1 hour
+    await ethers.provider.send("evm_mine", []);
+    
+    // Set vault utilization still below kink for second call
+    await mockVault.setUtilization(ethers.parseEther("0.15")); // 15% utilization
+    await mockVault.setCurrentUtilizationIndex(2000);
+    
+    // This call should trigger the else branch with exponentiation in mutant
+    // Original: slope0 * utilization = 2 * 0.15e18 = 0.3e18
+    // Mutant: slope0 ** utilization = 2 ** 0.15e18 = astronomically large (overflow)
+    await expect(
+      vaultAdapter.connect(owner).rate(await mockVault.getAddress(), await mockVault.getAddress())
+    ).to.be.reverted; // Mutant should revert due to overflow, original succeeds
+  });
+});
+
+// Mock contracts needed for testing
+contract MockVault {
+  uint256 private _utilization;
+  uint256 private _currentUtilizationIndex;
+  
+  function utilization(address) external view returns (uint256) {
+    return _utilization;
+  }
+  
+  function currentUtilizationIndex(address) external view returns (uint256) {
+    return _currentUtilizationIndex;
+  }
+  
+  function setUtilization(uint256 val) external {
+    _utilization = val;
+  }
+  
+  function setCurrentUtilizationIndex(uint256 val) external {
+    _currentUtilizationIndex = val;
+  }
+}
+
+contract SimpleAccessControl {
+  mapping(bytes4 => mapping(address => mapping(address => bool))) public access;
+  address public admin;
+  
+  constructor() {
+    admin = msg.sender;
+  }
+  
+  function grantAccess(bytes4 selector, address contractAddr, address user) external {
+    require(msg.sender == admin, "Not admin");
+    access[selector][contractAddr][user] = true;
+  }
+  
+  function checkAccess(bytes4 selector, address contractAddr, address caller) external view returns (bool) {
+    return access[selector][contractAddr][caller] || caller == admin;
+  }
+  
+  function initialize(address) external {}
+}

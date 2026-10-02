@@ -1,0 +1,68 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m0c4ffa1e of Roulette.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Roulette.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Roulette:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Roulette reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Roulette by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Roulette"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant m0c4ffa1e - block number check removed", function () {
+  it("should not send balance when block.number % 15 != 0 (original behavior), but mutant sends it anyway", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy contract with initial funding
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy({ value: ethers.parseEther("100") });
+    await instance.waitForDeployment();
+    
+    // Record balances before the call
+    const attackerBalanceBefore = await ethers.provider.getBalance(attacker.address);
+    const contractBalanceBefore = await ethers.provider.getBalance(instance.target);
+    
+    // Mine blocks until we are in a block where block.number % 15 != 0
+    let currentBlock = await ethers.provider.getBlockNumber();
+    while (currentBlock % 15 === 0) {
+      await ethers.provider.send("evm_mine", []);
+      currentBlock = await ethers.provider.getBlockNumber();
+    }
+    
+    // Ensure we have a block timestamp greater than pastBlockTime
+    await ethers.provider.send("evm_setNextBlockTimestamp", [Math.floor(Date.now() / 1000) + 100]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // Call fallback with exactly 10 ether from attacker
+    const tx = await attacker.sendTransaction({
+      to: instance.target,
+      value: ethers.parseEther("10")
+    });
+    await tx.wait();
+    
+    // Check balances after the call
+    const attackerBalanceAfter = await ethers.provider.getBalance(attacker.address);
+    const contractBalanceAfter = await ethers.provider.getBalance(instance.target);
+    
+    // Original behavior: no transfer should occur, attacker loses 10 ether
+    // Mutant behavior: transfer occurs, attacker gains contract balance
+    // Since block.number % 15 != 0, the original would NOT transfer, so attacker balance should decrease
+    // The mutant WOULD transfer, so attacker balance should increase
+    
+    // This test kills the mutant because the mutant will transfer funds when it shouldn't
+    expect(attackerBalanceAfter).to.be.lessThan(attackerBalanceBefore);
+    expect(contractBalanceAfter).to.be.greaterThan(0); // Contract should still have funds (original behavior)
+  });
+});
+```

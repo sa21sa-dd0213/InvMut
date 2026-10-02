@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract SimpleWallet:
+        Contract Code: pragma solidity ^0.8.0; contract SimpleWallet { address public owner = msg.sender; uint public depositsCount; modifier onlyOwner { require(msg.sender == owner); _; } receive() external payable { require(((depositsCount + 1) >= depositsCount)); depositsCount++; } function withdrawAll() public onlyOwner { withdraw(address(this).balance); } function withdraw(uint _value) public onlyOwner { payable(msg.sender).transfer(_value); } function sendMoney(address _target, uint _value, bytes memory _data) public onlyOwner { _target.call{value: _value}(_data); } }
+
+    Consider the following mutant of SimpleWallet:
+        Mutant m6bb5652f of function receive replaces + with -
+        Mutant Diff: ---|         require(((depositsCount + 1) >= depositsCount)); +++|         require(((depositsCount - 1) >= depositsCount));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the require condition in the `receive()` function from `(depositsCount + 1) >= depositsCount` to `(depositsCount - 1) >= depositsCount`. In the original, the condition always holds true (since adding 1 to any non-negative integer is always greater or equal). In the mutant, the condition `(depositsCount - 1) >= depositsCount` is false for any value of `depositsCount` (since subtracting 1 from a number always yields a smaller number). Therefore, the mutant will always revert on the first call to `receive()`, even when `depositsCount` is 0.
+
+**Hypothesis:** A test case that sends ether to the contract (triggering the `receive()` function) from any address and expects the transaction to succeed and `depositsCount` to increment should kill the mutant, because the mutant’s require condition will always cause a revert.

@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0008",
+ "property_summary": "Call sendMoney with a value that causes a failed external call; the reference reverts and keeps depositsCount unchanged, while the bug does not revert, so depositsCount is incremented.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "Remove the revert check, so a failed call does not revert the transaction.",
+ "mutated_unit_code": "function sendMoney(address _target, uint _value)  public onlyOwner {\n{ (bool _s, bytes memory _d) = _target.call{value: _value}(\"\"); _d; } \n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n    function testRegression_property() public {\n        Reverter reverter = new Reverter();\n        address target = address(reverter);\n        uint value = 1 ether;\n\n        vm.deal(address(this), value);\n        vm.prank(address(this));\n        vm.deal(address(c), value);\n\n        uint countBefore = c.depositsCount();\n\n        bool ok;\n        try c.sendMoney(target, value) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok == false, \"sendMoney should revert on failed call\");\n        assertTrue(c.depositsCount() == countBefore, \"depositsCount unchanged if revert\");\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"fail\");\n    }\n}\n"
+}

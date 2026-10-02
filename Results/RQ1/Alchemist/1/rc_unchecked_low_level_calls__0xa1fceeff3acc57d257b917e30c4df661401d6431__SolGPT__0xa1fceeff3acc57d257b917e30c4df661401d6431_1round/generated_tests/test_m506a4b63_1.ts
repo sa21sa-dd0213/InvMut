@@ -1,0 +1,39 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("AirDropContract mutant test - loop condition change (i > tos.length)", function () {
+  it("should revert or fail when attempting to transfer tokens with valid recipients because loop never executes", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy AirDropContract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("AirDropContract");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Deploy a simple ERC20 token to test with (needed for transferFrom)
+    const TokenFactory = await ethers.getContractFactory("contracts/ERC20.sol:ERC20"); // Assume standard ERC20 exists
+    const token = await TokenFactory.deploy("Test", "TST", 18);
+    await token.waitForDeployment();
+    
+    // Mint tokens to owner and approve contract to transfer them
+    await token.mint(owner.address, ethers.parseEther("1000"));
+    await token.approve(await instance.getAddress(), ethers.parseEther("1000"));
+    
+    // Prepare arrays for airdrop
+    const recipients = [addr1.address, addr2.address];
+    const amounts = [ethers.parseEther("10"), ethers.parseEther("20")];
+    
+    // On the original contract, this should succeed and transfer tokens
+    // On the mutant (i > tos.length), the loop never runs, so no transfers occur
+    const tx = await instance.transfer(await token.getAddress(), recipients, amounts);
+    await tx.wait();
+    
+    // Check balances - on mutant they remain unchanged because loop didn't execute
+    const balance1 = await token.balanceOf(addr1.address);
+    const balance2 = await token.balanceOf(addr2.address);
+    
+    // The mutant will leave balances at 0, while original would have transferred tokens
+    expect(balance1).to.equal(0);
+    expect(balance2).to.equal(0);
+  });
+});

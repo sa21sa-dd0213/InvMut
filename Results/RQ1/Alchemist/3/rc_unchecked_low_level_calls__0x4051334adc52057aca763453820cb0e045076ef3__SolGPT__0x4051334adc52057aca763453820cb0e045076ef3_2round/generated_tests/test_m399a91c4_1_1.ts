@@ -1,0 +1,37 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airdrop reference (ethers v6; deploy may require constructor arguments)", function () {
+  it("should return true when transfer succeeds - detects mutant that removes return true", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy a simple ERC20 token for testing
+    const TokenFactory = await ethers.getContractFactory("ERC20Mock");
+    const token = await TokenFactory.deploy("Test", "TST", 18);
+    await token.waitForDeployment();
+    
+    // Mint tokens to owner and approve the airdrop contract to spend them
+    const mintAmount = ethers.parseEther("1000");
+    await token.mint(owner.address, mintAmount);
+    await token.approve(owner.address, mintAmount);
+    
+    // Deploy the airdrop contract (no constructor arguments needed)
+    const AirdropFactory = await ethers.getContractFactory("airdrop");
+    const airdrop = await AirdropFactory.deploy();
+    await airdrop.waitForDeployment();
+    
+    // Transfer tokens to owner first so transferFrom works
+    await token.transfer(owner.address, mintAmount);
+    
+    // Create recipients array
+    const recipients = [addr1.address, addr2.address];
+    const transferAmount = ethers.parseEther("10");
+    
+    // Call transfer function - should return true on original, false on mutant
+    const tx = await airdrop.transfer(owner.address, token.target, recipients, transferAmount);
+    await tx.wait();
+    
+    // This assertion will pass on original (returns true) but fail on mutant (returns false)
+    expect(await airdrop.transfer(owner.address, token.target, recipients, transferAmount)).to.be.true;
+  });
+});

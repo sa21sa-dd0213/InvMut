@@ -1,0 +1,67 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Roulette mutant detection - mda340d38", function () {   it("should detect mutant that always pays out (if(true) instead of block.number % 15 == 0)", async function () {     const [owner, player] = await ethers.getSigners();          // Deploy the contract (constructor is payable but takes no arguments)     const Factory = await ethers.getContractFactory("Roulette");     const instance = await Factory.deploy();     await instance.waitForDeployment();     const contractAddress = await instance.getAddress();      // Fund the contract with initial balance for gas purposes     await owner.sendTransaction({       to: contractAddress,       value: ethers.parseEther("10")     });      // Record balance before first call     const balanceBeforeFirstCall = await ethers.provider.getBalance(contractAddress);      // First call: send 10 ether (this should succeed in both original and mutant)     const tx1 = await player.sendTransaction({       to: contractAddress,       value: ethers.parseEther("10")     });     await tx1.wait();      // Record balance after first call     const balanceAfterFirstCall = await ethers.provider.getBalance(contractAddress);      // Second call: send another 10 ether     const tx2 = await player.sendTransaction({       to: contractAddress,       value: ethers.parseEther("10")     });     await tx2.wait();      // Get final balance     const finalBalance = await ethers.provider.getBalance(contractAddress);      // In the original contract, the second call would NOT trigger payout (since block.number hasn't advanced 15 blocks)     // So the balance should be > 0 (initial 10 + 10 + 10 - first payout if block condition met)     // In the mutant, the second call ALSO triggers payout, emptying the contract     // So finalBalance should be 0 in the mutant          // To kill the mutant, we assert that the balance is NOT zero after two consecutive calls     expect(finalBalance).to.not.equal(0);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant detection - mda340d38", function () {
+  it("should detect mutant that always pays out (if(true) instead of block.number % 15 == 0)", async function () {
+    const [owner, player] = await ethers.getSigners();
+
+    // Deploy the contract (constructor is payable but takes no arguments)
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    const contractAddress = await instance.getAddress();
+
+    // Fund the contract with initial balance for gas purposes
+    await owner.sendTransaction({
+      to: contractAddress,
+      value: ethers.parseEther("10")
+    });
+
+    // Record balance before first call
+    const balanceBeforeFirstCall = await ethers.provider.getBalance(contractAddress);
+
+    // First call: send 10 ether (this should succeed in both original and mutant)
+    const tx1 = await player.sendTransaction({
+      to: contractAddress,
+      value: ethers.parseEther("10")
+    });
+    await tx1.wait();
+
+    // Record balance after first call
+    const balanceAfterFirstCall = await ethers.provider.getBalance(contractAddress);
+
+    // Second call: send another 10 ether
+    const tx2 = await player.sendTransaction({
+      to: contractAddress,
+      value: ethers.parseEther("10")
+    });
+    await tx2.wait();
+
+    // Get final balance
+    const finalBalance = await ethers.provider.getBalance(contractAddress);
+
+    // In the original contract, the second call would NOT trigger payout (since block.number hasn't advanced 15 blocks)
+    // So the balance should be > 0 (initial 10 + 10 + 10 - first payout if block condition met)
+    // In the mutant, the second call ALSO triggers payout, emptying the contract
+    // So finalBalance should be 0 in the mutant
+
+    // To kill the mutant, we assert that the balance is NOT zero after two consecutive calls
+    expect(finalBalance).to.not.equal(0);
+  });
+});
+```

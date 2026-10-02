@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0009",
+ "property_summary": "After DrugDealer() sets ceoAddress to caller, a first-time caller of collectDrugs(ref) with a non-zero ref gets its referral credited in reference but not in buggy (referral set to address(0)).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Change the referral address assignment to prevent self-referral by setting referrals[msg.sender] = address(0) instead of skipping assignment.",
+ "mutated_unit_code": "    function collectDrugs(address ref) public{\n        require(initialized);\n        if(referrals[msg.sender] == address(0) && referrals[msg.sender]!=msg.sender){\n            referrals[msg.sender]=address(0);\n        }\n        uint256 drugsUsed=getMyDrugs();\n        uint256 newKilo=SafeMath.div(drugsUsed,DRUGS_TO_PRODUCE_1KILO);\n        Kilos[msg.sender]=SafeMath.add(Kilos[msg.sender],newKilo);\n        claimedDrugs[msg.sender]=0;\n        lastCollect[msg.sender]=block.timestamp;\n\n        claimedDrugs[referrals[msg.sender]]=SafeMath.add(claimedDrugs[referrals[msg.sender]],SafeMath.div(drugsUsed,5));\n\n        marketDrugs=SafeMath.add(marketDrugs,SafeMath.div(drugsUsed,10));\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherCartel} from \"../src/EtherCartel.sol\";\n\ncontract InvMutTest is Test {\n    EtherCartel c;\n    function setUp() public { c = new EtherCartel(); }\n    function testRegression_property() public {\n        vm.deal(address(this), 1 ether);\n        c.seedMarket{value: 1 ether}(1000);\n\n        address user1 = address(0x100);\n        address user2 = address(0x200);\n        vm.deal(user1, 1 ether);\n        vm.deal(user2, 1 ether);\n\n        vm.prank(user1);\n        c.getFreeKilo();\n        vm.prank(user2);\n        c.getFreeKilo();\n\n        vm.prank(user1);\n        c.buyDrugs{value: 0.1 ether}();\n\n        vm.warp(block.timestamp + 100000);\n\n        vm.prank(user1);\n        c.collectDrugs(user2);\n\n        bool refGotReward = c.claimedDrugs(user2) > 0;\n\n        assertTrue(refGotReward);\n    }\n}"
+}

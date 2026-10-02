@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0007",
+ "property_summary": "After two deposits by different actors and one withdrawal by the first actor, the reference contract reverts the withdrawal when the first call fails, leaving the second actor's balance unchanged, while the buggy contract continues and sets the first actor's balance to zero despite the failed transfer, losing funds.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Replace the revert() with require(!_s), so that a failed call does not revert the transaction but continues execution.",
+ "mutated_unit_code": "     function withdrawBalance() public{\n\n         uint256 tmp__1 = userBalance[msg.sender];\n         userBalance[msg.sender] = 0;\n         { (bool _s, bytes memory _d) = msg.sender.call{value: tmp__1}(\"\"); _d; require(!_s); }\n     }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n    function testRegression_property() public {\n        address alice = address(0x1);\n        address bob = address(0x2);\n\n        vm.deal(alice, 10 ether);\n        vm.deal(bob, 10 ether);\n\n        vm.prank(alice);\n        c.addToBalance{value: 1 ether}();\n\n        vm.prank(bob);\n        c.addToBalance{value: 2 ether}();\n\n        vm.prank(alice);\n        c.addToBalance{value: 1 ether}();\n\n        bool ok;\n        vm.prank(alice);\n        try c.withdrawBalance() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(c.getBalance(alice) == 0, \"Alice balance should be 0 in reference\");\n    }\n}"
+}

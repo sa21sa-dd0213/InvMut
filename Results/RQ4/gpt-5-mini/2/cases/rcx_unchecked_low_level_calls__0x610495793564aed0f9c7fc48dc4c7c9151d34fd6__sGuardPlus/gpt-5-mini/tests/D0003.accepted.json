@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0003",
+ "property_summary": "For any target that accepts a low-level call (i.e., its fallback/receive does not revert), the reference contract's sendMoney succeeds (does not revert) when invoked with sufficient value, whereas the mutant inverts the check and will revert for such targets; thus the reference never reverts for accepting callees while the mutant does for some inputs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Invert the call result requirement to require call failed (require __sent_result100 == false), causing sendMoney to revert on success and proceed only when the call returns false, changing observable behavior.",
+ "mutated_unit_code": "function sendMoney (address    _target,uint    _value, bytes memory _data) public onlyOwner  {\n(bool __sent_result100, ) = _target.call{value: _value}(_data);\nrequire(!__sent_result100);\n}\n",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n\n    function testFuzz_property(uint256 amount, bytes calldata data) public {\n        amount = bound(amount, 0, 1 ether);\n\n        AcceptingCallee callee = new AcceptingCallee();\n\n        vm.deal(address(c), amount);\n\n        bool ok;\n        try c.sendMoney(address(callee), amount, data) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok);\n    }\n}\n\ncontract AcceptingCallee {\n    receive() external payable {}\n    fallback() external payable {}\n}\n"
+}

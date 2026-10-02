@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tbaca0170",
+ "property_summary": "For any caller, after settle() transfers ether, the caller's balance only increases by a non-zero amount if their stored guess matched the blockhash; the buggy version transfers even when the stored guess differs, violating exact-match requirement.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Remove the condition guesses[msg.sender].guess == answer so any non-zero blockhash triggers the transfer.",
+ "mutated_unit_code": "function settle() public {\n        require(guesses[msg.sender].block != 0);\n        require(block.number > guesses[msg.sender].block);\n\n        bytes32 answer = blockhash(guesses[msg.sender].block);\n\n        guesses[msg.sender].block = 0;\n        if (answer != 0) {\n            payable(msg.sender).transfer(2 ether);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {PredictTheBlockHashChallenge} from \"../src/PredictTheBlockHashChallenge.sol\";\n\ncontract InvMutTest is Test {\n    PredictTheBlockHashChallenge c;\n    function setUp() public {\n        vm.deal(address(this), 2 ether);\n        c = new PredictTheBlockHashChallenge{value: 1 ether}();\n    }\n\n    function testFuzz_property(bytes32 hash, uint256 blockOffset) public {\n        blockOffset = bound(blockOffset, 2, 255);\n        address actor = address(0x1234);\n        vm.deal(actor, 2 ether);\n\n        vm.startPrank(actor);\n        c.lockInGuess{value: 1 ether}(hash);\n        vm.stopPrank();\n\n        uint256 targetBlock = block.number + blockOffset;\n        vm.roll(targetBlock);\n\n        vm.assume(targetBlock > block.number - 1);\n\n        uint256 balanceBefore = actor.balance;\n        vm.prank(actor);\n        c.settle();\n        uint256 balanceAfter = actor.balance;\n\n        bool paymentReceived = (balanceAfter > balanceBefore);\n        bool guessMatchesBlockhash = (blockhash(block.number - blockOffset + 1) == hash);\n\n        assertTrue(!paymentReceived || guessMatchesBlockhash);\n    }\n}"
+}

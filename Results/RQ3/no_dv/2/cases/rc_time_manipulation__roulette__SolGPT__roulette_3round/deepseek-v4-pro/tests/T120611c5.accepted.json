@@ -1,0 +1,12 @@
+{
+ "difference_id": "T120611c5",
+ "property_summary": "For any call to the contract, the update of pastBlockTime must be accompanied by a deposit of exactly 10 ether; the mutant allows pastBlockTime to advance with any msg.value, so after a call with value != 10 ether, pastBlockTime can be greater than block.timestamp while the contract balance is exactly that non-10-ether amount.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the require(msg.value == 10 ether) statement.",
+ "mutated_unit_code": "fallback() external payable {\n    require(block.timestamp > pastBlockTime);\n\n    pastBlockTime = block.timestamp + 1;\n\n    if(block.number % 15 == 0) {\n        payable(msg.sender).transfer(address(this).balance);\n    }\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 amount, uint256 warpTime, uint256 blockNumDelay) public {\n        vm.assume(amount > 0);\n        vm.assume(warpTime > 0);\n        vm.assume(blockNumDelay >= 0);\n\n        vm.warp(warpTime);\n        vm.roll(block.number + blockNumDelay);\n\n        address sender = address(0x1234);\n        vm.deal(sender, amount);\n        vm.prank(sender);\n        (bool success,) = address(c).call{value: amount}(\"\");\n        if (success) {\n            assertTrue(c.pastBlockTime() == block.timestamp + 1 ? amount == 10 ether : true);\n        }\n    }\n}"
+}

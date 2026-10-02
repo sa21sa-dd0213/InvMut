@@ -1,0 +1,83 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("B mutant ma4a74363 detection", function () {
+  it("should detect when target is changed to address(this) by checking owner balance after external call", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the contract (no constructor arguments needed for B)
+    const Factory = await ethers.getContractFactory("B");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Deploy a helper contract that will receive funds at the external address
+    // This simulates the original behavior where funds are sent to 0xC8A...
+    const ReceiverFactory = await ethers.getContractFactory("contract Receiver { fallback() external payable {} function getBalance() public view returns (uint) { return address(this).balance; } }");
+    const receiver = await ReceiverFactory.deploy();
+    await receiver.waitForDeployment();
+    
+    // Get the target address that would be used in original (the hardcoded one)
+    // Since we can't change the contract code, we'll test the mutant behavior
+    // by deploying a version with address(this) target
+    
+    // Actually, we need to deploy the mutant version to test it
+    // Let's deploy a modified version that uses address(this)
+    const MutantFactory = await ethers.getContractFactory("contract BMutant { address public owner = payable(msg.sender); function go() public payable { address target = address(this); { (bool _s, bytes memory _d) = target.call{value: msg.value}(\"\"); _d; if (!_s) { revert(); } } payable(owner).transfer(address(this).balance); } fallback() external payable { } }");
+    const mutant = await MutantFactory.deploy();
+    await mutant.waitForDeployment();
+    
+    // Get initial balances
+    const initialOwnerBalance = await ethers.provider.getBalance(owner.address);
+    const sendAmount = ethers.parseEther("1.0");
+    
+    // Send ether to the mutant
+    const tx = await attacker.sendTransaction({
+      to: await mutant.getAddress(),
+      value: sendAmount,
+      data: "0x" // This calls fallback
+    });
+    await tx.wait();
+    
+    // Now call go() - this should transfer all contract balance to owner
+    // In mutant, it does a self-call first which doesn't reduce balance
+    const goTx = await instance.connect(owner).go({ value: 0 });
+    await goTx.wait();
+    
+    // Check that owner received the full amount (mutant behavior)
+    const finalOwnerBalance = await ethers.provider.getBalance(owner.address);
+    const receivedAmount = finalOwnerBalance - initialOwnerBalance;
+    
+    // In original, some ether would be sent to external address first
+    // In mutant, all ether goes to owner
+    // The test should fail if the behavior matches original (where owner gets less)
+    // So we assert that owner got the full sendAmount (mutant passes this)
+    // But we want to kill the mutant, so we assert the opposite
+    expect(receivedAmount).to.be.lessThan(sendAmount);
+    
+    // Actually, let's rethink - we need to test the deployed contract
+    // Let's deploy the actual mutant contract and test its behavior
+    const actualMutant = await Factory.deploy();
+    await actualMutant.waitForDeployment();
+    
+    // Send ether to trigger the self-call behavior
+    const sendTx = await attacker.sendTransaction({
+      to: await actualMutant.getAddress(),
+      value: sendAmount
+    });
+    await sendTx.wait();
+    
+    // Call go() on the mutant
+    const goTx2 = await actualMutant.connect(owner).go({ value: 0 });
+    await goTx2.wait();
+    
+    // In the mutant, since target = address(this), the self-call succeeds
+    // but doesn't consume the ether, so owner gets the full amount
+    const ownerBalanceAfter = await ethers.provider.getBalance(owner.address);
+    const ownerReceived = ownerBalanceAfter - initialOwnerBalance;
+    
+    // The test should PASS on original (owner gets less because external call consumes funds)
+    // and FAIL on mutant (owner gets full amount)
+    // So we assert that owner received LESS than the full amount
+    expect(ownerReceived).to.be.lessThan(sendAmount);
+  });
+});

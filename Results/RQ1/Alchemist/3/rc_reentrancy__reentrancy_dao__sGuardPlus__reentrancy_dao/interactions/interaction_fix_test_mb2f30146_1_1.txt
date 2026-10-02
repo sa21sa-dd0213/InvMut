@@ -1,0 +1,49 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("ReentrancyDAO mutant test", function () {   it("should detect that mutant loses 1 wei per deposit", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("ReentrancyDAO");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const depositAmount = ethers.parseEther("1");     const initialBalance = await ethers.provider.getBalance(addr1.address);      // Deposit exactly 1 ether from addr1     await instance.connect(addr1).deposit({ value: depositAmount });      // Withdraw all     const tx = await instance.connect(addr1).withdrawAll();     await tx.wait();      const finalBalance = await ethers.provider.getBalance(addr1.address);     const gasCost = tx.gasPrice * (await ethers.provider.getTransactionReceipt(tx.hash)).gasUsed;      // On the original contract, addr1 should get back exactly 1 ether minus gas     // On the mutant, addr1 gets back 1 wei less, so final balance will be 1 wei lower     const expectedBalance = initialBalance + depositAmount - gasCost;     expect(finalBalance).to.equal(expectedBalance);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuardPlus { constructor() { __lock_modifier0_lock = false; } bool private __lock_modifier0_lock; modifier __lock_modifier0() { require(!__lock_modifier0_lock); __lock_modifier0_lock = true; _; __lock_modifier0_lock = false; } } contract ReentrancyDAO is sGuardPlus { mapping (address  => uint )    credit; uint     balance; function withdrawAll () public __lock_modifier0  { uint     oCredit = credit[msg.sender]; if (oCredit>0) { balance-=oCredit; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); credit[msg.sender]=0; } } function deposit () public payable { credit[msg.sender]+=msg.value; balance+=msg.value; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ReentrancyDAO mutant test", function () {
+  it("should detect that mutant loses 1 wei per deposit", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("ReentrancyDAO");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const depositAmount = ethers.parseEther("1");
+    const initialBalance = await ethers.provider.getBalance(addr1.address);
+
+    // Deposit exactly 1 ether from addr1
+    await instance.connect(addr1).deposit({ value: depositAmount });
+
+    // Withdraw all
+    const tx = await instance.connect(addr1).withdrawAll();
+    const receipt = await tx.wait();
+    
+    // Fix: use bigint for gasPrice and gasUsed multiplication
+    const gasPrice = tx.gasPrice ?? receipt?.gasPrice ?? 0n;
+    const gasUsed = receipt?.gasUsed ?? 0n;
+    const gasCost = gasPrice * gasUsed;
+
+    const finalBalance = await ethers.provider.getBalance(addr1.address);
+
+    // On the original contract, addr1 should get back exactly 1 ether minus gas
+    // On the mutant, addr1 gets back 1 wei less, so final balance will be 1 wei lower
+    const expectedBalance = initialBalance + depositAmount - gasCost;
+    expect(finalBalance).to.equal(expectedBalance);
+  });
+});
+```

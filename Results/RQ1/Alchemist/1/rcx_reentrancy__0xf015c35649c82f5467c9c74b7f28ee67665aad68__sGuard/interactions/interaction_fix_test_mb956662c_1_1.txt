@@ -1,0 +1,72 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MY_BANK mutant mb956662c test", function () {   it("should kill mutant by proving Collect does not execute when condition is replaced with false", async function () {     const [owner, user] = await ethers.getSigners();          // Deploy Log contract first (required constructor argument for MY_BANK)     const LogFactory = await ethers.getContractFactory("Log");     const logInstance = await LogFactory.deploy();     await logInstance.waitForDeployment();          // Deploy MY_BANK with Log address     const BankFactory = await ethers.getContractFactory("MY_BANK");     const bankInstance = await BankFactory.deploy(await logInstance.getAddress());     await bankInstance.waitForDeployment();          // Get current block timestamp     const blockNumBefore = await ethers.provider.getBlockNumber();     const blockBefore = await ethers.provider.getBlock(blockNumBefore);     const currentTime = blockBefore.timestamp;          // Deposit 2 ether from user with unlock time set to current time (will be set to block.timestamp since not > current)     const depositAmount = ethers.parseEther("2");     await bankInstance.connect(user).Put(currentTime, { value: depositAmount });          // Verify balance is updated     let userAccount = await bankInstance.Acc(user.address);     expect(userAccount.balance).to.equal(depositAmount);          // Wait for next block so timestamp > unlockTime     await ethers.provider.send("evm_increaseTime", [1]);     await ethers.provider.send("evm_mine", []);          // Get updated user balance before Collect     userAccount = await bankInstance.Acc(user.address);     const balanceBefore = userAccount.balance;          // Try to Collect 1 ether (satisfies all original conditions: balance >= 1 ether, amount <= balance, time > unlockTime)     const collectAmount = ethers.parseEther("1");     const tx = await bankInstance.connect(user).Collect(collectAmount);     const receipt = await tx.wait();          // Check balance after Collect - in original it should decrease, in mutant it should stay the same     userAccount = await bankInstance.Acc(user.address);          // The mutant's condition is always false, so balance should remain unchanged     // This assertion will pass on mutant (detecting it) and fail on original (which would reduce balance)     expect(userAccount.balance).to.equal(balanceBefore);          // Additional check: verify no ether was transferred (user balance unchanged)     const userBalanceAfter = await ethers.provider.getBalance(user.address);     // Since no transfer happened, gas costs were paid but no value was received     // This confirms the Collect function did nothing   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } } contract MY_BANK is sGuard { function Put(uint _unlockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); LogFile.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant mb956662c test", function () {
+  it("should kill mutant by proving Collect does not execute when condition is replaced with false", async function () {
+    const [owner, user] = await ethers.getSigners();
+
+    // Deploy Log contract first (required constructor argument for MY_BANK)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+
+    // Deploy MY_BANK with Log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bankInstance = await BankFactory.deploy(await logInstance.getAddress());
+    await bankInstance.waitForDeployment();
+
+    // Get current block timestamp
+    const blockNumBefore = await ethers.provider.getBlockNumber();
+    const blockBefore = await ethers.provider.getBlock(blockNumBefore);
+    const currentTime = blockBefore!.timestamp;
+
+    // Deposit 2 ether from user with unlock time set to current time (will be set to block.timestamp since not > current)
+    const depositAmount = ethers.parseEther("2");
+    await bankInstance.connect(user).Put(currentTime, { value: depositAmount });
+
+    // Verify balance is updated
+    let userAccount = await bankInstance.Acc(user.address);
+    expect(userAccount.balance).to.equal(depositAmount);
+
+    // Wait for next block so timestamp > unlockTime
+    await ethers.provider.send("evm_increaseTime", [1]);
+    await ethers.provider.send("evm_mine", []);
+
+    // Get updated user balance before Collect
+    userAccount = await bankInstance.Acc(user.address);
+    const balanceBefore = userAccount.balance;
+
+    // Try to Collect 1 ether (satisfies all original conditions: balance >= 1 ether, amount <= balance, time > unlockTime)
+    const collectAmount = ethers.parseEther("1");
+    const tx = await bankInstance.connect(user).Collect(collectAmount);
+    await tx.wait();
+
+    // Check balance after Collect - in original it should decrease, in mutant it should stay the same
+    userAccount = await bankInstance.Acc(user.address);
+
+    // The mutant's condition is always false, so balance should remain unchanged
+    // This assertion will pass on mutant (detecting it) and fail on original (which would reduce balance)
+    expect(userAccount.balance).to.equal(balanceBefore);
+
+    // Additional check: verify no ether was transferred (user balance unchanged)
+    const userBalanceAfter = await ethers.provider.getBalance(user.address);
+    // Since no transfer happened, gas costs were paid but no value was received
+    // This confirms the Collect function did nothing
+  });
+});
+```

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T88497d14",
+ "property_summary": "After a successful withdrawAll call by any user who previously deposited, the contract's balance decreases by exactly the withdrawn amount (so address(c).balance == previous_balance - amount); the mutant that removes the external call updates internal state but fails to transfer funds, so address(c).balance does not decrease for some inputs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Remove the external call, so funds are not sent though internal state is updated.",
+ "mutated_unit_code": "function withdrawAll() public {\n        uint oCredit = credit[msg.sender];\n        if (oCredit > 0) {\n            balance -= oCredit;\n            credit[msg.sender] = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ReentrancyDAO} from \"../src/ReentrancyDAO.sol\";\n\ncontract InvMutTest is Test {\n    ReentrancyDAO c;\n    function setUp() public { c = new ReentrancyDAO(); }\n\n    function testFuzz_property(address depositor, uint256 amount) public {\n        vm.assume(depositor != address(0));\n        uint256 amt = bound(amount, 1 wei, 1 ether);\n\n        vm.deal(depositor, amt);\n        vm.prank(depositor);\n        c.deposit{value: amt}();\n\n        uint256 before = address(c).balance;\n        vm.prank(depositor);\n        c.withdrawAll();\n\n        assertTrue(address(c).balance == before - amt);\n    }\n}\n"
+}

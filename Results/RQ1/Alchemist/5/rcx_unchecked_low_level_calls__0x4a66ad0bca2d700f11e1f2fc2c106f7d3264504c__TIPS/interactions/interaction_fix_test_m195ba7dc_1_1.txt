@@ -1,0 +1,81 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("EBU mutant m195ba7dc - keccak256 replaced with sha256", function () {   it("should detect mutant by verifying transfer succeeds with correct function selector", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy the EBU contract (no constructor arguments needed as per contract)     const EBUFactory = await ethers.getContractFactory("EBU");     const ebu = await EBUFactory.deploy();     await ebu.waitForDeployment();          // Get the caddress from the contract     const caddress = await ebu.caddress();          // Create a simple token contract that implements transferFrom to verify the call     const TestTokenFactory = await ethers.getContractFactory("SimpleToken");     const token = await TestTokenFactory.deploy("Test", "TST", 18);     await token.waitForDeployment();          // Set the EBU contract's caddress to our test token     // Note: We can't change caddress directly as it's a public variable,      // but we can deploy a new EBU that uses our token's address          // Alternative: Deploy a modified version or use the existing setup     // Since caddress is hardcoded, we'll test the actual behavior          // For this test, we'll deploy the EBU and check that the transferFrom call     // would fail because sha256 produces a different selector than keccak256          // First, let's check the original selector     const originalSelector = ethers.id("transferFrom(address,address,uint256)").slice(0, 10);     const mutantSelector = ethers.sha256(Buffer.from("transferFrom(address,address,uint256)")).slice(0, 10);          // They should be different     expect(originalSelector).to.not.equal(mutantSelector);          // Now test the actual transfer function     const from = await ebu.from();     const tos = [addr1.address];     const values = [1]; // 1 token          // This should revert because the sha256 selector doesn't match any function     await expect(       ebu.connect(owner).transfer(tos, values)     ).to.be.reverted;   }); });  // Helper contract to test the call contract SimpleToken {     string public name;     string public symbol;     uint8 public decimals;          constructor(string memory _name, string memory _symbol, uint8 _decimals) {         name = _name;         symbol = _symbol;         decimals = _decimals;     }          function transferFrom(address from, address to, uint256 amount) external returns (bool) {         return true;     } }
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EBU { address public from = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9; address public caddress = 0x1f844685f7Bf86eFcc0e74D8642c54A257111923; function transfer( address[] memory _tos, uint[] memory v)  public returns (bool) { require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9); require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v[i] * 1000000000000000000)); _d; if (! _s) { revert();} } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant m195ba7dc - keccak256 replaced with sha256", function () {
+  it("should detect mutant by verifying transfer succeeds with correct function selector", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy the EBU contract (no constructor arguments needed as per contract)
+    const EBUFactory = await ethers.getContractFactory("EBU");
+    const ebu = await EBUFactory.deploy();
+    await ebu.waitForDeployment();
+
+    // Get the caddress from the contract
+    const caddress = await ebu.caddress();
+
+    // Create a simple token contract that implements transferFrom to verify the call
+    const TestTokenFactory = await ethers.getContractFactory("SimpleToken");
+    const token = await TestTokenFactory.deploy("Test", "TST", 18);
+    await token.waitForDeployment();
+
+    // Set the EBU contract's caddress to our test token
+    // Note: We can't change caddress directly as it's a public variable, 
+    // but we can deploy a new EBU that uses our token's address
+
+    // Alternative: Deploy a modified version or use the existing setup
+    // Since caddress is hardcoded, we'll test the actual behavior
+
+    // For this test, we'll deploy the EBU and check that the transferFrom call
+    // would fail because sha256 produces a different selector than keccak256
+
+    // First, let's check the original selector
+    const originalSelector = ethers.id("transferFrom(address,address,uint256)").slice(0, 10);
+    const mutantSelector = ethers.sha256(Buffer.from("transferFrom(address,address,uint256)")).slice(0, 10);
+
+    // They should be different
+    expect(originalSelector).to.not.equal(mutantSelector);
+
+    // Now test the actual transfer function
+    const from = await ebu.from();
+    const tos = [addr1.address];
+    const values = [1]; // 1 token
+
+    // This should revert because the sha256 selector doesn't match any function
+    await expect(
+      ebu.connect(owner).transfer(tos, values)
+    ).to.be.reverted;
+  });
+});
+
+// Helper contract to test the call
+contract SimpleToken {
+    string public name;
+    string public symbol;
+    uint8 public decimals;
+
+    constructor(string memory _name, string memory _symbol, uint8 _decimals) {
+        name = _name;
+        symbol = _symbol;
+        decimals = _decimals;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        return true;
+    }
+}
+```

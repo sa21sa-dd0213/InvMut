@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EtherLotto:
+        Contract Code: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+
+    Consider the following mutant of EtherLotto:
+        Mutant m1b46e310 of function play replaces - with /
+        Mutant Diff: ---|             payable(msg.sender).transfer(pot - FEE_AMOUNT); +++|             payable(msg.sender).transfer(pot / FEE_AMOUNT);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the subtraction operator (`-`) to division (`/`) in the calculation of the amount sent to `msg.sender`. In the original, the player receives `pot - FEE_AMOUNT` (i.e., 10 - 1 = 9 wei), while the mutant sends `pot / FEE_AMOUNT` (i.e., 10 / 1 = 10 wei). Since `FEE_AMOUNT` equals 1, the division result is the same as the original when the pot is 10, making the bug invisible for a single play.
+
+**Hypothesis**: "The mutant replaces subtraction with division, which only produces a different result when the pot is not an exact multiple of `FEE_AMOUNT` or when the pot value differs due to multiple plays. Therefore, a test case that calls `play()` twice in a row (with two separate transactions) and then checks that the bank’s balance increased by exactly `FEE_AMOUNT` per play (and not more or less) should kill the mutant, because after the first win, the pot resets to 0; after a second win from a fresh pot of 10, the mutant still pays 10, but after multiple wins the bank fee accumulation would differ from the original if the division ever produced a non-integer result (which Solidity truncates), but with `FEE_AMOUNT = 1` the critical difference is that after a win, the pot becomes 0, so the mutant's `pot / 1` is the same as `pot - 1` when pot=10. To actually detect the mutant, a test should set up a scenario where the pot is not exactly 10 (e.g., by making the contract accumulate fees without resetting the pot), then call `play()` and verify the exact amount received by the player, which will differ between subtraction and division when the pot is not a multiple of the fee. For example, if the pot is artificially increased to 11 (e.g., by a direct ether transfer to the contract), then the original sends 10 to the player and 1 to the bank, while the mutant sends 11 to the player (since 11 / 1 = 11) and nothing to the bank, which would cause the test to fail on the mutant."

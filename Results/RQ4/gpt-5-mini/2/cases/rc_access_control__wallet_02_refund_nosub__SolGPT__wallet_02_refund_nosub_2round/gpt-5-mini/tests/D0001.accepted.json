@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "For every caller and value, after deposit() completes the caller's recorded balance strictly increases if and only if msg.value > 0 in the reference; the mutant allowing >= lets a zero-value deposit pass the assert and thus does not change balance consistency (the mutant can accept zero deposits that should be no-ops), so the invariant that a successful deposit implies balances[msg.sender] increased only when msg.value>0 is violated—equivalently: reference requires that a deposit with msg.value==0 does not succeed (assert would fail), while mutant allows it.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change the overflow check from strict greater-than to greater-than-or-equal (allowing zero-value deposits to pass the assert), by replacing '>' with '>=' in the assert.",
+ "mutated_unit_code": "function deposit() public payable {\n        assert(balances[msg.sender] + msg.value >= balances[msg.sender]);\n        balances[msg.sender] += msg.value;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Wallet} from \"../src/Wallet.sol\";\n\ncontract InvMutTest is Test {\n    Wallet c;\n    function setUp() public { c = new Wallet(); }\n\n    function testFuzz_property(address depositor, uint256 amount) public {\n        vm.assume(depositor != address(0));\n        amount = bound(amount, 0, 1 ether);\n\n        vm.deal(depositor, amount);\n\n        uint256 beforeContractBalance = address(c).balance;\n\n        bool ok;\n        vm.prank(depositor);\n        try c.deposit{value: amount}() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(!(amount == 0) || ok == false);\n\n    }\n}\n"
+}

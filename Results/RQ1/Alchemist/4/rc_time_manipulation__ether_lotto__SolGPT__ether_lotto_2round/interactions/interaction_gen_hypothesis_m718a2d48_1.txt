@@ -1,0 +1,30 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EtherLotto:
+        Contract Code: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+
+    Consider the following mutant of EtherLotto:
+        Mutant m718a2d48 of function play replaces msg.value with msg.value+1
+        Mutant Diff: ---|         pot += msg.value; +++|         pot += msg.value+1;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's think through this step by step.
+
+The original function `play()` requires `msg.value == TICKET_AMOUNT` (which is 10 wei). After that check, it does `pot += msg.value` — so the pot increases by exactly 10 wei.
+
+In the mutant, `pot += msg.value + 1` — so the pot increases by 11 wei instead of 10 wei, even though the user only sent 10 wei.
+
+Later, when `random == 0`, the contract sends `pot - FEE_AMOUNT` to the player. In the original, that amount is `10 - 1 = 9` wei. In the mutant, that amount becomes `11 - 1 = 10` wei — so the player gets back more than they should, and the bank gets only 1 wei.
+
+This means the mutant creates an accounting error: the pot grows by an extra 1 wei every time someone plays, even though no extra ether was actually deposited.
+
+**Hypothesis**:  
+A test case that calls `play()` with exactly 10 wei, then checks the contract’s balance after the transaction — expecting it to equal the sum of all ticket amounts paid minus any fees transferred to the bank — should kill the mutant, because in the mutant the contract’s internal pot accounting becomes inconsistent with its actual ether balance, leading to an incorrect balance or a failed transfer when the pot is paid out.

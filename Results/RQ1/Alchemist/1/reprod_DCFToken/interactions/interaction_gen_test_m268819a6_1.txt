@@ -1,0 +1,47 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m268819a6 of DCF.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test DCF.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for DCF:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("DCF reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy DCF by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("DCF"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DCF mutant detection - onlyCaller modifier", function () {
+  it("should kill mutant by calling onlyCaller-protected function from address greater than CFO", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const liquidityReceiveAddress = addr2.address;
+    
+    const DCF = await ethers.getContractFactory("DCF");
+    const dcf = await DCF.deploy(liquidityReceiveAddress);
+    await dcf.waitForDeployment();
+
+    // Set a CFO with a low numerical address value (addr1 has lower address than addr2 typically)
+    // Use addr1 as CFO since its address is numerically smaller than addr2
+    await dcf.connect(owner).setCaller(addr1.address);
+
+    // addr2 has a numerically higher address than addr1
+    // On original: require(_msgSender() == cfo) would revert since addr2 != addr1
+    // On mutant: require(_msgSender() <= cfo) would also revert since addr2 > addr1 (numerically)
+    // This kills the mutant because the mutant changes the logic
+    
+    // Test calling distributeToken() which uses onlyCaller modifier
+    await expect(
+      dcf.connect(addr2).distributeToken()
+    ).to.be.reverted;
+  });
+});
+```

@@ -1,0 +1,43 @@
+{
+ "difference_id": "N0021",
+ "property_summary": "After a call to Collect(am) by the caller, whether it succeeds or reverts, every other address's balance (a key different from the caller) is unchanged.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill:m_no_cex_within_bound",
+ "origin": "primary",
+ "success_route": null,
+ "oracle_origin": null,
+ "kill_entrypoint": null,
+ "property_based_core": null,
+ "standalone_replay": null,
+ "oracle_reach": "proved",
+ "ce_id": null,
+ "source_difference_id": null,
+ "source_property_focus": null,
+ "confirmed_difference": {
+  "validation_level": "reference_validated",
+  "arm": "no_mg",
+  "focus": {
+   "index": 6,
+   "target_id": "T0000",
+   "boundary": "Collect",
+   "category": "state",
+   "locus": "C.balances",
+   "state_kind": "mapping",
+   "passes": 3
+  },
+  "thread_focus": "the value of `balances` at some key after a call to `Collect(...)` completes (the key need not be the caller's own)",
+  "boundary": "Collect",
+  "target_id": "T0000",
+  "test_hash": "2210ed2197110fdb",
+  "assert_fingerprint": "3b0cfc98da0bb513"
+ },
+ "oracle_asset": null,
+ "change_summary": null,
+ "mutated_unit_code": null,
+ "esbmc_test_source": "contract InvMutTest {\n    C c;\n    constructor() { c = new C(); }\n    function __ESBMC_reverted() internal returns (bool) {}\n    function __ESBMC_assume(bool) internal pure {}\n\n    receive() external payable {}\n\n    function run(address other, uint depositAmt, uint am) public payable { __ESBMC_assume(address(c).balance >= 1000000000000000000000000); require(address(this).balance >= (depositAmt)); require(depositAmt <= 1000000000000000000000000000000);\n        require(other != address(this), \"other must differ from caller\");\n        require(address(this).balance >= depositAmt, \"insufficient balance\");\n\n        c.Deposit{value: depositAmt}(); if (__ESBMC_reverted()) return;\n\n        uint otherBefore = c.balances(other); if (__ESBMC_reverted()) return;\n\n        bool reverted;\n        c.Collect(am); bool __rev0 = __ESBMC_reverted(); if (__rev0) {\n            reverted = true;\n        } else {\n            reverted = false;\n        }\n\n        uint otherAfter = c.balances(other); if (__ESBMC_reverted()) return;\n\n        assert(otherAfter == otherBefore);\n    }\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {ACCURAL_DEPOSIT} from \"../src/ACCURAL_DEPOSIT.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    ACCURAL_DEPOSIT c;\n\n    function setUp() public {\n        c = new ACCURAL_DEPOSIT();\n    }\n\n    function _run(address other, uint256 depositAmt, uint256 am) internal {\n        depositAmt = bound(depositAmt, 0, 1000000000000000000000000000000);\n        vm.deal(address(this), VALUE_CAP);\n        vm.deal(address(c), VALUE_CAP);\n        vm.assume(other != address(this));\n        vm.assume(address(this).balance >= depositAmt);\n        try c.Deposit{value: depositAmt}() {} catch { return; }\n        uint256 otherBefore;\n        try c.balances(other) returns (uint256 __r) { otherBefore = __r; } catch { return; }\n        bool reverted;\n        try c.Collect(am) {\n            reverted = false;\n        } catch {\n            reverted = true;\n        }\n        uint256 otherAfter;\n        try c.balances(other) returns (uint256 __r) { otherAfter = __r; } catch { return; }\n        assertTrue(otherAfter == otherBefore);\n    }\n\n    function testFuzz_run(address other, uint256 depositAmt, uint256 am) public {\n        vm.assume(other.code.length == 0 && uint160(other) > 0xffff && other != address(this) && other != address(c) && other != 0x7109709ECfa91a80626fF3989D68f67F5b1DD12D && other != 0x000000000000000000636F6e736F6c652e6c6f67 && other != 0x4e59b44847b379578588920cA78FbF26c0B4956C && other != 0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38);\n        _run(other, depositAmt, am);\n    }\n\n    receive() external payable {}\n}\n",
+ "workspace_P_log": "{\"test/InvMutTest.t.sol:InvMutTest\":{\"duration\":\"98ms 341µs 37ns\",\"test_results\":{\"testFuzz_run(address,uint256,uint256)\":{\"status\":\"Success\",\"reason\":null,\"counterexample\":null,\"logs\":[],\"decoded_logs\":[],\"kind\":{\"Fuzz\":{\"first_case\":{\"gas\":72792,\"stipend\":22000},\"runs\":10000,\"mean_gas\":50681,\"median_gas\":52023,\"failed_corpus_replays\":0}},\"traces\":[],\"labeled_addresses\":{},\"duration\":\"98ms 31µs 139ns\",\"breakpoints\":{},\"gas_snapshots\":{}}},\"warnings\":[]}}\n",
+ "workspace_M_log": null
+}

@@ -1,0 +1,64 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("demo mutant med64a1e4 test", function () {   it("should kill mutant by verifying token transfer with correct selector", async function () {     const [owner, from, to] = await ethers.getSigners();          // Deploy a simple ERC20 token for testing     const ERC20Factory = await ethers.getContractFactory("contracts/ERC20.sol:ERC20");     const token = await ERC20Factory.deploy("TestToken", "TST", ethers.parseEther("1000"));     await token.waitForDeployment();          // Fund the 'from' address with tokens     await token.transfer(from.address, ethers.parseEther("100"));          // Deploy the demo contract (no constructor arguments)     const DemoFactory = await ethers.getContractFactory("demo");     const demo = await DemoFactory.deploy();     await demo.waitForDeployment();          // Approve demo contract to spend tokens on behalf of 'from'     await token.connect(from).approve(await demo.getAddress(), ethers.parseEther("50"));          // Get initial balances     const initialFromBalance = await token.balanceOf(from.address);     const initialToBalance = await token.balanceOf(to.address);          // Call transfer on demo contract     const tx = await demo.connect(owner).transfer(       from.address,       await token.getAddress(),       [to.address],       ethers.parseEther("30")     );     await tx.wait();          // Check balances - original uses correct keccak256 selector, mutant uses wrong sha256 selector     // On original: transfer succeeds, balances change     // On mutant: wrong selector causes call to fail, balances remain unchanged     const finalFromBalance = await token.balanceOf(from.address);     const finalToBalance = await token.balanceOf(to.address);          // If mutant is deployed, balances will be unchanged (call fails silently or reverts)     // This assertion will fail on mutant because the transfer didn't happen     expect(finalFromBalance).to.equal(initialFromBalance - ethers.parseEther("30"));     expect(finalToBalance).to.equal(initialToBalance + ethers.parseEther("30"));   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract demo { function transfer(address from, address caddress, address[] memory _tos, uint v)  public returns (bool) { require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); _d; if (! _s) { revert();} } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("demo mutant med64a1e4 test", function () {
+  it("should kill mutant by verifying token transfer with correct selector", async function () {
+    const [owner, from, to] = await ethers.getSigners();
+
+    // Deploy a simple ERC20 token for testing
+    const ERC20Factory = await ethers.getContractFactory("contracts/ERC20.sol:ERC20");
+    const token = await ERC20Factory.deploy("TestToken", "TST", ethers.parseEther("1000"));
+    await token.waitForDeployment();
+
+    // Fund the 'from' address with tokens
+    await token.transfer(from.address, ethers.parseEther("100"));
+
+    // Deploy the demo contract (no constructor arguments)
+    const DemoFactory = await ethers.getContractFactory("demo");
+    const demo = await DemoFactory.deploy();
+    await demo.waitForDeployment();
+
+    // Approve demo contract to spend tokens on behalf of 'from'
+    await token.connect(from).approve(await demo.getAddress(), ethers.parseEther("50"));
+
+    // Get initial balances
+    const initialFromBalance = await token.balanceOf(from.address);
+    const initialToBalance = await token.balanceOf(to.address);
+
+    // Call transfer on demo contract
+    const tx = await demo.connect(owner).transfer(
+      from.address,
+      await token.getAddress(),
+      [to.address],
+      ethers.parseEther("30")
+    );
+    await tx.wait();
+
+    // Check balances - original uses correct keccak256 selector, mutant uses wrong sha256 selector
+    // On original: transfer succeeds, balances change
+    // On mutant: wrong selector causes call to fail, balances remain unchanged
+    const finalFromBalance = await token.balanceOf(from.address);
+    const finalToBalance = await token.balanceOf(to.address);
+
+    // If mutant is deployed, balances will be unchanged (call fails silently or reverts)
+    // This assertion will fail on mutant because the transfer didn't happen
+    expect(finalFromBalance).to.equal(initialFromBalance - ethers.parseEther("30"));
+    expect(finalToBalance).to.equal(initialToBalance + ethers.parseEther("30"));
+  });
+});
+```

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T021ca902",
+ "property_summary": "For any call to transfer where caddress is a contract that fails on at least one transferFrom sub-call, the reference C always reverts, while the buggy M never reverts and returns true.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Delete the require(_s) check so the function returns true even when a transferFrom call fails.",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0; i<_tos.length; i++){\n            { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); }\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airPort} from \"../src/airPort.sol\";\n\ncontract InvMutTest is Test {\n    airPort c;\n    function setUp() public { c = new airPort(); }\n    function testFuzz_property(address from, address[] calldata _tos, uint256 v) public {\n        vm.assume(_tos.length > 0);\n        FailingCallee failing = new FailingCallee();\n        bool referenceReverted = false;\n        try c.transfer(from, address(failing), _tos, v) {\n        } catch {\n            referenceReverted = true;\n        }\n        assertTrue(referenceReverted);\n    }\n}\n\ncontract FailingCallee {\n    fallback() external payable {\n        revert(\"FailingCallee: forced revert\");\n    }\n}"
+}

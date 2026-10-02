@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0004",
+ "property_summary": "When the `caddress` parameter is a contract with a `transferFrom` that reverts, the reference contract's `transfer` reverts because of the `require(_s)` inside the loop, while the buggy contract does not revert and returns true.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "Delete the 'require(_s);' statement inside the loop, so the call's success is not enforced.",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0; i<_tos.length; i++){\n            { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); }\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airPort} from \"../src/airPort.sol\";\n\ncontract InvMutTest is Test {\n    airPort c;\n    function setUp() public { c = new airPort(); }\n    function testRegression_property() public {\n        address token = address(new RevertingToken());\n        address from = address(0x123);\n        address[] memory tos = new address[](1);\n        tos[0] = address(0x456);\n        uint256 v = 1;\n\n        bool ok;\n        try c.transfer(from, token, tos, v) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(!ok, \"The call should revert due to require(_s) enforcing success\");\n    }\n}\n\ncontract RevertingToken {\n    fallback() external payable {\n        revert(\"always revert\");\n    }\n}\n"
+}

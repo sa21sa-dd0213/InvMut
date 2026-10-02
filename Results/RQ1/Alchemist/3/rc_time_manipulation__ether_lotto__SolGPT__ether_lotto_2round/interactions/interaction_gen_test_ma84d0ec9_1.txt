@@ -1,0 +1,76 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant ma84d0ec9 of EtherLotto.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EtherLotto.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EtherLotto:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EtherLotto reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EtherLotto by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EtherLotto"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant ma84d0ec9 test", function () {
+  it("should detect mutant that always pays out (true instead of random==0)", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethert.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const ticketAmount = ethers.parseEther("10");
+    const feeAmount = ethers.parseEther("1");
+
+    // First play - in the original, this may or may not pay out.
+    // In the mutant, it always pays out, so the pot will be reset to 0.
+    await instance.connect(addr1).play({ value: ticketAmount });
+
+    // Get the pot after first play
+    let potAfterFirst = await instance.pot();
+
+    // Second play
+    await instance.connect(addr1).play({ value: ticketAmount });
+
+    // Get the pot after second play
+    let potAfterSecond = await instance.pot();
+
+    // In the original contract, if the first play was a losing one (random == 1),
+    // the pot would accumulate to 20 before the second play, and after the second
+    // play it could either pay out (reset to 0) or accumulate further.
+    // The key observation: in the mutant, after ANY play, the pot is always 0
+    // because the payout branch always executes.
+    // Therefore, if we check that the pot is always 0 after each play, the mutant
+    // will always pass that check, but the original would sometimes have a non-zero pot.
+    // To kill the mutant, we need a test that expects a non-zero pot after a play
+    // that would be a loss in the original (random == 1).
+    // Since we cannot control randomness, we run multiple plays and check that
+    // at least once the pot becomes non-zero (which would happen in the original
+    // but never in the mutant).
+    
+    // Play many times to increase chance of a losing play in the original
+    let foundNonZeroPot = false;
+    for (let i = 0; i < 20; i++) {
+      await instance.connect(addr1).play({ value: ticketAmount });
+      const currentPot = await instance.pot();
+      if (currentPot > 0) {
+        foundNonZeroPot = true;
+        break;
+      }
+    }
+
+    // The mutant will never have a non-zero pot because it always pays out
+    // The original will eventually have a non-zero pot after a losing play
+    // So if we expect a non-zero pot to occur, the mutant will fail this test
+    expect(foundNonZeroPot).to.be.true;
+  });
+});
+```

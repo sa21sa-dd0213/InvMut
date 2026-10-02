@@ -1,0 +1,102 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mf36d175b of FlashGovernanceArbiter.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test FlashGovernanceArbiter.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for FlashGovernanceArbiter:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("FlashGovernanceArbiter reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy FlashGovernanceArbiter by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("FlashGovernanceArbiter"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("FlashGovernanceArbiter mutant mf36d175b test", function () {
+  it("should kill mutant by exploiting changed operator in enforceTolerance", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy with a mock DAO address (we'll set up minimal config)
+    const FlashGovernanceArbiter = await ethers.getContractFactory("FlashGovernanceArbiter");
+    const instance = await FlashGovernanceArbiter.deploy(addr1.address);
+    await instance.waitForDeployment();
+    
+    // Configure security parameters with a changeTolerance value
+    // We need to set DAO first and make a successful proposal
+    // For testing, we can directly configure via the contract's internal setup
+    // First, set DAO to owner to allow configuration
+    await instance.setDAO(owner.address);
+    
+    // Configure security with changeTolerance = 10 (10%)
+    // We need to bypass the onlySuccessfulProposal modifier for testing
+    // Let's use the fact that configured is false initially
+    const changeTolerance = 10;
+    const epochSize = 100;
+    const maxGovernanceChangePerEpoch = 5;
+    
+    // Configure flash governance first
+    const asset = ethers.ZeroAddress;
+    const amount = ethers.parseEther("100");
+    const unlockTime = 3600;
+    const assetBurnable = false;
+    
+    // Set configured to true to test enforceTolerance properly
+    await instance.endConfiguration();
+    
+    // Set enforcement for the caller
+    await instance.connect(owner).setEnforcement(true);
+    
+    // Now test enforceTolerance with values that expose the mutation
+    // Original: ((v1 - v2) * 100) < changeTolerance * v1
+    // Mutant:   ((v1 - v2) + 100) < changeTolerance * v1
+    // 
+    // Let v1 = 1000, v2 = 950 (difference = 50)
+    // Original: (50 * 100) < 10 * 1000 => 5000 < 10000 => true (passes)
+    // Mutant:   (50 + 100) < 10 * 1000 => 150 < 10000 => true (passes)
+    // Both pass, not good for killing mutant
+    
+    // Try v1 = 100, v2 = 1 (difference = 99)
+    // Original: (99 * 100) < 10 * 100 => 9900 < 1000 => false (reverts)
+    // Mutant:   (99 + 100) < 10 * 100 => 199 < 1000 => true (passes)
+    // This should kill the mutant - original reverts, mutant passes
+    
+    // Test the case where original would revert but mutant passes
+    const v1 = ethers.parseEther("100");
+    const v2 = ethers.parseEther("1");
+    
+    // The original would revert here with "FE1"
+    // The mutant would pass (which is incorrect behavior)
+    await expect(
+      instance.connect(owner).enforceTolerance(v1, v2)
+    ).to.be.revertedWith("FE1");
+    
+    // Also test the v2 > v1 branch for completeness
+    // Original: ((v2 - v1) * 100) < changeTolerance * v1
+    // Mutant:   ((v2 - v1) + 100) < changeTolerance * v1
+    // v1 = 1, v2 = 100
+    // Original: (99 * 100) < 10 * 1 => 9900 < 10 => false (reverts)
+    // Mutant:   (99 + 100) < 10 * 1 => 199 < 10 => false (reverts)
+    // Both revert, not useful
+    
+    // Try v1 = 50, v2 = 100
+    // Original: (50 * 100) < 10 * 50 => 5000 < 500 => false (reverts)
+    // Mutant:   (50 + 100) < 10 * 50 => 150 < 500 => true (passes)
+    // This should also kill the mutant
+    
+    await expect(
+      instance.connect(owner).enforceTolerance(
+        ethers.parseEther("50"),
+        ethers.parseEther("100")
+      )
+    ).to.be.revertedWith("FE1");
+  });
+});
+```

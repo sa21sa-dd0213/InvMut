@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0005",
+ "property_summary": "Using v=1, _decimals=2, the reference multiplies to get _value=100, but the bug adds to get _value=101, causing the transferFrom call to send a different amount; we observe the difference by calling a balanceOf view on a token contract that records the transferred amount.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "-uint _value = v * 10 ** _decimals;; +uint _value = v + 10 ** _decimals;",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v, uint _decimals)  public returns (bool) {\n\trequire(_tos.length > 0);\n\tbytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n\tuint _value = v + 10 ** _decimals;\n\tfor(uint i = 0;i < _tos.length;i++){\n\t{ (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], _value)); _d; if (! _s) {\n\trevert();} }\n\t}\n\treturn true;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airDrop} from \"../src/airDrop.sol\";\n\ncontract InvMutTest is Test {\n    airDrop c;\n    function setUp() public { c = new airDrop(); }\n    function testRegression_property() public {\n        TokenMock token = new TokenMock();\n        address from = address(0x123);\n        address to = address(0x456);\n        address[] memory tos = new address[](1);\n        tos[0] = to;\n        uint v = 1;\n        uint _decimals = 2;\n        vm.prank(from);\n        token.approve(address(c), 2**256 - 1);\n        c.transfer(from, address(token), tos, v, _decimals);\n        assertEq(token.lastAmount(), 100);\n    }\n}\n\ncontract TokenMock {\n    uint256 public lastAmount;\n    mapping(address => mapping(address => uint256)) public allowance;\n    function approve(address spender, uint256 amount) external returns (bool) {\n        allowance[msg.sender][spender] = amount;\n        return true;\n    }\n    function transferFrom(address, address, uint256 amount) external returns (bool) {\n        lastAmount = amount;\n        return true;\n    }\n}"
+}

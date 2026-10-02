@@ -1,0 +1,19 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EBU:
+        Contract Code: pragma solidity ^0.8.0; contract EBU { address public from = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9; address public caddress = 0x1f844685f7Bf86eFcc0e74D8642c54A257111923; function transfer( address[] memory _tos, uint[] memory v)  public returns (bool) { require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9); require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v[i] * 1000000000000000000)); _d; if (! _s) { revert();} } } return true; } }
+
+    Consider the following mutant of EBU:
+        Mutant mb442de3a of function transfer replaces == with !=
+        Mutant Diff: ---| 	require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9); +++| 	require(msg.sender != 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+**Hypothesis**: The mutant changes the authorization check from requiring the caller to be the specific address (`0x9797...`) to requiring the caller to **not** be that address. Therefore, a test case that calls the `transfer` function from the authorized address (`0x9797...`) and expects the transaction to succeed (i.e., no revert) should kill the mutant, because the mutant will incorrectly revert when the authorized address calls the function.

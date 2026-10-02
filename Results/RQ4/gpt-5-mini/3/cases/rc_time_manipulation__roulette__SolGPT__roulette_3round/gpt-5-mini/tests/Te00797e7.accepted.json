@@ -1,0 +1,12 @@
+{
+ "difference_id": "Te00797e7",
+ "property_summary": "For every valid call sending exactly 10 ether when block.timestamp > pastBlockTime, the reference contract preserves some positive contract balance after the fallback (unless block.number % 15 == 0) — equivalently: there exists at least one admissible input (a block.number not divisible by 15 with the other preconditions) where the mutant drains the balance but the reference does not; the rule: when block.number % 15 != 0 and caller sends 10 ether with timestamp > pastBlockTime, the reference leaves address(c).balance >= 10 ether while the mutant leaves it == 0.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Unconditionally transfer contract balance to msg.sender (remove the block.number % 15 check), changing state visible via subsequent calls due to balance change and any effect on pastBlockTime sequencing.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp + 1;\n\n        // always transfer balance\n        payable(msg.sender).transfer(address(this).balance);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n\n    function testFuzz_property(address caller, uint64 warpTime, uint64 blk) public {\n        vm.assume(caller != address(0));\n        uint256 amt = 10 ether;\n\n        vm.warp(uint256(warpTime));\n        vm.roll(uint256(blk == 0 ? 1 : blk));\n\n        vm.deal(caller, amt);\n        vm.prank(caller);\n        (bool ok,) = address(c).call{value: amt}(\"\");\n\n        if (uint256(block.number) % 15 != 0 && ok) {\n            assertTrue(address(c).balance >= amt);\n        } else {\n            assertTrue(address(c).balance >= 0);\n        }\n    }\n}\n"
+}

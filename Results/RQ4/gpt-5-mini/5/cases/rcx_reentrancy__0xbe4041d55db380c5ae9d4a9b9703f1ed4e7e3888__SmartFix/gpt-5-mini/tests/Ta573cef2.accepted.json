@@ -1,0 +1,12 @@
+{
+ "difference_id": "Ta573cef2",
+ "property_summary": "After calling SetLogFile(addr) from any caller, the reference contract always leaves intitalized == false until SetLogFile returns (so if the callee reenters and re-calls SetLogFile the reentry is blocked by the initial check), whereas the mutant sets intitalized true before assigning LogFile which can allow different revert/reentry effects and thus different external-visible outcomes; therefore the reference never observes SetLogFile reentrantly succeeding while the mutant can change that behavior for some callee that reenters.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Reverse the order: set intitalized before assigning LogFile, causing different revert behavior if SetLogFile reentered (and making intitalized true earlier).",
+ "mutated_unit_code": "function SetLogFile(address _log)\n    public\n    {\n        if(intitalized)revert();\n        intitalized = true;\n        LogFile = Log(_log);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MONEY_BOX} from \"../src/MONEY_BOX.sol\";\n\ncontract InvMutTest is Test {\n    MONEY_BOX c;\n    function setUp() public { c = new MONEY_BOX(); }\n\n    function testFuzz_property(address attackerAddr, uint256 fund) public {\n        fund = bound(fund, 0, 1 ether);\n\n        ReentrantLogger attacker = new ReentrantLogger(address(c));\n\n        vm.deal(address(attacker), 1 ether);\n\n        bool ok;\n        try c.SetLogFile(address(attacker)) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        bool ok2;\n        try c.SetLogFile(address(0x1234)) {\n            ok2 = true;\n        } catch {\n            ok2 = false;\n        }\n\n        assertTrue(ok2);\n    }\n}\n\ncontract ReentrantLogger {\n    address public target;\n    constructor(address _t) { target = _t; }\n\n    function AddMessage(address _adr, uint _val, string memory _data) public {\n        (bool s, ) = target.call(abi.encodeWithSignature(\"SetLogFile(address)\", address(this)));\n        s;\n    }\n}\n"
+}

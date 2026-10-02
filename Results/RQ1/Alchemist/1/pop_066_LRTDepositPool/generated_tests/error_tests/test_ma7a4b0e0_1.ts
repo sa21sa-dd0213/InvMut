@@ -1,0 +1,198 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("LRTDepositPool - Reentrancy Guard on transferAssetToNodeDelegator", function () {
+  it("should prevent reentrant calls to transferAssetToNodeDelegator (nonReentrant modifier test)", async function () {
+    const [owner, manager, attacker] = await ethers.getSigners();
+    
+    // Deploy LRTDepositPool with required constructor arguments
+    const LRTDepositPoolFactory = await ethers.getContractFactory("LRTDepositPool");
+    const depositPool = await LRTDepositPoolFactory.deploy();
+    await depositPool.waitForDeployment();
+    
+    // Deploy mock contracts for LRTConfig, ERC20 token, and NodeDelegator
+    const LRTConfigFactory = await ethers.getContractFactory("LRTConfig");
+    const lrtConfig = await LRTConfigFactory.deploy();
+    await lrtConfig.waitForDeployment();
+    
+    const ERC20Factory = await ethers.getContractFactory("ERC20Mock");
+    const testAsset = await ERC20Factory.deploy("Test Asset", "TST", ethers.parseEther("1000000"));
+    await testAsset.waitForDeployment();
+    
+    const NodeDelegatorFactory = await ethers.getContractFactory("NodeDelegatorMock");
+    const nodeDelegator = await NodeDelegatorFactory.deploy();
+    await nodeDelegator.waitForDeployment();
+    
+    // Setup: Initialize deposit pool and configure roles/assets
+    await depositPool.initialize(await lrtConfig.getAddress());
+    
+    // Grant manager role to manager address
+    const MANAGER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("MANAGER"));
+    await lrtConfig.grantRole(MANAGER_ROLE, manager.address);
+    
+    // Add test asset as supported
+    await lrtConfig.addSupportedAsset(await testAsset.getAddress(), ethers.parseEther("1000000"));
+    
+    // Add node delegator to queue
+    await depositPool.addNodeDelegatorContractToQueue([await nodeDelegator.getAddress()]);
+    
+    // Fund deposit pool with test tokens for the transfer
+    await testAsset.transfer(await depositPool.getAddress(), ethers.parseEther("100"));
+    
+    // Deploy reentrant attacker contract
+    const ReentrantAttackerFactory = await ethers.getContractFactory("ReentrantAttacker");
+    const attackerContract = await ReentrantAttackerFactory.deploy(
+      await depositPool.getAddress(),
+      await testAsset.getAddress(),
+      0 // ndcIndex
+    );
+    await attackerContract.waitForDeployment();
+    
+    // Fund attacker contract with test tokens for reentrancy
+    await testAsset.transfer(await attackerContract.getAddress(), ethers.parseEther("50"));
+    
+    // Attempt reentrant attack - should revert with ReentrancyGuard reentrant call
+    await expect(
+      attackerContract.connect(attacker).attack(ethers.parseEther("10"), { gasLimit: 3000000 })
+    ).to.be.reverted;
+    
+    // Verify no extra tokens were transferred
+    const poolBalance = await testAsset.balanceOf(await depositPool.getAddress());
+    expect(poolBalance).to.equal(ethers.parseEther("100"));
+  });
+});
+
+// Helper mock contracts (place these in separate files in a real setup)
+// LRTConfig mock with minimal functionality for testing
+contract LRTConfig {
+    mapping(bytes32 => address) public contracts;
+    mapping(address => bool) public isSupportedAsset;
+    mapping(address => uint256) public depositLimitByAsset;
+    mapping(bytes32 => mapping(address => bool)) public roles;
+    
+    bytes32 constant DEFAULT_ADMIN_ROLE = 0x00;
+    
+    function grantRole(bytes32 role, address account) external {
+        roles[role][account] = true;
+    }
+    
+    function hasRole(bytes32 role, address account) external view returns (bool) {
+        return roles[role][account];
+    }
+    
+    function addSupportedAsset(address asset, uint256 limit) external {
+        isSupportedAsset[asset] = true;
+        depositLimitByAsset[asset] = limit;
+    }
+    
+    function getContract(bytes32 key) external view returns (address) {
+        return contracts[key];
+    }
+    
+    function setContract(bytes32 key, address addr) external {
+        contracts[key] = addr;
+    }
+    
+    function rsETH() external view returns (address) {
+        return contracts[keccak256("R_ETH_TOKEN")];
+    }
+    
+    function assetStrategy(address) external view returns (address) {
+        return address(0);
+    }
+    
+    function getSupportedAssetList() external view returns (address[] memory) {
+        address[] memory list = new address[](1);
+        list[0] = address(0);
+        return list;
+    }
+}
+
+// ERC20 mock
+contract ERC20Mock {
+    string public name;
+    string public symbol;
+    uint8 public decimals = 18;
+    uint256 public totalSupply;
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+    
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+    
+    constructor(string memory _name, string memory _symbol, uint256 _initialSupply) {
+        name = _name;
+        symbol = _symbol;
+        totalSupply = _initialSupply;
+        balanceOf[msg.sender] = _initialSupply;
+    }
+    
+    function transfer(address to, uint256 amount) external returns (bool) {
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        emit Transfer(msg.sender, to, amount);
+        return true;
+    }
+    
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        allowance[from][msg.sender] -= amount;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        emit Transfer(from, to, amount);
+        return true;
+    }
+    
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        emit Approval(msg.sender, spender, amount);
+        return true;
+    }
+}
+
+// NodeDelegator mock
+contract NodeDelegatorMock {
+    function getAssetBalance(address) external pure returns (uint256) {
+        return 0;
+    }
+    
+    function depositAssetIntoStrategy(address) external {}
+    
+    function maxApproveToEigenStrategyManager(address) external {}
+}
+
+// Reentrant attacker contract
+contract ReentrantAttacker {
+    address public target;
+    address public asset;
+    uint256 public ndcIndex;
+    bool public attackInProgress;
+    
+    constructor(address _target, address _asset, uint256 _ndcIndex) {
+        target = _target;
+        asset = _asset;
+        ndcIndex = _ndcIndex;
+    }
+    
+    function attack(uint256 amount) external {
+        // This will trigger a reentrant call to transferAssetToNodeDelegator
+        (bool success, ) = target.call(abi.encodeWithSignature(
+            "transferAssetToNodeDelegator(uint256,address,uint256)",
+            ndcIndex, asset, amount
+        ));
+        require(success, "Attack failed");
+    }
+    
+    // Fallback that will be called when tokens are transferred to this contract
+    receive() external payable {
+        if (!attackInProgress) {
+            attackInProgress = true;
+            // Reentrant call back to the deposit pool
+            (bool success, ) = target.call(abi.encodeWithSignature(
+                "transferAssetToNodeDelegator(uint256,address,uint256)",
+                ndcIndex, asset, 1 ether
+            ));
+            // If reentrancy succeeds (mutant), this will drain more funds
+            require(success, "Reentrant call failed");
+        }
+    }
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0003",
+ "property_summary": "For any callee that reverts when sent value, the reference contract's sendMoney call always reverts (does not return successfully) while the mutated contract may return successfully (silently ignoring failure); the test asserts that calling sendMoney against a reverting helper never returns ok (true) on the correct contract — a mutant that drops the require will make the call succeed (ok == true) for some fuzzed value.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Change the low-level call to ignore the returned success (remove the require), so failures do not revert and sendMoney may silently fail to transfer funds to _target.",
+ "mutated_unit_code": "function sendMoney (address    _target,uint    _value, bytes memory _data) public onlyOwner  {\n    (bool __sent_result100, ) = _target.call{value: _value}(_data);\n    // removed require(__sent_result100); so failures are not reverted\n}\n",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n\n    function testFuzz_property(uint256 amount, bytes memory data) public {\n        uint256 bounded = bound(amount, 0, 1 ether);\n\n        Reverter rev = new Reverter();\n\n        vm.deal(address(this), bounded);\n        (bool s, ) = address(c).call{value: bounded}(\"\");\n        require(s);\n\n        bool ok;\n        try c.sendMoney(address(rev), bounded, data) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok == false);\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"revert\");\n    }\n    receive() external payable {\n        revert(\"revert\");\n    }\n}\n"
+}

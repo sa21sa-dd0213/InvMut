@@ -1,0 +1,51 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MONEY_BOX mutant mc0ec32b2 detection", function () {   it("should detect || mutant by testing Collect with balance >= MinSum but balance < _am and time not unlocked", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy MONEY_BOX (no constructor arguments)     const Factory = await ethers.getContractFactory("MONEY_BOX");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Deploy a Log contract for the LogFile     const LogFactory = await ethers.getContractFactory("Log");     const logInstance = await LogFactory.deploy();     await logInstance.waitForDeployment();          // Initialize the contract: set MinSum, set LogFile, and mark as initialized     await instance.connect(owner).SetMinSum(ethers.parseEther("1"));     await instance.connect(owner).SetLogFile(await logInstance.getAddress());     await instance.connect(owner).Initialized();          // addr1 puts 2 ETH (balance = 2 ETH, above MinSum of 1 ETH)     await instance.connect(addr1).Put(100, { value: ethers.parseEther("2") });          // Now try to Collect 3 ETH (more than balance) when unlock time hasn't passed     // In original: acc.balance(2) >= MinSum(1) && acc.balance(2) >= _am(3) && time > unlockTime     // Original fails because 2 >= 3 is false → revert     // In mutant: acc.balance(2) >= MinSum(1) || (acc.balance(2) >= _am(3) && time > unlockTime)     // Mutant passes because first condition (2 >= 1) is true (OR short-circuits)     await expect(       instance.connect(addr1).Collect(ethers.parseEther("3"))     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract MONEY_BOX { struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; uint public MinSum; Log LogFile; bool intitalized; function SetMinSum(uint _val) public { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log) public { if(intitalized)revert(); LogFile = Log(_log); } function Initialized() public { intitalized = true; } function Put(uint _lockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; if(block.timestamp+_lockTime>acc.unlockTime)acc.unlockTime=block.timestamp+_lockTime; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MONEY_BOX mutant mc0ec32b2 detection", function () {
+  it("should detect || mutant by testing Collect with balance >= MinSum but balance < _am and time not unlocked", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy MONEY_BOX (no constructor arguments)
+    const Factory = await ethers.getContractFactory("MONEY_BOX");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy a Log contract for the LogFile
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+
+    // Initialize the contract: set MinSum, set LogFile, and mark as initialized
+    await instance.connect(owner).SetMinSum(ethers.parseEther("1"));
+    await instance.connect(owner).SetLogFile(await logInstance.getAddress());
+    await instance.connect(owner).Initialized();
+
+    // addr1 puts 2 ETH (balance = 2 ETH, above MinSum of 1 ETH)
+    await instance.connect(addr1).Put(100, { value: ethers.parseEther("2") });
+
+    // Now try to Collect 3 ETH (more than balance) when unlock time hasn't passed
+    // In original: acc.balance(2) >= MinSum(1) && acc.balance(2) >= _am(3) && time > unlockTime
+    // Original fails because 2 >= 3 is false → revert
+    // In mutant: acc.balance(2) >= MinSum(1) || (acc.balance(2) >= _am(3) && time > unlockTime)
+    // Mutant passes because first condition (2 >= 1) is true (OR short-circuits)
+    await expect(
+      instance.connect(addr1).Collect(ethers.parseEther("3"))
+    ).to.be.reverted;
+  });
+});
+```

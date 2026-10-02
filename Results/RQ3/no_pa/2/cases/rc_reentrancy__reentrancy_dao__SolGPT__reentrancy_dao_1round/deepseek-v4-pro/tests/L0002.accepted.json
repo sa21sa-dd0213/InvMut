@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0002",
+ "property_summary": "After Alice deposits 5 ETH and withdraws all, the reference contract leaves credit[alice] == 0 and balance == 0, while the buggy contract leaves credit[alice] == 1 and balance == 0, so a subsequent deposit by Bob reveals the difference in total contract balance (address(c).balance).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Replace `credit[msg.sender] = 0;` with `credit[msg.sender] = 1;` so that credit is not fully reset, changing future withdrawable amounts.",
+ "mutated_unit_code": "function withdrawAll() public {\n        uint oCredit = credit[msg.sender];\n        if (oCredit > 0) {\n            balance -= oCredit;\n            credit[msg.sender] = 1;\n            (bool callResult, ) = msg.sender.call{value: oCredit}(\"\");\n            require(callResult);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ReentrancyDAO} from \"../src/ReentrancyDAO.sol\";\n\ncontract InvMutTest is Test {\n    ReentrancyDAO c;\n    function setUp() public { c = new ReentrancyDAO(); }\n    function testRegression_property() public {\n        address alice = address(0x1234);\n        address bob = address(0x5678);\n        vm.deal(alice, 5 ether);\n        vm.deal(bob, 1 ether);\n\n        vm.prank(alice);\n        c.deposit{value: 5 ether}();\n\n        vm.prank(alice);\n        c.withdrawAll();\n\n        vm.prank(bob);\n        c.deposit{value: 1 ether}();\n\n        uint balBefore = address(alice).balance;\n        vm.prank(alice);\n        c.withdrawAll();\n        uint balAfter = address(alice).balance;\n        assertTrue(balAfter == balBefore, \"Alice should not receive any additional ether on second withdrawAll\");\n    }\n}\n"
+}

@@ -1,0 +1,55 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EBU mutant m718d9509 detection", function () {   it("should detect keccak256 replaced with sha256 by verifying correct function selector is used in low-level call", async function () {     // Deploy the contract (no constructor arguments needed)     const Factory = await ethers.getContractFactory("EBU");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const [owner, addr1, addr2] = await ethers.getSigners();          // The contract checks msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9     // We need to impersonate or use a signer that matches this address     // Since we cannot control private keys for arbitrary addresses in tests,     // we'll deploy a helper contract that can call from that address          // Alternative approach: Deploy a simple token to verify the call target     const tokenFactory = await ethers.getContractFactory("ERC20Mock");     const token = await tokenFactory.deploy("Test", "TST", 18);     await token.waitForDeployment();          // The original contract has hardcoded from and caddress     // We'll need to deploy a new EBU that uses our test addresses     // Since the addresses are hardcoded, we need to work with them          // Get the hardcoded from address     const fromAddress = await instance.from();     const caddress = await instance.caddress();          // We need to fund the fromAddress to pay for gas and have it call the function     // In Hardhat we can use impersonateAccount for mainnet forking, but for local testing     // we'll deploy a modified version that uses our test addresses          // Since the original contract has hardcoded addresses, we'll create a modified     // contract for testing purposes that uses our test accounts     const modifiedFactory = await ethers.getContractFactory("EBU", {       libraries: {},       constructorArgs: []     });          // Deploy a version where we can set the addresses via constructor     const TestEBU = await ethers.getContractFactory("TestEBU");     const testInstance = await TestEBU.deploy(owner.address, token.target);     await testInstance.waitForDeployment();          // Now call transfer with valid parameters     const tos = [addr1.address];     const amounts = [ethers.parseEther("1")];          // This should succeed on original (correct selector) but fail on mutant     // because mutant uses sha256 which produces wrong function selector     const tx = await testInstance.connect(owner).transfer(tos, amounts);     const receipt = await tx.wait();          // Check that the transfer actually happened on the token contract     const balance = await token.balanceOf(addr1.address);     expect(balance).to.equal(ethers.parseEther("1"));   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EBU{ address public from = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9; address public caddress = 0x1f844685f7Bf86eFcc0e74D8642c54A257111923; function transfer(address[] memory _tos,uint[] memory v)public returns (bool){ require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9); require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ require(((v[i] == 0) || (((v[i] * 1000000000000000000) / v[i]) == 1000000000000000000))); caddress.call(abi.encodePacked(id,from,_tos[i],v[i]*1000000000000000000)); } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant m718d9509 detection", function () {
+  it("should detect keccak256 replaced with sha256 by verifying correct function selector is used in low-level call", async function () {
+    // Deploy a simple ERC20 mock token for testing
+    const tokenFactory = await ethers.getContractFactory("ERC20Mock");
+    const token = await tokenFactory.deploy("Test", "TST", 18);
+    await token.waitForDeployment();
+
+    // Get signers
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy a test contract that mimics EBU but uses configurable addresses
+    const TestEBU = await ethers.getContractFactory("TestEBU");
+    const testInstance = await TestEBU.deploy(owner.address, token.target);
+    await testInstance.waitForDeployment();
+
+    // Fund the token contract with some tokens to allow transferFrom
+    const initialSupply = ethers.parseEther("1000");
+    await token.mint(owner.address, initialSupply);
+    
+    // Approve the test contract to spend tokens
+    await token.connect(owner).approve(testInstance.target, ethers.parseEther("100"));
+
+    // Now call transfer with valid parameters
+    const tos = [addr1.address];
+    const amounts = [ethers.parseEther("1")];
+
+    // This should succeed on original (correct selector) but fail on mutant
+    // because mutant uses sha256 which produces wrong function selector
+    const tx = await testInstance.connect(owner).transfer(tos, amounts);
+    await tx.wait();
+
+    // Check that the transfer actually happened on the token contract
+    const balance = await token.balanceOf(addr1.address);
+    expect(balance).to.equal(ethers.parseEther("1"));
+  });
+});
+```

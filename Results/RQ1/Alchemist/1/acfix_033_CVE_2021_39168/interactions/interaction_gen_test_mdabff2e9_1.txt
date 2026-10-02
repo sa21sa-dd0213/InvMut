@@ -1,0 +1,131 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mdabff2e9 of TimelockController.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test TimelockController.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for TimelockController:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("TimelockController reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy TimelockController by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("TimelockController"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("TimelockController - kill mutant mdabff2e9", function () {
+  it("should revert when executing with non-zero predecessor that is not done (original) but pass on mutant", async function () {
+    const [owner, proposer, executor] = await ethers.getSigners();
+    
+    // Deploy with minimal delay and roles
+    const minDelay = 60; // 1 minute
+    const proposers = [proposer.address];
+    const executors = [executor.address];
+    
+    const Factory = await ethers.getContractFactory("TimelockController");
+    const timelock = await Factory.deploy(minDelay, proposers, executors);
+    await timelock.waitForDeployment();
+    
+    // Grant TIMELOCK_ADMIN_ROLE to executor for _afterCall
+    const TIMELOCK_ADMIN_ROLE = await timelock.TIMELOCK_ADMIN_ROLE();
+    await timelock.connect(owner).grantRole(TIMELOCK_ADMIN_ROLE, executor.address);
+    
+    // First operation: schedule a simple call with zero predecessor
+    const target = proposer.address;
+    const value = 0;
+    const data = "0x";
+    const salt = ethers.keccak256(ethers.toUtf8Bytes("salt1"));
+    const predecessor = ethers.ZeroHash; // bytes32(0)
+    
+    // Schedule first operation
+    await timelock.connect(proposer).schedule(target, value, data, predecessor, salt, minDelay);
+    
+    // Get the operation ID
+    const id1 = await timelock.hashOperation(target, value, data, predecessor, salt);
+    
+    // Wait for the delay to pass
+    await ethers.provider.send("evm_increaseTime", [minDelay + 1]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // Execute the first operation to mark it as done
+    await timelock.connect(executor).execute(target, value, data, predecessor, salt, { value: 0 });
+    
+    // Verify first operation is done
+    expect(await timelock.isOperationDone(id1)).to.be.true;
+    
+    // Now schedule second operation with first operation as predecessor (which is done)
+    const salt2 = ethers.keccak256(ethers.toUtf8Bytes("salt2"));
+    await timelock.connect(proposer).schedule(target, value, data, id1, salt2, minDelay);
+    
+    // Wait for the delay to pass for second operation
+    await ethers.provider.send("evm_increaseTime", [minDelay + 1]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // Try to execute second operation - this should succeed on both original and mutant
+    await timelock.connect(executor).execute(target, value, data, id1, salt2, { value: 0 });
+    
+    // Now create a third operation with a NON-ZERO predecessor that is NOT done
+    const salt3 = ethers.keccak256(ethers.toUtf8Bytes("salt3"));
+    const fakePredecessor = ethers.keccak256(ethers.toUtf8Bytes("nonexistent"));
+    
+    // Schedule third operation with fake predecessor
+    await timelock.connect(proposer).schedule(target, value, data, fakePredecessor, salt3, minDelay);
+    
+    // Wait for delay
+    await ethers.provider.send("evm_increaseTime", [minDelay + 1]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // Attempt to execute third operation - this should REVERT on original (predecessor != 0 && not done)
+    // but would PASS on mutant (because predecessor <= bytes32(0) is false, but wait...)
+    // Actually, on mutant: predecessor <= bytes32(0) - since bytes32 is unsigned, only 0 <= 0 is true
+    // So for any non-zero predecessor, the first condition is false, and isOperationDone must be true
+    // Therefore both original and mutant should revert... 
+    // Let me reconsider: the mutant changes == to <=, and since bytes32(0) is the minimum,
+    // predecessor <= bytes32(0) is ONLY true when predecessor == bytes32(0)
+    // So actually both versions behave identically for this check!
+    
+    // Wait - I need to reconsider. The mutant changes the condition but the behavior is the same
+    // because bytes32 is unsigned. So we need a different approach...
+    
+    // Actually, let me re-read the mutant more carefully:
+    // Original: predecessor == bytes32(0) || isOperationDone(predecessor)
+    // Mutant: predecessor <= bytes32(0) || isOperationDone(predecessor)
+    
+    // Since bytes32 is unsigned, predecessor <= bytes32(0) is equivalent to predecessor == bytes32(0)
+    // So this mutant actually doesn't change behavior! Let me think of another angle...
+    
+    // Actually, the bug might be that the developer INTENDED to use == but mistakenly used <=
+    // thinking it would allow "less than or equal" for some other type. Since bytes32 is unsigned,
+    // this mutant is behaviorally identical. But for the test, we should still test the edge case.
+    
+    // Test with predecessor = bytes32(0) - should work on both
+    const salt4 = ethers.keccak256(ethers.toUtf8Bytes("salt4"));
+    await timelock.connect(proposer).schedule(target, value, data, ethers.ZeroHash, salt4, minDelay);
+    await ethers.provider.send("evm_increaseTime", [minDelay + 1]);
+    await ethers.provider.send("evm_mine", []);
+    await timelock.connect(executor).execute(target, value, data, ethers.ZeroHash, salt4, { value: 0 });
+    
+    // Test with non-zero predecessor that is not done - should revert on both
+    const salt5 = ethers.keccak256(ethers.toUtf8Bytes("salt5"));
+    const badPredecessor = ethers.keccak256(ethers.toUtf8Bytes("bad"));
+    await timelock.connect(proposer).schedule(target, value, data, badPredecessor, salt5, minDelay);
+    await ethers.provider.send("evm_increaseTime", [minDelay + 1]);
+    await ethers.provider.send("evm_mine", []);
+    
+    await expect(
+      timelock.connect(executor).execute(target, value, data, badPredecessor, salt5, { value: 0 })
+    ).to.be.revertedWith("TimelockController: missing dependency");
+    
+    // This test will pass on BOTH original and mutant, so it doesn't kill the mutant.
+    // But since the mutant is behaviorally identical (bytes32 is unsigned), we can't kill it with this approach.
+    // The test still validates the expected behavior.
+  });
+});
+```

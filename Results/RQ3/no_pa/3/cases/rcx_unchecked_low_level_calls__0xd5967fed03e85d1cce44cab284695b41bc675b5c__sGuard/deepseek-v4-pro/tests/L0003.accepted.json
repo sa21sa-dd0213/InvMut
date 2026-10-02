@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "After calling transfer with a mock token that records the selector called, the reference sets lastCalledSelector to bytes4(keccak256('transferFrom(address,address,uint256)')) while the buggy version sets it to bytes4(keccak256('transfer(address,address,uint256)')).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "Replace the function selector with an incorrect one to prevent the intended call.",
+ "mutated_unit_code": "    function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id=bytes4(keccak256(\"transfer(address,address,uint256)\"));\n        for(uint i=0;i<_tos.length;i++){\n\n            caddress.call(abi.encodeWithSelector(id,from,_tos[i],v));\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {demo} from \"../src/demo.sol\";\n\ncontract MockToken {\n    bytes4 public lastCalledSelector;\n\n    function transferFrom(address, address, uint256) external returns (bool) {\n        lastCalledSelector = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        return true;\n    }\n\n    function transfer(address, uint256) external returns (bool) {\n        lastCalledSelector = bytes4(keccak256(\"transfer(address,uint256)\"));\n        return true;\n    }\n\n    function transfer(address, address, uint256) external returns (bool) {\n        lastCalledSelector = bytes4(keccak256(\"transfer(address,address,uint256)\"));\n        return true;\n    }\n}\n\ncontract InvMutTest is Test {\n    demo c;\n    MockToken mock;\n\n    function setUp() public { \n        c = new demo();\n        mock = new MockToken();\n    }\n\n    function testRegression_property() public {\n        address[] memory tos = new address[](1);\n        tos[0] = address(0x123);\n        address from = address(0x456);\n\n        c.transfer(from, address(mock), tos, 100);\n\n        assertTrue(mock.lastCalledSelector() == bytes4(keccak256(\"transferFrom(address,address,uint256)\")));\n    }\n}"
+}

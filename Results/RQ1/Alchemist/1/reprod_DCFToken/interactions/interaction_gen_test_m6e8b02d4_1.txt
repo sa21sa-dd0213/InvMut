@@ -1,0 +1,64 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m6e8b02d4 of DCF.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test DCF.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for DCF:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("DCF reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy DCF by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("DCF"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DCF mutant m6e8b02d4 - blacklist check removal", function () {
+  it("should revert when transfer from blacklisted address", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy DCF with a liquidity receive address (can use any valid address)
+    const Factory = await ethers.getContractFactory("DCF");
+    const instance = await Factory.deploy(addr2.address);
+    await instance.waitForDeployment();
+    
+    // Get the DCF token address
+    const dcfAddress = await instance.getAddress();
+    
+    // Transfer some tokens to addr1 so they have balance to transfer
+    const initialSupply = ethers.parseEther("2000000");
+    const transferAmount = ethers.parseEther("1000");
+    
+    // Owner sends tokens to addr1
+    let tx = await instance.transfer(addr1.address, transferAmount);
+    await tx.wait();
+    
+    // Verify addr1 has tokens
+    expect(await instance.balanceOf(addr1.address)).to.equal(transferAmount);
+    
+    // Set the caller (cfo) to be the owner for setting blacklist
+    await instance.setCaller(owner.address);
+    
+    // Add addr1 to blacklist
+    await instance.setBlack(addr1.address, true);
+    
+    // Attempt transfer from blacklisted address (addr1) to addr2
+    // This should revert because addr1 is blacklisted
+    await expect(
+      instance.connect(addr1).transfer(addr2.address, ethers.parseEther("100"))
+    ).to.be.revertedWith("black address not transfer");
+    
+    // Also test that the blacklisted address cannot receive tokens
+    await expect(
+      instance.connect(addr2).transfer(addr1.address, ethers.parseEther("100"))
+    ).to.be.revertedWith("black address not transfer");
+  });
+});
+```

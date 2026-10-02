@@ -1,0 +1,38 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("ReentrancyDAO mutant detection - m7e788696", function () {   it("should revert when user with zero credit calls withdrawAll on original contract, but mutant allows it", async function () {     const [owner, user] = await ethers.getSigners();          const Factory = await ethers.getContractFactory("ReentrancyDAO");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // User has never deposited, so credit[user] = 0     // On the original contract, the condition oCredit > 0 prevents the withdrawal     // On the mutant, the condition is always true, so it will execute the withdrawal logic          // We expect the call to revert on the original contract     // If the mutant is deployed, it will not revert (killing the mutant)     await expect(       instance.connect(user).withdrawAll()     ).to.be.revertedWith(""); // Empty string since original contract uses require without custom error message   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract ReentrancyDAO { mapping (address => uint) credit; uint balance; function withdrawAll() public { uint oCredit = credit[msg.sender]; if (oCredit > 0) { balance -= oCredit; credit[msg.sender] = 0; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); } } function deposit() public payable { credit[msg.sender] += msg.value; balance += msg.value; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ReentrancyDAO mutant detection - m7e788696", function () {
+  it("should revert when user with zero credit calls withdrawAll on original contract, but mutant allows it", async function () {
+    const [owner, user] = await ethers.getSigners();
+
+    const Factory = await ethers.getContractFactory("ReentrancyDAO");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // User has never deposited, so credit[user] = 0
+    // On the original contract, the condition oCredit > 0 prevents the withdrawal
+    // On the mutant, the condition is always true, so it will execute the withdrawal logic
+
+    // We expect the call to revert on the original contract
+    // If the mutant is deployed, it will not revert (killing the mutant)
+    await expect(
+      instance.connect(user).withdrawAll()
+    ).to.be.revertedWith(""); // Empty string since original contract uses require without custom error message
+  });
+});
+```

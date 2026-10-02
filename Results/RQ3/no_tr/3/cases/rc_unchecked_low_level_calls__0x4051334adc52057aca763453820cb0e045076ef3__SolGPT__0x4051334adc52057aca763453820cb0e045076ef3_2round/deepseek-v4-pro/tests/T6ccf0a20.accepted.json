@@ -1,0 +1,12 @@
+{
+ "difference_id": "T6ccf0a20",
+ "property_summary": "For any valid input, the reference transfer function always succeeds (returns true without reverting), while the buggy version will execute the external call without enforcing its success, thus failing to revert when the external call fails.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replace the require check on call success with an assignment to a local variable, suppressing the revert on failure.",
+ "mutated_unit_code": "function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){\nrequire(_tos.length > 0);\nbytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\nfor(uint i=0;i<_tos.length;i++){\n\n{ (bool _s,) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v)); bool _x = _s; }\n}\nreturn true;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airdrop} from \"../src/airdrop.sol\";\n\ncontract InvMutTest is Test {\n    airdrop c;\n\n    function setUp() public { c = new airdrop(); }\n\n    function testFuzz_property(address from, address[] memory _tos, uint256 v) public {\n        vm.assume(_tos.length > 0);\n        vm.assume(from != address(0));\n        Reverter reverter = new Reverter();\n        address caddress = address(reverter);\n\n        bool success;\n        try c.transfer(from, caddress, _tos, v) returns (bool result) {\n            success = result;\n        } catch {\n            success = false;\n        }\n\n        assertTrue(success == false);\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert();\n    }\n}"
+}

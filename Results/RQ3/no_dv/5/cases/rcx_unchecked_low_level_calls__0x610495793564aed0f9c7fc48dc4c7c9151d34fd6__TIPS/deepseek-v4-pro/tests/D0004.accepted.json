@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0004",
+ "property_summary": "When the low-level call in sendMoney fails, the call to sendMoney must revert; the buggy version ignores the failure and does not revert.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Remove the revert on failure in sendMoney so the function always succeeds without reverting on a failed call.",
+ "mutated_unit_code": "function sendMoney(address _target, uint _value, bytes memory _data)  public onlyOwner {\n\t{ (bool _s, bytes memory _d) = _target.call{value: _value}(_data); _d; if (! _s) {\n\t} }\n\t}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n    function testFuzz_property(uint256 value, bytes calldata data) public {\n        vm.assume(value <= address(this).balance);\n        Reverter reverter = new Reverter();\n        address reverterAddr = address(reverter);\n        vm.prank(c.owner());\n        (bool sent, ) = reverterAddr.call{value: 0}(\"\");\n        sent;\n        vm.prank(c.owner());\n        bool sendMoneySucceeded;\n        try c.sendMoney(reverterAddr, value, data) {\n            sendMoneySucceeded = true;\n        } catch {\n            sendMoneySucceeded = false;\n        }\n        assertFalse(sendMoneySucceeded);\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"Reverter always fails\");\n    }\n}\n"
+}

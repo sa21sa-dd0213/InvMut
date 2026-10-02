@@ -1,0 +1,12 @@
+{
+ "difference_id": "T31375435",
+ "property_summary": "After any sequence of receive() calls, depositsCount must be at least as large as the actual Ether balance of C; the bug decrements depositsCount, breaking this invariant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace depositsCount++ with depositsCount--, causing depositsCount to decrement instead of increment.",
+ "mutated_unit_code": "receive() external payable {\n        require(((depositsCount + 1) >= depositsCount));\n        depositsCount--;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n    function testFuzz_property(uint256 count) public {\n        vm.assume(count > 0 && count <= 100);\n        address sender = address(0x1234);\n        vm.deal(sender, count * 1 ether);\n        vm.startPrank(sender);\n        for (uint256 i = 0; i < count; i++) {\n            (bool ok,) = address(c).call{value: 1 ether}(\"\");\n            require(ok, \"deposit failed\");\n        }\n        vm.stopPrank();\n        uint256 balance = address(c).balance;\n        uint256 dc = c.depositsCount();\n        assertTrue(dc >= balance / 1 ether);\n    }\n}\n"
+}

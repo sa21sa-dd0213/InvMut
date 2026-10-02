@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tc9961a16",
+ "property_summary": "After withdrawBalance, the contract's ETH balance must decrease by exactly the withdrawn amount. The mutant sends funds to address(0) instead of msg.sender, so the contract balance becomes 0 but the caller receives nothing, violating this invariant when the caller has a non-zero balance.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replace msg.sender.call with call to a different address so funds go to wrong recipient",
+ "mutated_unit_code": "function withdrawBalance() public{\n\n         uint256 tmp__1 = userBalance[msg.sender];\n         userBalance[msg.sender] = 0;\n         { (bool _s, bytes memory _d) = address(0).call{value: tmp__1}(\"\"); _d; if (! _s) {\n             revert();\n         } }\n\n     }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n    function testFuzz_property(address actor) public {\n        vm.assume(actor != address(0));\n        vm.assume(actor != address(this));\n        vm.assume(actor != address(c));\n        uint256 amt = 1 ether;\n        vm.deal(actor, amt);\n        vm.prank(actor);\n        c.addToBalance{value: amt}();\n        uint256 snapActor = actor.balance;\n        uint256 snapC = address(c).balance;\n        assert(snapC == amt);\n        vm.prank(actor);\n        try c.withdrawBalance() { } catch { }\n        assertEq(actor.balance, snapActor + amt);\n    }\n}\n"
+}

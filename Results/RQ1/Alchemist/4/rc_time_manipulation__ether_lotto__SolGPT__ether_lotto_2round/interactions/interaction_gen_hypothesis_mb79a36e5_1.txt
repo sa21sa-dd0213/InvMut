@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EtherLotto:
+        Contract Code: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+
+    Consider the following mutant of EtherLotto:
+        Mutant mb79a36e5 of function play replaces == with >=
+        Mutant Diff: ---|         require(msg.value == TICKET_AMOUNT); +++|         require(msg.value >= TICKET_AMOUNT);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the exact equality check (`==`) to a greater-or-equal check (`>=`), so the contract will accept any payment of 10 wei or more instead of exactly 10 wei.  
+
+**Hypothesis**: A test case that sends exactly 10 wei (the required ticket amount) to the `play` function and then checks that the contract's balance or the `pot` variable remains as expected after the game outcome should pass on the original. However, on the mutant, sending a value greater than 10 wei (e.g., 15 wei) will not revert, allowing excess funds to be added to the pot. A test case that sends 15 wei and then verifies that the transaction succeeds (no revert) and that the pot increases by 15 wei (instead of being capped at 10 wei) would detect the mutant, because the original would revert for any amount not exactly 10 wei.

@@ -1,0 +1,93 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("VaultAdapter mutant kill test - m74ed2fbe", function () {
+  it("should kill mutant m74ed2fbe by setting utilization equal to kink and verifying the interest rate calculation", async function () {
+    const [owner, vault, user] = await ethers.getSigners();
+    
+    // Deploy VaultAdapter
+    const VaultAdapterFactory = await ethers.getContractFactory("VaultAdapter");
+    const vaultAdapter = await VaultAdapterFactory.deploy();
+    await vaultAdapter.waitForDeployment();
+    
+    // Deploy a mock vault for testing
+    // We need a simple contract that implements IVault interface for currentUtilizationIndex and utilization
+    const MockVaultFactory = await ethers.getContractFactory("MockVault");
+    const mockVault = await MockVaultFactory.deploy();
+    await mockVault.waitForDeployment();
+    
+    // Deploy AccessControl
+    const AccessControlFactory = await ethers.getContractFactory("AccessControlMock");
+    const accessControl = await AccessControlFactory.deploy();
+    await accessControl.waitForDeployment();
+    
+    // Initialize VaultAdapter
+    await vaultAdapter.initialize(await accessControl.getAddress());
+    
+    // Grant access to owner for setSlopes and setLimits
+    const setSlopesSelector = ethers.id("setSlopes(address,(uint256,uint256,uint256))").substring(0, 10);
+    const setLimitsSelector = ethers.id("setLimits(uint256,uint256,uint256)").substring(0, 10);
+    const zeroSelector = "0x00000000";
+    
+    await accessControl.grantAccess(setSlopesSelector, await vaultAdapter.getAddress(), await owner.getAddress());
+    await accessControl.grantAccess(setLimitsSelector, await vaultAdapter.getAddress(), await owner.getAddress());
+    await accessControl.grantAccess(zeroSelector, await vaultAdapter.getAddress(), await owner.getAddress());
+    
+    // Setup slopes with a specific kink
+    const assetAddress = ethers.Wallet.createRandom().address;
+    const kink = ethers.parseEther("0.5"); // 50% utilization as kink
+    const slope0 = ethers.parseEther("0.1"); // 10% base slope
+    const slope1 = ethers.parseEther("0.2"); // 20% excess slope
+    
+    await vaultAdapter.setSlopes(assetAddress, {
+      kink: kink,
+      slope0: slope0,
+      slope1: slope1
+    });
+    
+    // Set limits
+    const maxMultiplier = ethers.parseEther("2");
+    const minMultiplier = ethers.parseEther("0.5");
+    const rate = ethers.parseEther("0.01"); // 1% rate
+    
+    await vaultAdapter.setLimits(maxMultiplier, minMultiplier, rate);
+    
+    // Set vault to return utilization exactly equal to kink
+    // This is the critical case: when utilization == kink, excess = 0
+    await mockVault.setUtilization(kink);
+    await mockVault.setCurrentUtilizationIndex(ethers.parseEther("1")); // Some index value
+    
+    // Set lastUpdate to block.timestamp - 100 to have elapsed time
+    // We need to simulate the time passage
+    const elapsed = 100;
+    await ethers.provider.send("evm_increaseTime", [elapsed]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // Call rate function
+    const result = await vaultAdapter.rate(await mockVault.getAddress(), assetAddress);
+    
+    // In the original code, when utilization == kink, excess = 0
+    // So the multiplier update formula becomes:
+    // multiplier = multiplier * (1e27 + 0) / 1e27 = multiplier (unchanged)
+    // Interest rate = (slope0 * utilization / kink) * multiplier / 1e27
+    // Since utilization == kink, this becomes slope0 * multiplier / 1e27
+    
+    // With initial multiplier = 1e27 (default), expected rate = slope0 = 0.1 ether
+    const expectedRate = ethers.parseEther("0.1");
+    
+    // In the mutant, when excess = 0, the formula becomes:
+    // multiplier * (1e27 + (0 + (1e27 - kink)) * elapsed * rate / 1e27) / 1e27
+    // = multiplier * (1e27 + (1e27 - kink) * elapsed * rate / 1e27) / 1e27
+    // This will produce a different multiplier, leading to a different interest rate
+    
+    expect(result).to.not.equal(expectedRate, "Mutant should produce a different interest rate when utilization equals kink");
+    
+    // The test passes if the mutant is detected (rate is different from expected)
+    // For the original contract, this should pass (result equals expectedRate)
+    // For the mutant, this should fail (result != expectedRate)
+  });
+});
+
+// Helper contract for testing
+// Note: This would need to be deployed as a separate Solidity contract
+// For the test to work, we need a MockVault contract that implements the required interface

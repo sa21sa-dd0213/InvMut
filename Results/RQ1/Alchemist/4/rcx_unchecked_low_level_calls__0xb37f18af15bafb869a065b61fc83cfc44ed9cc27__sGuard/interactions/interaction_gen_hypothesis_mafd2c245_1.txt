@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract SimpleWallet:
+        Contract Code: pragma solidity ^0.8.0; contract SimpleWallet { address public owner = payable(msg.sender); uint public depositsCount; modifier onlyOwner { require(msg.sender == owner); _; } fallback() external payable { depositsCount++; } function withdrawAll() public onlyOwner { withdraw(address(this).balance); } function withdraw(uint _value) public onlyOwner { payable(msg.sender).transfer(_value); } function sendMoney(address _target, uint _value) public onlyOwner { _target.call{value: _value}(""); } }
+
+    Consider the following mutant of SimpleWallet:
+        Mutant mafd2c245 of function modifier:onlyOwner replaces == with !=
+        Mutant Diff: ---|         require(msg.sender == owner); +++|         require(msg.sender != owner);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the access control condition from `msg.sender == owner` to `msg.sender != owner`, meaning the modifier now only allows transactions from **non-owners** and blocks the owner. Therefore, a test case that calls `withdrawAll()` or `withdraw()` from the owner's address and expects the transaction to succeed should kill the mutant, because on the mutant the owner's call will revert.  
+
+**Hypothesis**: A test case where the contract owner calls `withdrawAll()` and expects it to execute without reverting should kill the mutant.

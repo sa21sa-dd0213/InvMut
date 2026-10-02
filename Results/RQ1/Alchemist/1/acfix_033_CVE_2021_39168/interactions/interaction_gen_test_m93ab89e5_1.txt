@@ -1,0 +1,71 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m93ab89e5 of TimelockController.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test TimelockController.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for TimelockController:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("TimelockController reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy TimelockController by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("TimelockController"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("TimelockController mutant test - isOperationPending", function () {
+  it("should detect mutant where > is replaced with < in isOperationPending", async function () {
+    const [owner, proposer, executor] = await ethers.getSigners();
+    
+    const minDelay = 100; // 100 seconds
+    const proposers = [proposer.address];
+    const executors = [executor.address];
+    
+    const Factory = await ethers.getContractFactory("TimelockController");
+    const instance = await Factory.deploy(minDelay, proposers, executors);
+    await instance.waitForDeployment();
+    
+    // Schedule an operation as proposer
+    const target = executor.address;
+    const value = 0;
+    const data = "0x";
+    const predecessor = ethers.ZeroHash;
+    const salt = ethers.hexlify(ethers.randomBytes(32));
+    
+    // Schedule with proposer role
+    const scheduleTx = await instance.connect(proposer).schedule(
+      target,
+      value,
+      data,
+      predecessor,
+      salt,
+      minDelay
+    );
+    await scheduleTx.wait();
+    
+    // Get operation ID
+    const operationId = await instance.hashOperation(
+      target,
+      value,
+      data,
+      predecessor,
+      salt
+    );
+    
+    // The operation should be pending (scheduled but not yet ready)
+    const isPending = await instance.isOperationPending(operationId);
+    
+    // In original: returns true when timestamp > 1 (operation is pending)
+    // In mutant: returns true when timestamp < 1 (which would be false for scheduled ops)
+    // So the mutant would return false, causing this assertion to fail
+    expect(isPending).to.equal(true);
+  });
+});
+```

@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0005",
+ "property_summary": "Player locks guess at block 2, then at block 2 (same block number) the modified version allows settle while reference requires block.number > guess.block, so reference reverts and modified succeeds, causing balance divergence.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "-require(block.number > guesses[msg.sender].block);; +require(block.number >= guesses[msg.sender].block);",
+ "mutated_unit_code": "    function settle() public {\n        require(guesses[msg.sender].block != 0);\n        require(block.number >= guesses[msg.sender].block);\n\n        bytes32 answer = keccak256(abi.encodePacked(blockhash(guesses[msg.sender].block)));\n\n        guesses[msg.sender].block = 0;\n        if (guesses[msg.sender].guess == answer) {\n            payable(msg.sender).transfer(2 ether);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {PredictTheBlockHashChallenge} from \"../src/PredictTheBlockHashChallenge.sol\";\n\ncontract InvMutTest is Test {\n    PredictTheBlockHashChallenge c;\n    function setUp() public { \n        vm.deal(address(this), 1 ether);\n        c = new PredictTheBlockHashChallenge{value: 1 ether}(); \n    }\n    function testRegression_property() public {\n        address player = address(0x42);\n        vm.deal(player, 1 ether);\n\n        vm.prank(player);\n        c.lockInGuess{value: 1 ether}(keccak256(abi.encodePacked(bytes32(0))));\n\n        vm.roll(2);\n\n        vm.prank(player);\n        bool ok;\n        try c.settle() { ok = true; } catch { ok = false; }\n\n        assertTrue(!ok);\n    }\n}"
+}

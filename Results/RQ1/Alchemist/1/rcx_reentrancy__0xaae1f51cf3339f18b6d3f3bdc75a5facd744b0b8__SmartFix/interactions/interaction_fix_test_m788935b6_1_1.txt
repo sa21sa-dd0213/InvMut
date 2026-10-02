@@ -1,0 +1,66 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("DEP_BANK - Kill mutant m788935b6 (remove overflow check)", function () {   it("should detect missing overflow protection by causing integer overflow in Deposit", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy LogFile first (required by DEP_BANK constructor)     const LogFileFactory = await ethers.getContractFactory("LogFile");     const logFile = await LogFileFactory.deploy();     await logFile.waitForDeployment();          // Deploy DEP_BANK with LogFile address as constructor argument     const Factory = await ethers.getContractFactory("DEP_BANK");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Set up the contract - call SetMinSum and SetLogFile, then Initialize     await instance.connect(owner).SetMinSum(0);     await instance.connect(owner).SetLogFile(await logFile.getAddress());     await instance.connect(owner).Initialized();          // Get current balance of addr1     const currentBalance = await instance.balances(addr1.address);          // Calculate the amount needed to cause overflow:      // We want (currentBalance + depositAmount) to overflow uint256     // This means depositAmount = 2^256 - currentBalance     const MAX_UINT = ethers.MaxUint256;     const depositAmount = MAX_UINT - currentBalance + 1n;          // On the original contract, this should revert due to the require check     // On the mutant (which removes the require), this should succeed and cause overflow     const tx = instance.connect(addr1).Deposit({ value: depositAmount });          // If the contract is the mutant, the transaction will succeed (overflow happens)     // If the contract is original, it will revert     // We expect it to succeed on the mutant, so we check for success     await expect(tx).to.not.be.reverted;          // Verify the balance overflowed - should be very small (wrapped around)     const newBalance = await instance.balances(addr1.address);     expect(newBalance).to.equal(depositAmount + currentBalance - (MAX_UINT + 1n));          // The balance should be (currentBalance + depositAmount) % (2^256)     // Since depositAmount = MAX_UINT - currentBalance + 1,      // (currentBalance + depositAmount) = MAX_UINT + 1 = 0     expect(newBalance).to.equal(0n);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract DEP_BANK { mapping (address=>uint256) public balances; uint public MinSum; LogFile Log; bool intitalized; function SetMinSum(uint _val) public { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log) public { if(intitalized)revert(); Log = LogFile(_log); } function Initialized() public { intitalized = true; } function Deposit() public payable { require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); balances[msg.sender]+= msg.value; Log.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { if(balances[msg.sender]>=MinSum && balances[msg.sender]>=_am) { balances[msg.sender] = (balances[msg.sender] - _am); (bool _veri_ok,) = msg.sender.call{value: _am}(""); if(_veri_ok) { Log.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } receive() external payable { Deposit(); } } contract LogFile { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val,string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DEP_BANK - Kill mutant m788935b6 (remove overflow check)", function () {
+  it("should detect missing overflow protection by causing integer overflow in Deposit", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy LogFile first (required by DEP_BANK constructor)
+    const LogFileFactory = await ethers.getContractFactory("LogFile");
+    const logFile = await LogFileFactory.deploy();
+    await logFile.waitForDeployment();
+
+    // Deploy DEP_BANK with LogFile address as constructor argument
+    const Factory = await ethers.getContractFactory("DEP_BANK");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Set up the contract - call SetMinSum and SetLogFile, then Initialize
+    await instance.connect(owner).SetMinSum(0);
+    await instance.connect(owner).SetLogFile(await logFile.getAddress());
+    await instance.connect(owner).Initialized();
+
+    // Get current balance of addr1
+    const currentBalance = await instance.balances(addr1.address);
+
+    // Calculate the amount needed to cause overflow:
+    // We want (currentBalance + depositAmount) to overflow uint256
+    // This means depositAmount = 2^256 - currentBalance
+    const MAX_UINT = ethers.MaxUint256;
+    const depositAmount = MAX_UINT - currentBalance + 1n;
+
+    // On the original contract, this should revert due to the require check
+    // On the mutant (which removes the require), this should succeed and cause overflow
+    const tx = instance.connect(addr1).Deposit({ value: depositAmount });
+
+    // If the contract is the mutant, the transaction will succeed (overflow happens)
+    // If the contract is original, it will revert
+    // We expect it to succeed on the mutant, so we check for success
+    await expect(tx).to.not.be.reverted;
+
+    // Verify the balance overflowed - should be very small (wrapped around)
+    const newBalance = await instance.balances(addr1.address);
+    expect(newBalance).to.equal(depositAmount + currentBalance - (MAX_UINT + 1n));
+
+    // The balance should be (currentBalance + depositAmount) % (2^256)
+    // Since depositAmount = MAX_UINT - currentBalance + 1,
+    // (currentBalance + depositAmount) = MAX_UINT + 1 = 0
+    expect(newBalance).to.equal(0n);
+  });
+});
+```

@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0005",
+ "property_summary": "After any admissible play() call, pot is either 0 (if the payout branch executed) or equal to the total ticket value contributed so far (if it did not); the buggy mutant incorrectly executes the payout branch for a different random value, causing pot to be zero when it should be non-zero (or vice versa), so the equality pot == (payout occurred ? 0 : cumulativeTickets * TICKET_AMOUNT) is violated.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replace `if (random == 0)` with `if (random == 1)` so the payoff condition is inverted.",
+ "mutated_unit_code": "    function play()  public payable {\n        require(msg.value == TICKET_AMOUNT);\n        pot += msg.value;\n\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n\n        if (random == 1) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    uint cumulative;\n\n    function setUp() public {\n        c = new EtherLotto();\n        cumulative = 0;\n    }\n\n    function testFuzz_property(uint8 run) public {\n        vm.assume(run >= 1 && run <= 10);\n\n        bool lastWon = false;\n        for (uint i = 0; i < run; i++) {\n            uint ticket = 10;\n            address player = address(uint160(uint(keccak256(abi.encodePacked(this, i)))));\n            vm.deal(player, ticket);\n            vm.prank(player);\n            c.play{value: ticket}();\n\n            cumulative++;\n\n            uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n            if (random == 0) {\n                lastWon = true;\n            } else {\n                lastWon = false;\n            }\n        }\n\n        uint expectedPot;\n        if (lastWon) {\n            expectedPot = 0;\n        } else {\n            expectedPot = cumulative * 10;\n        }\n\n        uint actualPot = c.pot();\n        assertTrue(actualPot == expectedPot);\n    }\n}\n"
+}

@@ -1,0 +1,51 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m04adec4a of W_WALLET.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test W_WALLET.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for W_WALLET:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("W_WALLET reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy W_WALLET by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("W_WALLET"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("W_WALLET mutant m04adec4a detection test", function () {
+  it("should detect the mutant by checking logged value matches msg.value (not msg.value-1)", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy the Log contract first (required constructor argument)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+    
+    // Deploy W_WALLET with the Log contract address
+    const Factory = await ethers.getContractFactory("W_WALLET");
+    const instance = await Factory.deploy(await logInstance.getAddress());
+    await instance.waitForDeployment();
+    
+    // Send exactly 1 wei to Put function via fallback
+    const tx = await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("0.000000000000000001") // 1 wei
+    });
+    await tx.wait();
+    
+    // Check the logged value in the Log contract's history
+    const historyEntry = await logInstance.History(0);
+    // In original: logged value should be 1 wei
+    // In mutant: logged value would be 0 (msg.value - 1)
+    expect(historyEntry.Val).to.equal(ethers.parseEther("0.000000000000000001"));
+  });
+});
+```

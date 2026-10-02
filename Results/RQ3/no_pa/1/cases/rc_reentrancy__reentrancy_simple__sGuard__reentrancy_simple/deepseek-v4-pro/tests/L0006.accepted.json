@@ -1,0 +1,11 @@
+{
+ "difference_id": "L0006",
+ "property_summary": "After a single call to addToBalance() by Alice with 1 wei, the reference contract's nonReentrant_ modifier resets locked_ to false, allowing a subsequent call to succeed, while the buggy contract permanently locks and reverts on the second call; the bug is observed when a second addToBalance() call made by Alice after the first fails (reverts).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "change_summary": "Delete the line that sets locked_ = false after execution, so the contract is permanently locked after first use.",
+ "mutated_unit_code": "  modifier nonReentrant_() {\n    require(!locked_);\n    locked_ = true;\n    _;\n  }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    bool attacking;\n    uint256 got;\n\n    function setUp() public {\n        c = new Reentrance();\n    }\n\n    receive() external payable {\n        got += msg.value;\n        if (attacking && address(c).balance >= 1) {\n            attacking = false;\n            try c.withdrawBalance() {} catch {}\n        }\n    }\n\n    function _run() internal {\n        vm.deal(address(c), 10);\n        vm.deal(address(this), 10);\n        c.addToBalance{value: 1}();\n        attacking = true;\n        c.withdrawBalance();\n        assertTrue(got <= 1);\n    }\n\n    function testFuzz_run() public {\n        _run();\n    }\n}\n"
+}

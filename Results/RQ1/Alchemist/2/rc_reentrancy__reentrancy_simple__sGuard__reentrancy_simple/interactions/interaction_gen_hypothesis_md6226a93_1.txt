@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Reentrance:
+        Contract Code: pragma solidity ^0.8.0; contract sGuard{ function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } } contract Reentrance  is sGuard { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public nonReentrant_ payable { userBalance[msg.sender] = add_uint256(userBalance[msg.sender], msg.value); } function withdrawBalance()  public nonReentrant_ { { (bool _s, bytes memory _d) = msg.sender.call{value: userBalance[msg.sender]}(""); _d; if (! _s) { revert(); } } userBalance[msg.sender] = 0; } }
+
+    Consider the following mutant of Reentrance:
+        Mutant md6226a93 of function getBalance replaces return userBalance[u]; with 
+        Mutant Diff: ---|          return userBalance[u]; +++|
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant modifies the `getBalance` function by removing the return statement entirely, meaning the function will no longer return the user's balance. Therefore, a test case that calls `getBalance` with a known address that has deposited funds, and then asserts that the returned value equals the deposited amount, should pass on the original contract (returning the correct balance) but fail on the mutant (which returns nothing or a default value).  
+
+**Hypothesis:** "The mutant removes the return statement from the `getBalance` function. Therefore, a test case that deposits a specific amount of Ether, then calls `getBalance` with the depositor's address and expects the returned value to equal that deposited amount, should kill the mutant."

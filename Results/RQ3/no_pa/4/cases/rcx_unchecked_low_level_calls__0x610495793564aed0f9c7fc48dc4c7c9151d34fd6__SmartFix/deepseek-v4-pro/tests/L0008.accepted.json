@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0008",
+ "property_summary": "After a non-owner deposits 1 ether, the owner calls sendMoney(address(this), 1 ether, ''); the reference contract sends the ether to itself (no net balance change), while the buggy contract treats the non-owner as the only allowed caller and thus doesn't revert, also sending 1 ether to itself\u2014but the key difference is that after the call, the reference contract's depositsCount remains 1 (unchanged), while the buggy contract's depositsCount also remains 1 (no difference there). Actually, the correct divergence is that after owner sends money to the target (non-owner), in reference, the target receives ether; in buggy, the owner is not allowed so the call reverts. Let me pick: after a non-owner deposits, the owner calls sendMoney on a non-owner address; reference succeeds and target gets ether (balance of target increases), bug reverts (target balance unchanged).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Change modifier condition from msg.sender == owner to msg.sender != owner",
+ "mutated_unit_code": "    modifier onlyOwner {\n        require(msg.sender != owner);\n        _;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n    function testRegression_property() public {\n        address nonOwner = address(0x1);\n        address target = address(0x2);\n        vm.deal(nonOwner, 1 ether);\n        vm.prank(nonOwner);\n        (bool sent,) = address(c).call{value: 1 ether}(\"\");\n        assertTrue(sent);\n\n        uint targetBalanceBefore = target.balance;\n        vm.prank(c.owner());\n        c.sendMoney(target, 1 ether, \"\");\n        uint targetBalanceAfter = target.balance;\n        assertTrue(targetBalanceAfter > targetBalanceBefore);\n    }\n}\n"
+}

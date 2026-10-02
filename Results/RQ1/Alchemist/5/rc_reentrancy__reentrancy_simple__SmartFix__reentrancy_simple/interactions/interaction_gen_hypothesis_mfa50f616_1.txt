@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Reentrance:
+        Contract Code: pragma solidity ^0.8.0; contract Reentrance { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public payable { require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender])); userBalance[msg.sender] += msg.value; } function withdrawBalance() public{ uint256 tmp__1 = userBalance[msg.sender]; userBalance[msg.sender] = 0; { (bool _s, bytes memory _d) = msg.sender.call{value: tmp__1}(""); _d; if (! _s) { revert(); } } } }
+
+    Consider the following mutant of Reentrance:
+        Mutant mfa50f616 of function addToBalance replaces >= with <=
+        Mutant Diff: ---|          require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender])); +++|          require(((userBalance[msg.sender] + msg.value) <= userBalance[msg.sender]));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract uses `>=` to ensure that the addition does not overflow (a common safety check). The mutant changes it to `<=`, which means the require statement will only pass if `userBalance[msg.sender] + msg.value` is **less than or equal to** the current balance—a condition that is only true when `msg.value` is zero (since adding a positive number to a balance would exceed it).  
+
+**Hypothesis:** A test case that sends a non-zero amount of ether (e.g., 1 wei) to `addToBalance()` and then checks that the balance of the caller increased by that amount should kill the mutant. On the original, the transaction succeeds and the balance increases. On the mutant, the require condition will fail (because `balance + 1 <= balance` is false), causing a revert, and the balance will not change.

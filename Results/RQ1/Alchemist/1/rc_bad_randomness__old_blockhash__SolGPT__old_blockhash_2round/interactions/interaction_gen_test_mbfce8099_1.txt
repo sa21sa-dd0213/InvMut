@@ -1,0 +1,57 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mbfce8099 of PredictTheBlockHashChallenge.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PredictTheBlockHashChallenge.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PredictTheBlockHashChallenge:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PredictTheBlockHashChallenge reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PredictTheBlockHashChallenge by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PredictTheBlockHashChallenge - kill mutant mbfce8099", function () {
+  it("should revert when settling at the exact block number (original) but succeed on mutant", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy with 1 ether as required by constructor
+    const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge");
+    const instance = await Factory.deploy({ value: ethers.parseEther("1") });
+    await instance.waitForDeployment();
+    
+    // Fund attacker with 1 ether for the lockInGuess
+    const attackerBalance = ethers.parseEther("1");
+    
+    // Get current block number
+    const currentBlock = await ethers.provider.getBlockNumber();
+    
+    // Lock in a guess for the next block
+    const guessHash = ethers.keccak256(ethers.toUtf8Bytes("test"));
+    await instance.connect(attacker).lockInGuess(guessHash, { value: ethers.parseEther("1") });
+    
+    // Mine a block to advance to the target block
+    await ethers.provider.send("evm_mine", []);
+    const targetBlock = currentBlock + 1;
+    
+    // Verify we are at the exact target block
+    const currentBlockAfter = await ethers.provider.getBlockNumber();
+    expect(currentBlockAfter).to.equal(targetBlock);
+    
+    // Attempt to settle at the exact block - should revert on original (due to >)
+    // but will pass on mutant (due to >=)
+    await expect(
+      instance.connect(attacker).settle()
+    ).to.be.reverted;
+  });
+});
+```

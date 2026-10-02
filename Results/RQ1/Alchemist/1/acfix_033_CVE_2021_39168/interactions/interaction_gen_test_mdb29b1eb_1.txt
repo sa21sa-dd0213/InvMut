@@ -1,0 +1,74 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mdb29b1eb of TimelockController.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test TimelockController.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for TimelockController:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("TimelockController reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy TimelockController by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("TimelockController"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("TimelockController mutant mdb29b1eb - cancel without pending check", function () {
+  it("should revert when trying to cancel a completed operation, but mutant allows it", async function () {
+    const [owner, proposer, executor] = await ethers.getSigners();
+    
+    const minDelay = 100; // 100 seconds
+    const proposers = [proposer.address];
+    const executors = [executor.address];
+    
+    const Factory = await ethers.getContractFactory("TimelockController");
+    const instance = await Factory.deploy(minDelay, proposers, executors);
+    await instance.waitForDeployment();
+    
+    // Grant PROPOSER_ROLE to proposer for scheduling
+    const TIMELOCK_ADMIN_ROLE = ethers.keccak256(ethers.toUtf8Bytes("TIMELOCK_ADMIN_ROLE"));
+    const PROPOSER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("PROPOSER_ROLE"));
+    const EXECUTOR_ROLE = ethers.keccak256(ethers.toUtf8Bytes("EXECUTOR_ROLE"));
+    
+    await instance.connect(owner).grantRole(PROPOSER_ROLE, proposer.address);
+    await instance.connect(owner).grantRole(EXECUTOR_ROLE, executor.address);
+    
+    // Schedule a simple operation
+    const target = proposer.address;
+    const value = 0;
+    const data = "0x";
+    const predecessor = ethers.ZeroHash;
+    const salt = ethers.keccak256(ethers.toUtf8Bytes("test"));
+    const delay = minDelay + 10;
+    
+    await instance.connect(proposer).schedule(target, value, data, predecessor, salt, delay);
+    
+    // Fast forward time to make operation ready
+    await ethers.provider.send("evm_increaseTime", [delay + 1]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // Execute the operation (this completes it)
+    await instance.connect(executor).execute(target, value, data, predecessor, salt, { value: 0 });
+    
+    // Now try to cancel the completed operation
+    // On the original contract this should revert because operation is done (not pending)
+    // On the mutant it will succeed because the require check is removed
+    const operationId = await instance.hashOperation(target, value, data, predecessor, salt);
+    
+    // Verify operation is done
+    expect(await instance.isOperationDone(operationId)).to.be.true;
+    
+    // This should revert on original, but mutant will allow it
+    await expect(
+      instance.connect(proposer).cancel(operationId)
+    ).to.be.revertedWith("TimelockController: operation cannot be cancelled");
+  });
+});
+```

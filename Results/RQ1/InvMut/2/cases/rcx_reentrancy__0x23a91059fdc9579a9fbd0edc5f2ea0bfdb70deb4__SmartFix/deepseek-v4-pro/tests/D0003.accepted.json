@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0003",
+ "property_summary": "Calling Deposit after CashOut always succeeds when msg.value is at least MinDeposit, regardless of the amounts.",
+ "render_status": "rendered",
+ "validation_status": "skipped",
+ "validation_error": null,
+ "kill": "bug_no_kill:m_no_cex_within_bound",
+ "origin": "primary",
+ "change_summary": "Change require condition to always revert, preventing any balance update.",
+ "mutated_unit_code": "function Deposit()\n    public\n    payable\n    {\n        if(msg.value >= MinDeposit)\n        {\n            require(false);\n            balances[msg.sender]+=msg.value;\n            TransferLog.AddMessage(msg.sender,msg.value,\"Deposit\");\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {PrivateBank} from \"../src/PrivateBank.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    PrivateBank c;\n\n    function setUp() public {\n        c = new PrivateBank(address(this));\n    }\n\n    function _run(uint256 _am, uint256 _depAmt) internal {\n        _depAmt = bound(_depAmt, 0, 1000000000000000000000000000000);\n        vm.deal(address(this), VALUE_CAP);\n        vm.deal(address(c), VALUE_CAP);\n        vm.assume(true);\n        vm.assume(address(this).balance >= _depAmt);\n        try c.CashOut(_am) {} catch { return; }\n        bool reverted;\n        try c.Deposit{value: _depAmt}() { reverted = false; } catch { reverted = true; }\n        assertTrue(!reverted);\n    }\n\n    function testFuzz_run(uint256 _am, uint256 _depAmt) public {\n        _run(_am, _depAmt);\n    }\n\n    receive() external payable {}\n}\n"
+}

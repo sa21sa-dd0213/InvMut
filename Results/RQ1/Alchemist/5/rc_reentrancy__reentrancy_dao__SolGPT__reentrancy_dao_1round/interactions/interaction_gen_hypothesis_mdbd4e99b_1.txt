@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract ReentrancyDAO:
+        Contract Code: pragma solidity ^0.8.0; contract ReentrancyDAO { mapping (address => uint) credit; uint balance; function withdrawAll() public { uint oCredit = credit[msg.sender]; if (oCredit > 0) { balance -= oCredit; credit[msg.sender] = 0; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); } } function deposit() public payable { credit[msg.sender] += msg.value; balance += msg.value; } }
+
+    Consider the following mutant of ReentrancyDAO:
+        Mutant mdbd4e99b of function deposit replaces msg.value with msg.value+1
+        Mutant Diff: ---|         credit[msg.sender] += msg.value; +++|         credit[msg.sender] += msg.value+1;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes `deposit` to add an extra 1 wei to the user's credit on each deposit, while the actual `balance` stored in the contract still only increases by `msg.value` (since only the credit mapping is mutated, not the balance addition).  
+
+**Hypothesis**: A test case that deposits a specific amount (e.g., 1 ether) and then calls `withdrawAll`, expecting to withdraw exactly the deposited amount, will fail on the mutant because the contract will attempt to send more wei (the credit amount with +1) than the actual contract balance holds, causing the `require(callResult)` to revert, thus killing the mutant.

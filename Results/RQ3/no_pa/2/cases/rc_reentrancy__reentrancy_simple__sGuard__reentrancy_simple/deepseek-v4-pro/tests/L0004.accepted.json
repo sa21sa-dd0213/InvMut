@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0004",
+ "property_summary": "After user A deposits 1 ether, user B deposits 2 ether, then user A withdraws and reenters addToBalance() via a fallback: the reference (nonReentrant) keeps A's balance at 1 ether, while the bug (no modifier) allows the reentrant call, setting A's balance to 2 ether.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "Remove the nonReentrant modifier from addToBalance, allowing reentrancy that can modify userBalance differently for the caller.",
+ "mutated_unit_code": "      function addToBalance()  public payable {\n         userBalance[msg.sender] = add_uint256(userBalance[msg.sender], msg.value);\n     }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n\n    function testRegression_property() public {\n        address alice = address(0x1);\n        address bob = address(0x2);\n\n        vm.deal(alice, 1 ether);\n        vm.prank(alice);\n        c.addToBalance{value: 1 ether}();\n\n        vm.deal(bob, 2 ether);\n        vm.prank(bob);\n        c.addToBalance{value: 2 ether}();\n\n        Attacker attacker = new Attacker(c);\n        vm.deal(address(attacker), 1 ether);\n        vm.prank(address(attacker));\n        c.addToBalance{value: 1 ether}();\n\n        vm.prank(address(attacker));\n        try attacker.attack() {\n        } catch {\n        }\n\n        uint256 bal = c.getBalance(address(attacker));\n        assertTrue(bal == 1 ether);\n    }\n}\n\ncontract Attacker {\n    Reentrance c;\n    bool doReenter;\n\n    constructor(Reentrance _c) {\n        c = _c;\n        doReenter = true;\n    }\n\n    function attack() external {\n        c.withdrawBalance();\n    }\n\n    receive() external payable {\n        if (doReenter) {\n            doReenter = false;\n            c.addToBalance{value: 1 ether}();\n        }\n    }\n}"
+}

@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Roulette:
+        Contract Code: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp + 1; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+
+    Consider the following mutant of Roulette:
+        Mutant m85f07a8e of function fallback replaces + with -
+        Mutant Diff: ---|         pastBlockTime = block.timestamp + 1; +++|         pastBlockTime = block.timestamp - 1;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract sets `pastBlockTime = block.timestamp + 1`, ensuring that the next call must occur at least one second later. The mutant changes this to `pastBlockTime = block.timestamp - 1`, which sets the timestamp to one second *before* the current block, making the `require(block.timestamp > pastBlockTime)` condition always true on subsequent calls (since the current timestamp will always be greater than a past timestamp).  
+
+**Hypothesis:** The mutant allows multiple calls within the same second, bypassing the intended time delay. Therefore, a test case that makes two consecutive calls to the fallback function within the same block (or with the same `block.timestamp`) should pass on the original (the second call reverts due to the time lock) but fail on the mutant (the second call succeeds, proving the time constraint is broken).

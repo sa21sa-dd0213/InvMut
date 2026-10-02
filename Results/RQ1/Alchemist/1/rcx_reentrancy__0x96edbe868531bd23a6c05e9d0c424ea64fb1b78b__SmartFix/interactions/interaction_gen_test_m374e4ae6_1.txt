@@ -1,0 +1,71 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m374e4ae6 of PENNY_BY_PENNY.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PENNY_BY_PENNY.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PENNY_BY_PENNY:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PENNY_BY_PENNY reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PENNY_BY_PENNY by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PENNY_BY_PENNY"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PENNY_BY_PENNY mutant test for m374e4ae6", function () {
+  it("should detect the arithmetic mutation in Collect (balance addition instead of subtraction)", async function () {
+    const [owner, user] = await ethers.getSigners();
+    
+    // Deploy contracts
+    const LogFactory = await ethers.getContractFactory("LogFile");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    const PennyFactory = await ethers.getContractFactory("PENNY_BY_PENNY");
+    const penny = await PennyFactory.deploy();
+    await penny.waitForDeployment();
+    
+    // Setup: initialize the contract and set minimum sum to 0 for easy testing
+    await penny.connect(owner).SetLogFile(await log.getAddress());
+    await penny.connect(owner).SetMinSum(0);
+    await penny.connect(owner).Initialized();
+    
+    // User deposits 2 ETH with lock time of 1 second
+    const depositAmount = ethers.parseEther("2");
+    const lockTime = 1;
+    
+    await penny.connect(user).Put(lockTime, { value: depositAmount });
+    
+    // Wait for lock time to expire
+    await ethers.provider.send("evm_increaseTime", [lockTime + 1]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // Check initial balance after deposit
+    const holderBefore = await penny.Acc(user.address);
+    const balanceBefore = holderBefore.balance;
+    expect(balanceBefore).to.equal(depositAmount);
+    
+    // User collects 1 ETH
+    const collectAmount = ethers.parseEther("1");
+    await penny.connect(user).Collect(collectAmount);
+    
+    // Check balance after collection
+    // Original: balance should decrease (deposit - collect = 1 ETH)
+    // Mutant: balance would increase (deposit + collect = 3 ETH)
+    const holderAfter = await penny.Acc(user.address);
+    const balanceAfter = holderAfter.balance;
+    
+    // If mutant is present, balanceAfter would be depositAmount + collectAmount = 3 ETH
+    // If original, balanceAfter would be depositAmount - collectAmount = 1 ETH
+    expect(balanceAfter).to.equal(depositAmount - collectAmount);
+  });
+});
+```

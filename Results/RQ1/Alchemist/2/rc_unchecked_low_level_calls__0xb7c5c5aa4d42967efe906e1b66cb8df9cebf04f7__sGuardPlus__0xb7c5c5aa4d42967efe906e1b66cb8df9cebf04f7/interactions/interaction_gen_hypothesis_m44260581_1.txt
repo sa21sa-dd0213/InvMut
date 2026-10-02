@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract keepMyEther:
+        Contract Code: pragma solidity ^0.8.0; contract sGuardPlus { constructor() { __lock_modifier0_lock = false; } bool private __lock_modifier0_lock; modifier __lock_modifier0() { require(!__lock_modifier0_lock); __lock_modifier0_lock = true; _; __lock_modifier0_lock = false; } } contract keepMyEther is sGuardPlus { mapping (address  => uint256 ) public   balances; fallback() external payable { balances[msg.sender]+=msg.value; } function withdraw () public __lock_modifier0  { (bool __sent_result100, ) = msg.sender.call{value: balances[msg.sender]}(""); require(__sent_result100); balances[msg.sender]=0; } }
+
+    Consider the following mutant of keepMyEther:
+        Mutant m44260581 of function withdraw replaces function withdraw () public __lock_modifier0 with function withdraw () public
+        Mutant Diff: ---| function withdraw () public __lock_modifier0  { +++| function withdraw () public   {
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract uses a reentrancy guard (`__lock_modifier0`) on the `withdraw` function, while the mutant removes this modifier. The guard prevents reentrant calls during withdrawal.  
+
+**Hypothesis**: A test case that performs a reentrancy attack by calling `withdraw` from a malicious contract whose fallback function re-enters `withdraw` should pass on the original (the guard prevents reentrancy, so only one withdrawal succeeds) but kill the mutant (the guard is missing, so the reentrancy succeeds and drains more Ether than the attacker’s balance).

@@ -1,0 +1,162 @@
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("PoCGame mutant kill test - mf496f474", function () {
+  it("should kill mutant by triggering win at difficulty/2 which fails under difficulty-2 logic", async function () {
+    const [owner, whale, player] = await ethers.getSigners();
+    
+    // Deploy with whale address and bet limit of 1 ether
+    const betLimit = ethers.parseEther("1");
+    const Factory = await ethers.getContractFactory("PoCGame");
+    const instance = await Factory.deploy(whale.address, betLimit);
+    await instance.waitForDeployment();
+    
+    // Set difficulty to 10 (even number) and open to public
+    await instance.connect(owner).AdjustDifficulty(10);
+    await instance.connect(owner).OpenToThePublic();
+    
+    // Player makes a wager of exactly betLimit
+    await instance.connect(player).wager({ value: betLimit });
+    
+    // Get the block number where wager was placed to calculate winningNumber
+    const wagerBlock = await ethers.provider.getBlock("latest");
+    const blockNumber = wagerBlock.number;
+    
+    // Mine a new block so block.number > blockNumber (required by play())
+    await ethers.provider.send("evm_mine");
+    
+    // Now calculate what winningNumber would be for difficulty/2 = 5
+    // We need to manipulate the randomSeed to make winningNumber == 5
+    // The formula is: uint256(keccak256(abi.encodePacked(blockhash(blockNumber), msg.sender, randomSeed))) % difficulty + 1
+    // We can set randomSeed via AdjustDifficulty or similar? No, randomSeed is private and never set.
+    // Since randomSeed defaults to 0, we need to find a blockhash where the result mod 10 + 1 = 5
+    // This means: keccak256(...) % 10 == 4
+    
+    // To make this deterministic, let's use a different approach:
+    // Set difficulty to a value where difficulty/2 != difficulty-2
+    // difficulty = 6: original win at 3, mutant win at 4
+    // difficulty = 8: original win at 4, mutant win at 6
+    
+    // Actually, let's just deploy fresh with difficulty = 4
+    // Then original win at 2, mutant win at 2 as well? No: 4-2=2, 4/2=2 - same!
+    // Need difficulty where they differ: difficulty=6 => 3 vs 4; difficulty=10 => 5 vs 8
+    
+    // Let's redeploy with difficulty=10 and try to force winningNumber=5
+    // Since we can't control blockhash easily, let's use difficulty=6
+    const instance2 = await Factory.deploy(whale.address, betLimit);
+    await instance2.waitForDeployment();
+    await instance2.connect(owner).AdjustDifficulty(6);
+    await instance2.connect(owner).OpenToThePublic();
+    
+    // Player wagers
+    await instance2.connect(player).wager({ value: betLimit });
+    const wagerBlock2 = await ethers.provider.getBlock("latest");
+    const blockNum2 = wagerBlock2.number;
+    
+    // Mine forward
+    await ethers.provider.send("evm_mine");
+    
+    // For difficulty=6: original wins at 3, mutant wins at 4
+    // We need winningNumber == 3 to pass original but fail mutant
+    // Since we can't control the random output, we rely on probability
+    // In a real test environment, we'd repeat or use specific blockhash
+    
+    // Alternative: use difficulty=2
+    // Original: win at 1, Mutant: win at 0 (impossible since range is 1..difficulty)
+    // So for difficulty=2, mutant never wins!
+    const instance3 = await Factory.deploy(whale.address, betLimit);
+    await instance3.waitForDeployment();
+    await instance3.connect(owner).AdjustDifficulty(2);
+    await instance3.connect(owner).OpenToThePublic();
+    
+    // Player wagers
+    await instance3.connect(player).wager({ value: betLimit });
+    const wagerBlock3 = await ethers.provider.getBlock("latest");
+    const blockNum3 = wagerBlock3.number;
+    
+    await ethers.provider.send("evm_mine");
+    
+    // Get contract balance before play
+    const balanceBefore = await ethers.provider.getBalance(instance3.target);
+    
+    // Play - in original, winningNumber can be 1 (since range 1..2)
+    // winningNumber = (hash % 2) + 1, so it's either 1 or 2
+    // Original wins when winningNumber == 1 (difficulty/2 = 1)
+    // Mutant wins when winningNumber == 0 (difficulty-2 = 0) - impossible!
+    // So original might win, mutant never wins
+    
+    const tx = await instance3.connect(player).play();
+    const receipt = await tx.wait();
+    
+    // Check if player won (original) vs lost (mutant)
+    const balanceAfter = await ethers.provider.getBalance(instance3.target);
+    
+    // If original logic: win pays half the pot, lose sends betLimit/2 to whale
+    // If half the pot is more than betLimit/2, balance decreases more on win
+    // Actually win sends balance/2 to player, lose sends betLimit/2 to whale
+    // For difficulty=2, there's 50% chance winningNumber=1 in original
+    // But we need deterministic kill
+    
+    // Better approach: Use difficulty=4
+    // Original: win at 2, Mutant: win at 2 - same! Not good.
+    // difficulty=8: Original win at 4, Mutant win at 6 - different!
+    
+    const instance4 = await Factory.deploy(whale.address, betLimit);
+    await instance4.waitForDeployment();
+    await instance4.connect(owner).AdjustDifficulty(8);
+    await instance4.connect(owner).OpenToThePublic();
+    
+    await instance4.connect(player).wager({ value: betLimit });
+    const wagerBlock4 = await ethers.provider.getBlock("latest");
+    const blockNum4 = wagerBlock4.number;
+    
+    await ethers.provider.send("evm_mine");
+    
+    // Play and check if Win event is emitted (original) vs Lose event (mutant)
+    // Since we can't control randomness, let's use the blockhash approach:
+    // Deploy, wager, then mine until we get winningNumber == 4 (difficulty/2)
+    // This may take multiple attempts
+    
+    let foundWin = false;
+    let attempts = 0;
+    while (!foundWin && attempts < 100) {
+      const testInstance = await Factory.deploy(whale.address, betLimit);
+      await testInstance.waitForDeployment();
+      await testInstance.connect(owner).AdjustDifficulty(8);
+      await testInstance.connect(owner).OpenToThePublic();
+      
+      await testInstance.connect(player).wager({ value: betLimit });
+      const wagerBlock = await ethers.provider.getBlock("latest");
+      const bNum = wagerBlock.number;
+      
+      await ethers.provider.send("evm_mine");
+      
+      // Calculate expected winningNumber
+      const blockHash = (await ethers.provider.getBlock(bNum)).hash;
+      const randomSeed = 0; // default
+      const hash = ethers.keccak256(
+        ethers.AbiCoder.defaultAbiCoder().encode(
+          ["bytes32", "address", "uint256"],
+          [blockHash, player.address, randomSeed]
+        )
+      );
+      const winningNumber = (BigInt(hash) % 8n) + 1n;
+      
+      if (winningNumber === 4n) { // difficulty/2 = 4
+        // In original, this triggers win
+        // In mutant, win requires winningNumber == 6 (8-2)
+        // So this should pass original but fail mutant
+        const balanceBefore = await ethers.provider.getBalance(testInstance.target);
+        
+        await expect(testInstance.connect(player).play())
+          .to.emit(testInstance, "Win"); // Original emits Win
+        
+        // Mutant would emit Lose instead (or revert? No, just different event)
+        foundWin = true;
+      }
+      attempts++;
+    }
+    
+    expect(foundWin).to.be.true;
+  });
+});

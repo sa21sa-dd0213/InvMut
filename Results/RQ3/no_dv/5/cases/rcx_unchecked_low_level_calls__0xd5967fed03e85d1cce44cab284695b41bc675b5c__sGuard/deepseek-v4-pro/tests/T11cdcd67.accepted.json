@@ -1,0 +1,12 @@
+{
+ "difference_id": "T11cdcd67",
+ "property_summary": "For every input with a non-empty _tos array, the reference C.transfer never returns false (it always returns true if it doesn't revert); the mutant can return false when any external low-level call to caddress fails, so the universal rule (always-true return) is broken by some inputs where the callee reverts/fails.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Return false immediately if any call fails; previously always returned true regardless of call results.",
+ "mutated_unit_code": "function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0;i<_tos.length;i++){\n\n            (bool ok, ) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v));\n            if(!ok) return false;\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {demo} from \"../src/demo.sol\";\n\ncontract InvMutTest is Test {\n    demo c;\n    function setUp() public { c = new demo(); }\n\n    function testFuzz_property(address from, uint256 v, uint16 tosLen) public {\n        tosLen = uint16(bound(tosLen, 1, 10));\n\n        FailingCallee failer = new FailingCallee();\n\n        address[] memory tos = new address[](tosLen);\n        for (uint i = 0; i < tosLen; i++) {\n            if (i == 0) tos[i] = address(failer);\n            else tos[i] = address(uint160(uint256(keccak256(abi.encodePacked(from, v, i)))));\n        }\n\n        bool ok;\n        try c.transfer(from, address(failer), tos, v) returns (bool ret) {\n            ok = ret;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok);\n    }\n}\n\ncontract FailingCallee {\n    fallback() external payable {\n        revert(\"fail\");\n    }\n}\n"
+}

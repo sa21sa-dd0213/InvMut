@@ -1,0 +1,36 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Reentrance mutant detection - m6dd0e369", function () {   it("should detect mutant that subtracts 1 wei from msg.value in addToBalance", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Reentrance");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Send exactly 1 wei to addToBalance     const depositAmount = ethers.parseEther("0.000000000000000001"); // 1 wei     const tx = await instance.connect(addr1).addToBalance({ value: depositAmount });     await tx.wait();      // Check the recorded balance - should be 1 wei in original, but 0 wei in mutant     const balance = await instance.getBalance(addr1.address);     expect(balance).to.equal(depositAmount);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } } contract Reentrance  is sGuard { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public nonReentrant_ payable { userBalance[msg.sender] = add_uint256(userBalance[msg.sender], msg.value); } function withdrawBalance()  public nonReentrant_ { { (bool _s, bytes memory _d) = msg.sender.call{value: userBalance[msg.sender]}(""); _d; if (! _s) { revert(); } } userBalance[msg.sender] = 0; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Reentrance mutant detection - m6dd0e369", function () {
+  it("should detect mutant that subtracts 1 wei from msg.value in addToBalance", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Reentrance");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Send exactly 1 wei to addToBalance
+    const depositAmount = ethers.parseEther("0.000000000000000001"); // 1 wei
+    const tx = await instance.connect(addr1).addToBalance({ value: depositAmount });
+    await tx.wait();
+
+    // Check the recorded balance - should be 1 wei in original, but 0 wei in mutant
+    const balance = await instance.getBalance(addr1.address);
+    expect(balance).to.equal(depositAmount);
+  });
+});
+```

@@ -1,0 +1,70 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m751019c0 of DepositLog.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test DepositLog.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for DepositLog:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("DepositLog reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy DepositLog by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("DepositLog"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DepositLog mutant detection - m751019c0", function () {
+  it("should detect block.prevrandao used instead of block.timestamp in logRedeemed", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy contract (no constructor arguments needed for DepositLog)
+    const Factory = await ethers.getContractFactory("DepositLog");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Owner approves addr1 as a logger
+    await instance.connect(owner).setApprovedLogger(addr1.address, true);
+    
+    // Get current block timestamp before calling logRedeemed
+    const blockNumBefore = await ethers.provider.getBlockNumber();
+    const blockBefore = await ethers.provider.getBlock(blockNumBefore);
+    const timestampBefore = blockBefore.timestamp;
+    
+    // Call logRedeemed from approved logger
+    const tx = await instance.connect(addr1).logRedeemed(
+      ethers.encodeBytes32String("testTxid")
+    );
+    const receipt = await tx.wait();
+    
+    // Get the Redeemed event from the transaction
+    const event = receipt.logs[0];
+    const decodedEvent = instance.interface.parseLog({
+      topics: event.topics,
+      data: event.data
+    });
+    
+    // The timestamp parameter is the third parameter (index 2)
+    const emittedTimestamp = decodedEvent.args[2];
+    
+    // Get the block where the transaction was mined
+    const block = await ethers.provider.getBlock(receipt.blockNumber);
+    const expectedTimestamp = block.timestamp;
+    
+    // Verify the emitted timestamp matches block.timestamp (not block.prevrandao)
+    // block.prevrandao is typically a large number but unrelated to timestamp
+    // This should fail for the mutant since it would emit block.prevrandao instead
+    expect(emittedTimestamp).to.equal(expectedTimestamp);
+    
+    // Additional verification: timestamp should be a reasonable unix timestamp
+    // (greater than 1,500,000,000 for recent blocks)
+    expect(emittedTimestamp).to.be.greaterThan(1500000000);
+  });
+});
+```

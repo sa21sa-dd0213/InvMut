@@ -1,0 +1,51 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("X_WALLET mutant m8b11ca85 test", function () {   it("should kill mutant by detecting incorrect unlock time calculation when _unlockTime is in the future", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy Log contract first (required constructor argument for X_WALLET)     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();          // Deploy X_WALLET with Log contract address     const XWalletFactory = await ethers.getContractFactory("X_WALLET");     const xwallet = await XWalletFactory.deploy(await log.getAddress());     await xwallet.waitForDeployment();          const futureUnlockTime = Math.floor(Date.now() / 1000) + 1000; // 1000 seconds in the future     const depositAmount = ethers.parseEther("2");          // Step 1: Deposit with a future unlock time     await xwallet.connect(addr1).Put(futureUnlockTime, { value: depositAmount });          // Step 2: Attempt to collect immediately (should fail in original, succeed in mutant)     await expect(       xwallet.connect(addr1).Collect(depositAmount)     ).to.be.reverted; // Original reverts because unlockTime > block.timestamp          // Step 3: Verify the unlock time was set incorrectly in mutant     const holder = await xwallet.Acc(addr1.address);     expect(holder.unlockTime).to.be.greaterThan(       Math.floor(Date.now() / 1000)     ); // In mutant, unlockTime would be block.timestamp, failing this assertion   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract X_WALLET { function Put(uint _unlockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("X_WALLET mutant m8b11ca85 test", function () {
+  it("should kill mutant by detecting incorrect unlock time calculation when _unlockTime is in the future", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy Log contract first (required constructor argument for X_WALLET)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Deploy X_WALLET with Log contract address
+    const XWalletFactory = await ethers.getContractFactory("X_WALLET");
+    const xwallet = await XWalletFactory.deploy(await log.getAddress());
+    await xwallet.waitForDeployment();
+
+    const futureUnlockTime = Math.floor(Date.now() / 1000) + 1000; // 1000 seconds in the future
+    const depositAmount = ethers.parseEther("2");
+
+    // Step 1: Deposit with a future unlock time
+    await xwallet.connect(addr1).Put(futureUnlockTime, { value: depositAmount });
+
+    // Step 2: Attempt to collect immediately (should fail in original, succeed in mutant)
+    await expect(
+      xwallet.connect(addr1).Collect(depositAmount)
+    ).to.be.reverted; // Original reverts because unlockTime > block.timestamp
+
+    // Step 3: Verify the unlock time was set incorrectly in mutant
+    const holder = await xwallet.Acc(addr1.address);
+    expect(holder.unlockTime).to.be.greaterThan(
+      Math.floor(Date.now() / 1000)
+    ); // In mutant, unlockTime would be block.timestamp, failing this assertion
+  });
+});
+```

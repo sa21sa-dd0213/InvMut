@@ -1,0 +1,71 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m8430d772 of airDrop.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test airDrop.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for airDrop:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("airDrop reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy airDrop by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("airDrop"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airDrop mutant detection - multiplication vs addition", function () {
+  it("should detect mutant that replaces * with + in _value calculation", async function () {
+    // Deploy contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("airDrop");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Setup: create a mock token that implements transferFrom
+    // Deploy a simple ERC20-like contract to use as caddress
+    const TokenFactory = await ethers.getContractFactory("contracts/SimpleERC20.sol:SimpleERC20");
+    const token = await TokenFactory.deploy("Test", "TST", 18);
+    await token.waitForDeployment();
+    
+    // Mint tokens to owner and approve the airDrop contract to transfer
+    await token.mint(owner.address, ethers.parseEther("1000"));
+    await token.connect(owner).approve(await instance.getAddress(), ethers.parseEther("1000"));
+
+    // Prepare test parameters
+    const from = owner.address;
+    const caddress = await token.getAddress();
+    const recipients = [addr1.address, addr2.address];
+    const v = 5; // multiply factor
+    const decimals = 2; // 10**2 = 100
+
+    // Original: _value = 5 * 100 = 500
+    // Mutant:   _value = 5 + 100 = 105
+
+    // Get balance before
+    const balanceBefore1 = await token.balanceOf(addr1.address);
+    const balanceBefore2 = await token.balanceOf(addr2.address);
+
+    // Execute transfer
+    const tx = await instance.transfer(from, caddress, recipients, v, decimals);
+    await tx.wait();
+
+    // Check balances after - original would transfer 500 each, mutant would transfer 105 each
+    const balanceAfter1 = await token.balanceOf(addr1.address);
+    const balanceAfter2 = await token.balanceOf(addr2.address);
+
+    // Original expected: 500 tokens each
+    // Mutant expected: 105 tokens each
+    // This assertion will pass on original (500) but fail on mutant (105)
+    expect(balanceAfter1 - balanceBefore1).to.equal(ethers.parseEther("500"));
+    expect(balanceAfter2 - balanceBefore2).to.equal(ethers.parseEther("500"));
+  });
+});
+```

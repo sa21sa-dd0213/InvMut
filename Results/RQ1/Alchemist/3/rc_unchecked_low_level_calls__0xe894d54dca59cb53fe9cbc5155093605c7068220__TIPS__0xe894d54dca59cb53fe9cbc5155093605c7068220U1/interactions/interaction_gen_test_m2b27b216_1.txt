@@ -1,0 +1,102 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m2b27b216 of airDrop.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test airDrop.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for airDrop:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("airDrop reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy airDrop by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("airDrop"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airDrop reference (ethers v6)", function () {
+  it("should kill mutant m2b27b216 by executing a successful transferFrom call", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy a simple ERC20-like token for testing transferFrom
+    const TokenFactory = await ethers.getContractFactory("TestToken");
+    const token = await TokenFactory.deploy();
+    await token.waitForDeployment();
+    const tokenAddress = await token.getAddress();
+    
+    // Deploy airDrop contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("airDrop");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    const airDropAddress = await instance.getAddress();
+    
+    // Setup: owner approves airDrop contract to spend tokens
+    const approveAmount = ethers.parseEther("100");
+    await token.connect(owner).approve(airDropAddress, approveAmount);
+    
+    // Owner transfers tokens to addr1 so they have balance for transferFrom
+    await token.connect(owner).transfer(addr1.address, ethers.parseEther("10"));
+    
+    // addr1 approves airDrop to spend their tokens
+    await token.connect(addr1).approve(airDropAddress, ethers.parseEther("5"));
+    
+    // Prepare test: addr1 calls airDrop.transfer to move tokens from addr1 to addr2
+    const recipients = [addr2.address];
+    const value = ethers.parseEther("1");
+    const decimals = 18; // Standard ERC20 decimals
+    
+    // This call should succeed on original but revert on mutant due to if(true)
+    await expect(
+      instance.connect(addr1).transfer(
+        addr1.address,
+        tokenAddress,
+        recipients,
+        value,
+        decimals
+      )
+    ).to.not.be.reverted;
+  });
+});
+
+// Helper ERC20 token for testing
+contract TestToken {
+    string public name = "TestToken";
+    string public symbol = "TST";
+    uint8 public decimals = 18;
+    uint256 public totalSupply;
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+    
+    constructor() {
+        totalSupply = ethers.parseEther("1000000");
+        balanceOf[msg.sender] = totalSupply;
+    }
+    
+    function transfer(address to, uint256 value) public returns (bool) {
+        require(balanceOf[msg.sender] >= value);
+        balanceOf[msg.sender] -= value;
+        balanceOf[to] += value;
+        return true;
+    }
+    
+    function approve(address spender, uint256 value) public returns (bool) {
+        allowance[msg.sender][spender] = value;
+        return true;
+    }
+    
+    function transferFrom(address from, address to, uint256 value) public returns (bool) {
+        require(balanceOf[from] >= value);
+        require(allowance[from][msg.sender] >= value);
+        balanceOf[from] -= value;
+        balanceOf[to] += value;
+        allowance[from][msg.sender] -= value;
+        return true;
+    }
+}
+```

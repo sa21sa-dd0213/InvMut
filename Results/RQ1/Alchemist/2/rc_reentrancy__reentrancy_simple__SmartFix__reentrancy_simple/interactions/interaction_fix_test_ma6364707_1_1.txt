@@ -1,0 +1,57 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Reentrance mutant kill test - ma6364707", function () {   it("should revert when withdrawBalance is called by a contract that reverts on receive", async function () {     const [owner] = await ethers.getSigners();      // Deploy the Reentrance contract (no constructor arguments needed)     const ReentranceFactory = await ethers.getContractFactory("Reentrance");     const reentrance = await ReentranceFactory.deploy();     await reentrance.waitForDeployment();      // Deploy a malicious receiver contract that always reverts on receive     const MaliciousReceiver = await ethers.getContractFactory(       "contracts/MaliciousReceiver.sol:MaliciousReceiver"     );     const malicious = await MaliciousReceiver.deploy();     await malicious.waitForDeployment();      // Fund the malicious contract with some ether so it can call withdrawBalance     await owner.sendTransaction({       to: await malicious.getAddress(),       value: ethers.parseEther("1.0"),     });      // Add balance for the malicious contract in Reentrance     const addTx = await reentrance.connect(malicious).addToBalance({       value: ethers.parseEther("0.5"),     });     await addTx.wait();      // Verify balance is set     expect(await reentrance.getBalance(await malicious.getAddress())).to.equal(       ethers.parseEther("0.5")     );      // Attempt withdrawal - should revert because the receiver (malicious) reverts on receive     // The original contract would revert, the mutant would not     await expect(       reentrance.connect(malicious).withdrawBalance()     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Reentrance { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public payable { require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender])); userBalance[msg.sender] += msg.value; } function withdrawBalance() public{ uint256 tmp__1 = userBalance[msg.sender]; userBalance[msg.sender] = 0; { (bool _s, bytes memory _d) = msg.sender.call{value: tmp__1}(""); _d; if (! _s) { revert(); } } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Reentrance mutant kill test - ma6364707", function () {
+  it("should revert when withdrawBalance is called by a contract that reverts on receive", async function () {
+    const [owner] = await ethers.getSigners();
+
+    // Deploy the Reentrance contract (no constructor arguments needed)
+    const ReentranceFactory = await ethers.getContractFactory("Reentrance");
+    const reentrance = await ReentranceFactory.deploy();
+    await reentrance.waitForDeployment();
+
+    // Deploy a malicious receiver contract that always reverts on receive
+    const MaliciousReceiver = await ethers.getContractFactory("MaliciousReceiver");
+    const malicious = await MaliciousReceiver.deploy();
+    await malicious.waitForDeployment();
+
+    // Fund the malicious contract with some ether so it can call withdrawBalance
+    await owner.sendTransaction({
+      to: await malicious.getAddress(),
+      value: ethers.parseEther("1.0"),
+    });
+
+    // Add balance for the malicious contract in Reentrance
+    const addTx = await reentrance.connect(malicious).addToBalance({
+      value: ethers.parseEther("0.5"),
+    });
+    await addTx.wait();
+
+    // Verify balance is set
+    expect(await reentrance.getBalance(await malicious.getAddress())).to.equal(
+      ethers.parseEther("0.5")
+    );
+
+    // Attempt withdrawal - should revert because the receiver (malicious) reverts on receive
+    // The original contract would revert, the mutant would not
+    await expect(
+      reentrance.connect(malicious).withdrawBalance()
+    ).to.be.reverted;
+  });
+});
+```

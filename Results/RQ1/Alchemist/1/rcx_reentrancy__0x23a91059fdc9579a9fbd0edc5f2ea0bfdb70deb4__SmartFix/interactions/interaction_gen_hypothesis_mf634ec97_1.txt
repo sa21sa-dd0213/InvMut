@@ -1,0 +1,19 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract PrivateBank:
+        Contract Code: pragma solidity ^0.8.0; contract PrivateBank { mapping (address => uint) public balances; uint public MinDeposit = 1 ether; Log TransferLog; constructor(address _log) { TransferLog = Log(_log); } function Deposit() public payable { if(msg.value >= MinDeposit) { require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); balances[msg.sender]+=msg.value; TransferLog.AddMessage(msg.sender,msg.value,"Deposit"); } } function CashOut(uint _am) public { if(_am<=balances[msg.sender]) { balances[msg.sender] = (balances[msg.sender] - _am); (bool _veri_ok,) = msg.sender.call{value: _am}(""); if(_veri_ok) { TransferLog.AddMessage(msg.sender,_am,"CashOut"); } else {revert (); } } } receive() external payable {} } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val,string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+
+    Consider the following mutant of PrivateBank:
+        Mutant mf634ec97 of function CashOut replaces _veri_ok with true
+        Mutant Diff: ---|             if(_veri_ok) +++|             if(true)
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+**Hypothesis:** The mutant forces the `CashOut` function to always consider the call success check as true, even when the external ETH transfer to `msg.sender` actually fails (e.g., because the recipient is a contract that deliberately reverts or has no payable fallback). Therefore, a test case that deposits funds, then calls `CashOut` from a contract address that rejects incoming ETH (or has a `receive` function that always reverts), and then checks that the user’s balance was **not** deducted (or that the `TransferLog` message was **not** added) should kill the mutant, because the original would revert on failure while the mutant would incorrectly deduct the balance and log a successful cash-out.

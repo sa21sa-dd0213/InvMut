@@ -1,0 +1,48 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("SimpleWallet reference (ethers v6; deploy may require constructor arguments)", function () {   it("should revert when sendMoney to a failing address, but mutant does not revert", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("SimpleWallet");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Deploy a contract that has no receive/fallback function to force a failed call     const FailFactory = await ethers.getContractFactory("contracts/FailReceiver.sol:FailReceiver");     const failReceiver = await FailFactory.deploy();     await failReceiver.waitForDeployment();      // Send some ETH to the wallet first     await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("1.0")     });      // Attempt to send ETH to the failReceiver contract (will fail because no receive/fallback)     // The original should revert, the mutant should not     if (await instance.depositsCount() === 0n) {       // Do nothing, just proceed     }      await expect(       instance.connect(owner).sendMoney(await failReceiver.getAddress(), ethers.parseEther("0.5"))     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract SimpleWallet { address public owner = payable(msg.sender); uint public depositsCount; modifier onlyOwner(){ require(msg.sender == owner); _;} fallback() external payable { depositsCount++; } function withdrawAll()  public onlyOwner { withdraw(address(this).balance); } function withdraw(uint _value)  public onlyOwner { payable(msg.sender).transfer(_value); } function sendMoney(address _target, uint _value)  public onlyOwner { { (bool _s, bytes memory _d) = _target.call{value: _value}(""); _d; if (! _s) { revert();} } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("SimpleWallet reference (ethers v6; deploy may require constructor arguments)", function () {
+  it("should revert when sendMoney to a failing address, but mutant does not revert", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("SimpleWallet");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy a contract that has no receive/fallback function to force a failed call
+    const FailFactory = await ethers.getContractFactory("contracts/FailReceiver.sol:FailReceiver");
+    const failReceiver = await FailFactory.deploy();
+    await failReceiver.waitForDeployment();
+
+    // Send some ETH to the wallet first
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("1.0")
+    });
+
+    // Attempt to send ETH to the failReceiver contract (will fail because no receive/fallback)
+    // The original should revert, the mutant should not
+    if (await instance.depositsCount() === 0n) {
+      // Do nothing, just proceed
+    }
+
+    await expect(
+      instance.connect(owner).sendMoney(await failReceiver.getAddress(), ethers.parseEther("0.5"))
+    ).to.be.reverted;
+  });
+});
+```

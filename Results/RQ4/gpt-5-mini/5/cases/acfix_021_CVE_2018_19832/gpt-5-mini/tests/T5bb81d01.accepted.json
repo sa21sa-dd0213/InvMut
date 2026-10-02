@@ -1,0 +1,12 @@
+{
+ "difference_id": "T5bb81d01",
+ "property_summary": "For every caller addr and for any fuzzed initial owner-assignment scenario, invoking NETM() as the current owner preserves that the owner's balance equals totalDistributed (reference always sets balances[owner]=totalDistributed; mutant that removed the assignment can make them differ for some inputs).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "NETM() no longer assigns balances to owner (removed the assignment), leaving balances unchanged after the call.",
+ "mutated_unit_code": "function NETM() public onlyOwner {\n    owner = msg.sender;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {NewIntelTechMedia} from \"../src/NewIntelTechMedia.sol\";\n\ncontract InvMutTest is Test {\n    NewIntelTechMedia c;\n    function setUp() public { c = new NewIntelTechMedia(); }\n\n    function testFuzz_property(address newOwner, uint256 nCalls) public {\n        vm.assume(newOwner != address(0));\n        nCalls = bound(nCalls, 0, 10);\n\n        vm.deal(address(this), 1 ether);\n\n        c.transferOwnership(newOwner);\n\n        for (uint256 i = 0; i < nCalls; i++) {\n            address actor = address(uint160(uint256(keccak256(abi.encodePacked(i, block.timestamp)))));\n            vm.deal(actor, 1e15);\n            vm.prank(actor);\n            try c.getTokens{value: 1e15}() {\n            } catch {\n            }\n        }\n\n        uint256 beforeBal;\n        uint256 totalDistBefore;\n        beforeBal = c.balanceOf(newOwner);\n        totalDistBefore = c.totalDistributed();\n\n        vm.prank(newOwner);\n        bool ok;\n        try c.NETM() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(c.balanceOf(newOwner) == c.totalDistributed());\n    }\n}\n"
+}

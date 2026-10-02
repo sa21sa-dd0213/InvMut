@@ -1,0 +1,90 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m3b2c21d6 of MY_BANK.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test MY_BANK.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for MY_BANK:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("MY_BANK reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy MY_BANK by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("MY_BANK"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant m3b2c21d6 - reentrancy guard removed from Put", function () {
+  it("should revert on reentrant call to Put with nonReentrant modifier in original, but mutant allows it", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the Log contract first (needed as constructor argument)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy MY_BANK with the Log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+    
+    // Deploy a malicious contract that will attempt reentrancy
+    const MaliciousFactory = await ethers.getContractFactory("MaliciousReentrancy");
+    const malicious = await MaliciousFactory.deploy(await bank.getAddress());
+    await malicious.waitForDeployment();
+    
+    // Fund the malicious contract with some ETH to make the initial Put call
+    await owner.sendTransaction({
+      to: await malicious.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    
+    // The malicious contract will call Put(0) in its fallback, which should revert
+    // with nonReentrant but succeed without it
+    // We expect this to revert in the original (with modifier), but succeed in mutant
+    // Since we're testing the mutant, we expect it to NOT revert
+    const tx = malicious.connect(attacker).attack({ value: ethers.parseEther("1") });
+    
+    // The test should detect the mutant: if the call succeeds (no revert), 
+    // it means the reentrancy guard is missing - mutant detected
+    await expect(tx).to.not.be.reverted;
+    
+    // Additionally verify that the balance was manipulated (reentrant call succeeded)
+    const maliciousBalance = await ethers.provider.getBalance(await malicious.getAddress());
+    // The initial balance was 10 ETH, we sent 1 ETH in attack() but the reentrant Put
+    // in fallback should have also added value, so balance should be > 10
+    expect(maliciousBalance).to.be.gt(ethers.parseEther("10"));
+  });
+});
+
+// Malicious contract for testing reentrancy
+// This needs to be deployed as a separate contract
+contract MaliciousReentrancy {
+    address public bank;
+    
+    constructor(address _bank) {
+        bank = _bank;
+    }
+    
+    function attack() external payable {
+        // Make the first Put call, which should trigger fallback
+        (bool success, ) = bank.call{value: msg.value}(abi.encodeWithSignature("Put(uint256)", 0));
+        require(success, "First call failed");
+    }
+    
+    // Fallback will be triggered by the Put function when it sends ETH back
+    fallback() external payable {
+        // Attempt reentrant call to Put - this should fail with nonReentrant
+        // but succeed in the mutant
+        (bool success, ) = bank.call{value: 0}(abi.encodeWithSignature("Put(uint256)", 0));
+        // In mutant, this will succeed - we just need to not revert
+        require(success, "Reentrant call failed");
+    }
+}
+```

@@ -1,0 +1,71 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("MY_BANK mutant kill test - Collect with failing recipient", function () {   it("should detect mutant by reverting when recipient cannot receive ETH", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy Log contract first (required constructor argument for MY_BANK)     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();          // Deploy MY_BANK with Log address     const BankFactory = await ethers.getContractFactory("MY_BANK");     const bank = await BankFactory.deploy(await log.getAddress());     await bank.waitForDeployment();          // Deploy a contract that rejects ETH (no receive/fallback)     const RejectFactory = await ethers.getContractFactory("contract Rejector { function() external payable { revert(); } }");     // Actually, we'll use a simple address that is a contract without payable fallback     // Better: create a simple contract that always reverts on ETH transfer     const rejectCode = "0x6080604052600080fdfe"; // Minimal contract that does nothing and has no fallback     const rejector = await ethers.deployContract("Rejector", { value: 0 });     // Alternative: use a pre-funded address that is actually a contract without ETH capabilities     // Let's use a simple approach: create a contract that will reject calls     const RejectorFactory = await ethers.getContractFactory("contract Rejector { fallback() external payable { revert(); } }");     const rejectorContract = await RejectorFactory.deploy();     await rejectorContract.waitForDeployment();          const rejectorAddress = await rejectorContract.getAddress();          // Fund the rejector address via bank.Put     const putAmount = ethers.parseEther("2");     await bank.connect(addr1).Put(0, { value: putAmount });          // Wait for unlock time (unlockTime = block.timestamp since we put 0)     // Now try to collect from the rejector address     const collectAmount = ethers.parseEther("1");          // In original: call will fail, balance not deducted     // In mutant: balance would be deducted despite call failure     const balanceBefore = await bank.Acc(rejectorAddress);          // Attempt collect - this should revert or succeed depending on mutant     try {       const tx = await bank.connect(addr1).Collect(collectAmount);       await tx.wait();              // If we reach here, check that balance is unchanged (original behavior)       const balanceAfter = await bank.Acc(addr1);       // In mutant, balance would have been deducted - this assertion would fail       expect(balanceAfter.balance).to.equal(balanceBefore.balance);     } catch (error) {       // If it reverts, that's expected for original (call fails, but Collect doesn't revert)       // Actually the original doesn't revert on failed call, it just skips balance update       // So we should NOT get a revert in original       expect.fail("Collect should not revert in original, but did");     }   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } } contract MY_BANK is sGuard { function Put(uint _unlockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); LogFile.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant kill test - Collect with failing recipient", function () {
+  it("should detect mutant by reverting when recipient cannot receive ETH", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy Log contract first (required constructor argument for MY_BANK)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Deploy MY_BANK with Log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+
+    // Deploy a contract that rejects ETH (no receive/fallback)
+    const RejectorFactory = await ethers.getContractFactory(
+      "contract Rejector { fallback() external payable { revert(); } }"
+    );
+    const rejectorContract = await RejectorFactory.deploy();
+    await rejectorContract.waitForDeployment();
+
+    const rejectorAddress = await rejectorContract.getAddress();
+
+    // Fund the rejector address via bank.Put
+    const putAmount = ethers.parseEther("2");
+    await bank.connect(addr1).Put(0, { value: putAmount });
+
+    // Wait for unlock time (unlockTime = block.timestamp since we put 0)
+    // Now try to collect from the rejector address
+    const collectAmount = ethers.parseEther("1");
+
+    // In original: call will fail, balance not deducted
+    // In mutant: balance would be deducted despite call failure
+    const balanceBefore = await bank.Acc(addr1);
+
+    // Attempt collect - this should revert or succeed depending on mutant
+    try {
+      const tx = await bank.connect(addr1).Collect(collectAmount);
+      await tx.wait();
+
+      // If we reach here, check that balance is unchanged (original behavior)
+      const balanceAfter = await bank.Acc(addr1);
+      // In mutant, balance would have been deducted - this assertion would fail
+      expect(balanceAfter.balance).to.equal(balanceBefore.balance);
+    } catch (error) {
+      // If it reverts, that's expected for original (call fails, but Collect doesn't revert)
+      // Actually the original doesn't revert on failed call, it just skips balance update
+      // So we should NOT get a revert in original
+      expect.fail("Collect should not revert in original, but did");
+    }
+  });
+});
+```

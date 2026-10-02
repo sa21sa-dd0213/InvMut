@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0022",
+ "property_summary": "claim() always returns an amount equal to the caller's recorded deposit times the recorded reward rate, without dependence on ETH balance",
+ "render_status": "rendered",
+ "validation_status": "skipped",
+ "validation_error": null,
+ "kill": "bug_no_kill:spurious_callback",
+ "origin": "primary",
+ "change_summary": "Replace balance[msg.sender] with msg.sender.balance in the calculation of a",
+ "mutated_unit_code": "function claim() external returns (uint256 a) {\n        a = msg.sender.balance * rateSnapshot[msg.sender];\n        reward[msg.sender] += a;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {RewardVault} from \"../src/RewardVault.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    RewardVault c;\n\n    function setUp() public {\n        c = new RewardVault();\n    }\n\n    function _run(uint256 depositAmount, uint256 rewardRate) internal {\n        depositAmount = bound(depositAmount, 0, 1000000000000000000000000000000);\n        vm.deal(address(this), VALUE_CAP);\n        vm.deal(address(c), VALUE_CAP);\n        vm.assume(address(this).balance >= depositAmount);\n        try c.setRewardRate(rewardRate) {} catch { return; }\n        try c.deposit{value: depositAmount}() {} catch { return; }\n        uint256 obs;\n        try c.claim() returns (uint256 __r) { obs = __r; } catch { return; }\n        assertTrue(obs == depositAmount * rewardRate);\n    }\n\n    function testFuzz_run(uint256 depositAmount, uint256 rewardRate) public {\n        _run(depositAmount, rewardRate);\n    }\n\n    receive() external payable {}\n}\n"
+}

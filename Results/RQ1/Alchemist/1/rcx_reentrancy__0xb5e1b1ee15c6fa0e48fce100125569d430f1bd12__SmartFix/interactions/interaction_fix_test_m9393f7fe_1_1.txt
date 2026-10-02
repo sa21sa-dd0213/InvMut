@@ -1,0 +1,56 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Private_Bank - Kill mutant m9393f7fe (CashOut <= replaced with >=)", function () {   it("should revert when withdrawing more than balance on original, but mutant would allow it", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy Log contract first (required constructor arg for Private_Bank)     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();          // Deploy Private_Bank with Log address     const PrivateBankFactory = await ethers.getContractFactory("Private_Bank");     const bank = await PrivateBankFactory.deploy(await log.getAddress());     await bank.waitForDeployment();          // Fund addr1 with some ether for gas and deposit     await owner.sendTransaction({       to: addr1.address,       value: ethers.parseEther("10")     });          // Deposit 2 ether (above MinDeposit of 1 ether)     await bank.connect(addr1).Deposit({ value: ethers.parseEther("2") });          // Verify balance is 2 ether     expect(await bank.balances(addr1.address)).to.equal(ethers.parseEther("2"));          // Attempt to withdraw 3 ether (more than balance)     // Original contract: should revert because 3 > 2     // Mutant: would succeed because condition is _am >= balances (3 >= 2 is true)     await expect(       bank.connect(addr1).CashOut(ethers.parseEther("3"))     ).to.be.reverted;          // Verify balance unchanged after failed withdrawal     expect(await bank.balances(addr1.address)).to.equal(ethers.parseEther("2"));   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Private_Bank { mapping (address => uint) public balances; uint public MinDeposit = 1 ether; Log TransferLog; constructor(address _log) { TransferLog = Log(_log); } function Deposit() public payable { if(msg.value > MinDeposit) { require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); balances[msg.sender]+=msg.value; TransferLog.AddMessage(msg.sender,msg.value,"Deposit"); } } function CashOut(uint _am) public payable { if(_am<=balances[msg.sender]) { balances[msg.sender] = (balances[msg.sender] - _am); (bool _veri_ok,) = msg.sender.call{value: _am}(""); if(_veri_ok) { TransferLog.AddMessage(msg.sender,_am,"CashOut"); } else {revert (); } } } receive() external payable {} } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val,string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Private_Bank - Kill mutant m9393f7fe (CashOut <= replaced with >=)", function () {
+  it("should revert when withdrawing more than balance on original, but mutant would allow it", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy Log contract first (required constructor arg for Private_Bank)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Deploy Private_Bank with Log address
+    const PrivateBankFactory = await ethers.getContractFactory("Private_Bank");
+    const bank = await PrivateBankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+
+    // Fund addr1 with some ether for gas and deposit
+    await owner.sendTransaction({
+      to: addr1.address,
+      value: ethers.parseEther("10")
+    });
+
+    // Deposit 2 ether (above MinDeposit of 1 ether)
+    await bank.connect(addr1).Deposit({ value: ethers.parseEther("2") });
+
+    // Verify balance is 2 ether
+    expect(await bank.balances(addr1.address)).to.equal(ethers.parseEther("2"));
+
+    // Attempt to withdraw 3 ether (more than balance)
+    // Original contract: should revert because 3 > 2
+    // Mutant: would succeed because condition is _am >= balances (3 >= 2 is true)
+    await expect(
+      bank.connect(addr1).CashOut(ethers.parseEther("3"))
+    ).to.be.reverted;
+
+    // Verify balance unchanged after failed withdrawal
+    expect(await bank.balances(addr1.address)).to.equal(ethers.parseEther("2"));
+  });
+});
+```

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T9d7364c0",
+ "property_summary": "After any number of newGrantProposal calls, the proposalCount must equal the total number of successful calls; the bug increments proposalCount twice per call, so it exceeds the call count.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Insert a second increment of proposalCount, causing it to increase by 2 instead of 1 per newGrantProposal call.",
+ "mutated_unit_code": "function newGrantProposal(address recipient, uint amount) public {\n        string memory typeStr = \"GRANT\";\n        proposalCount += 1;\n        proposalCount += 1;\n        mapPID_type[proposalCount] = typeStr;\n        GrantDetails memory grant;\n        grant.recipient = recipient;\n        grant.amount = amount;\n        mapPID_grant[proposalCount] = grant;\n        emit NewProposal(msg.sender, proposalCount, typeStr);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {DAO} from \"../src/DAO.sol\";\n\ncontract InvMutTest is Test {\n    DAO c;\n    function setUp() public { c = new DAO(); }\n    function testFuzz_property(uint8 count, address recipient, uint96 amount) public {\n        VaderMock vader = new VaderMock();\n        UsdvMock usdv = new UsdvMock();\n        VaultMock vault = new VaultMock();\n        c.init(address(vader), address(usdv), address(vault));\n\n        uint8 n = uint8(bound(count, 1, 50));\n\n        for (uint8 i = 0; i < n; i++) {\n            vm.prank(address(uint160(i + 1)));\n            c.newGrantProposal(recipient, uint256(amount));\n        }\n\n        assertEq(c.proposalCount(), n);\n    }\n}\n\ncontract VaderMock {\n    function changeUTILS(address) external {}\n    function setRewardAddress(address) external {}\n}\n\ncontract UsdvMock {\n    function balanceOf(address) external view returns (uint) {\n        return type(uint256).max;\n    }\n}\n\ncontract VaultMock {\n    function totalWeight() external view returns (uint) {\n        return 1000;\n    }\n    function getMemberWeight(address) external view returns (uint) {\n        return 10;\n    }\n    function grant(address, uint) external {}\n}\n"
+}

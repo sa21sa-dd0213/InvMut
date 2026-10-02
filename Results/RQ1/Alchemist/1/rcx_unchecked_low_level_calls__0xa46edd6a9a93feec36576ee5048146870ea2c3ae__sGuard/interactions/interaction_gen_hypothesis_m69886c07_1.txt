@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EBU:
+        Contract Code: pragma solidity ^0.8.0; contract EBU{ function transfer(address from,address caddress, address[] memory _tos, uint[] memory v)public returns (bool){ require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ caddress.call(abi.encodeWithSelector(id,from,_tos[i],v[i])); } return true; } }
+
+    Consider the following mutant of EBU:
+        Mutant m69886c07 of function transfer replaces keccak256 with sha256
+        Mutant Diff: ---|         bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); +++|         bytes4 id=bytes4(sha256("transferFrom(address,address,uint256)"));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract uses `keccak256` to compute the function selector for `transferFrom(address,address,uint256)`, which produces a 32-byte hash from which the first 4 bytes are taken as the function selector. The mutant replaces `keccak256` with `sha256`, which is a different hash algorithm and will produce a completely different 4-byte identifier. This means the mutant will call a non-existent or incorrect function on `caddress`, causing the call to either fail silently or behave differently than intended.
+
+**Hypothesis**: A test case that transfers tokens from one address to another via the `transfer` function and then verifies that the token balances were actually updated (e.g., checking the recipient's balance increased and the sender's balance decreased) should kill the mutant. On the original contract, the correct function selector will execute the ERC-20 `transferFrom` successfully, changing balances. On the mutant, the wrong selector will result in no actual transfer occurring, so the balance assertions will fail.

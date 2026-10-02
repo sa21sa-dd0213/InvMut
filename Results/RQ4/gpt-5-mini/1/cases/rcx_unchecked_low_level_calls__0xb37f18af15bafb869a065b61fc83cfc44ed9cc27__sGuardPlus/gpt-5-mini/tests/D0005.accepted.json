@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0005",
+ "property_summary": "Invariant: Only the deployer (owner) can successfully send contract funds via sendMoney(address,uint256); the mutant removing the onlyOwner check allows non-owner callers to transfer funds out, so there exist inputs (a non-owner caller and a nonzero amount) where the mutant changes contract balance while the reference never allows that.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Remove the restriction by changing onlyOwner modifier to allow any caller (remove require), so sendMoney can be called by anyone, altering observable behavior.",
+ "mutated_unit_code": "modifier onlyOwner {\n    // allow anyone: no require\n    _;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n\n    function testFuzz_property(address caller, uint256 amount) public {\n        vm.assume(caller != address(0));\n        uint256 bounded = bound(amount, 0, 1 ether);\n\n        vm.deal(address(this), 1 ether);\n        (bool sent, ) = address(c).call{value: 1 ether}(\"\");\n        require(sent);\n\n        vm.deal(caller, 1 ether);\n\n        bool ok;\n        vm.prank(caller);\n        try c.sendMoney(address(0x1234), bounded) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        if (caller != address(this)) {\n            assertTrue(!ok);\n        } else {\n            assertTrue(address(c).balance <= 1 ether);\n        }\n    }\n}\n"
+}

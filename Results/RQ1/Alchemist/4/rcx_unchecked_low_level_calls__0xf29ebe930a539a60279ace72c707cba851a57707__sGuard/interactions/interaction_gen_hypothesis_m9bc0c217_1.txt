@@ -1,0 +1,33 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract B:
+        Contract Code: pragma solidity ^0.8.0; contract B { address public owner = payable(msg.sender); function go() public payable { address target = 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C; target.call{value: msg.value}(""); payable(owner).transfer(address(this).balance); } fallback() external payable { } }
+
+    Consider the following mutant of B:
+        Mutant m9bc0c217 of function go replaces msg.value with msg.value-1
+        Mutant Diff: ---|         target.call{value: msg.value}(""); +++|         target.call{value: msg.value-1}("");
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's break it down:
+
+The original `go()` function sends the exact `msg.value` to the target address via `call`. The mutant changes this to `msg.value - 1`, so one wei less is forwarded.
+
+The rest of the function still tries to transfer the entire contract balance to `owner` using `payable(owner).transfer(address(this).balance)`.  
+In the original, after the call, the contract balance equals `msg.value` (since the call goes out, and no funds are left).  
+In the mutant, after the call, the contract balance equals `msg.value - (msg.value - 1)` = 1 wei (because one wei was not sent to the target).  
+
+The `transfer` will then send that 1 wei to the owner in the mutant, whereas in the original it would send 0 wei (or, depending on fallback, could revert if the target receives and returns nothing, but here it’s designed to succeed).
+
+A test that sends exactly 1 wei will behave differently:  
+- Original: `msg.value = 1`, target gets 1, contract balance = 0, `transfer(0)` succeeds (no-op).  
+- Mutant: `msg.value = 1`, target gets 0, contract balance = 1, `transfer(1)` succeeds, so the owner receives 1 wei.
+
+**Hypothesis**: "The mutant reduces the value sent to the target by 1 wei. Therefore, a test case that sends exactly 1 wei and then checks that the target contract’s balance increased by exactly 1 wei should kill the mutant, because in the original the target receives 1 wei, but in the mutant it receives 0 wei."

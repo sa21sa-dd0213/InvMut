@@ -1,0 +1,22 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract airDrop:
+        Contract Code: pragma solidity ^0.8.0; contract airDrop { function transfer(address from, address caddress, address[] memory _tos, uint v, uint _decimals)  public returns (bool) { require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); uint _value = v * 10 ** _decimals; for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], _value)); _d; if (! _s) { revert();} } } return true; } }
+
+    Consider the following mutant of airDrop:
+        Mutant m5fe82436 of function transfer replaces * with **
+        Mutant Diff: ---| 	uint _value = v * 10 ** _decimals; +++| 	uint _value = v ** 10 ** _decimals;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original code computes `_value` as `v * 10 ** _decimals`, meaning `v` is multiplied by a power of 10. The mutant changes `*` to `**`, making it `v ** 10 ** _decimals`, which is exponentiation of `v` to the power of `10**_decimals`.  
+
+**Hypothesis:**  
+The mutant changes the arithmetic operation from multiplication to exponentiation. Therefore, a test case that calls the function with parameters where `v` is greater than 1 and `_decimals` is 1 or more (e.g., `v=2, _decimals=1`) will produce a drastically different `_value` in the mutant (e.g., `2 ** 10 = 1024` vs. original `2 * 10 = 20`), causing the subsequent token transfer call to either revert due to insufficient balance/allowance or succeed incorrectly. A test that verifies the exact `_value` used in the transfer (by checking the recipient's balance change or the emitted event data) will pass on the original but fail on the mutant.

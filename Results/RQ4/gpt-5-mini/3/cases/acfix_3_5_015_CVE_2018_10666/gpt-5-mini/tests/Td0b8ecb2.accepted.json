@@ -1,0 +1,12 @@
+{
+ "difference_id": "Td0b8ecb2",
+ "property_summary": "For all callers, setOwner can only be successfully invoked when the caller is the original admin (the deployer); the mutant that checks owner instead of admin allows the current owner to call setOwner and so can change owner when called by a non-admin owner.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Changed the access check in onlyAdmin to require msg.sender == owner instead of admin so owner (not admin) can call setOwner, altering post-call owner when invoked by owner.",
+ "mutated_unit_code": "modifier onlyAdmin() {\n    require(msg.sender == owner, \"Only admin can call address(this) function\");\n    _;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Owned} from \"../src/Owned.sol\";\n\ncontract InvMutTest is Test {\n    Owned c;\n    address deployer;\n\n    function setUp() public {\n        deployer = address(this);\n        c = new Owned();\n    }\n\n    function testFuzz_property(address newOwner) public {\n        vm.assume(newOwner != address(0));\n        vm.assume(newOwner != deployer);\n\n        bool ok;\n        try c.setOwner(newOwner) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        assertTrue(ok);\n\n        address ownerAfter = c.owner();\n        assertTrue(ownerAfter == newOwner);\n\n        address attacker = newOwner;\n        address proposed = address(0x123);\n\n        vm.deal(attacker, 1 ether);\n        vm.prank(attacker);\n        try c.setOwner(proposed) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(!ok);\n    }\n}\n"
+}

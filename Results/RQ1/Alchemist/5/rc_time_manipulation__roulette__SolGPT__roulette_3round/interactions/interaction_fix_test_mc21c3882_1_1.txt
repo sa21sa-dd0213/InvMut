@@ -1,0 +1,48 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Roulette mutant mc21c3882 detection", function () {   it("should revert when block.timestamp equals pastBlockTime (original strict >)", async function () {     const [owner] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Roulette");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // First call to set pastBlockTime to block.timestamp + 1     await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10"),     });      // Mine a new block with the same timestamp as the previous one     // to make block.timestamp == pastBlockTime (which is pastBlockTime - 1)     // We need to force the next block to have the same timestamp     const blockBefore = await ethers.provider.getBlock("latest");     await ethers.provider.send("evm_setNextBlockTimestamp", [blockBefore!.timestamp]);          // This transaction should revert on original (strict >) but succeed on mutant (>=)     await expect(       owner.sendTransaction({         to: await instance.getAddress(),         value: ethers.parseEther("10"),       })     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp + 1; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant mc21c3882 detection", function () {
+  it("should revert when block.timestamp equals pastBlockTime (original strict >)", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // First call to set pastBlockTime to block.timestamp + 1
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10"),
+    });
+
+    // Get the current block timestamp
+    const blockBefore = await ethers.provider.getBlock("latest");
+    
+    // Set next block timestamp to be the same as current block timestamp
+    // This will make block.timestamp == pastBlockTime (which is block.timestamp + 1 - 1 = block.timestamp)
+    await ethers.provider.send("evm_setNextBlockTimestamp", [blockBefore!.timestamp]);
+
+    // This transaction should revert on original (strict >) but succeed on mutant (>=)
+    await expect(
+      owner.sendTransaction({
+        to: await instance.getAddress(),
+        value: ethers.parseEther("10"),
+      })
+    ).to.be.reverted;
+  });
+});
+```

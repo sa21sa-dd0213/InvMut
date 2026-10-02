@@ -1,0 +1,90 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m56ab8f99 of DCF.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test DCF.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for DCF:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("DCF reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy DCF by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("DCF"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DCF mutant kill test - m56ab8f99", function () {
+  it("should execute liquidity addition when selling tokens via router", async function () {
+    const [owner, addr1, liquidityReceiver] = await ethers.getSigners();
+    
+    // Deploy DCF with liquidity receive address
+    const DCF = await ethers.getContractFactory("DCF");
+    const dcf = await DCF.deploy(liquidityReceiver.address);
+    await dcf.waitForDeployment();
+    
+    // Get helper address
+    const helperAddress = await dcf.helperAddress();
+    
+    // Get pair address
+    const pairAddress = await dcf.pairAddress();
+    
+    // Get USDT address from contract
+    const USDT = await dcf.USDT();
+    
+    // Get router address from contract
+    const router = await dcf.router();
+    
+    // Get USDT contract instance
+    const usdtContract = await ethers.getContractAt("IERC20", USDT);
+    
+    // Get initial USDT balance of helper contract
+    const initialUsdtBalance = await usdtContract.balanceOf(helperAddress);
+    
+    // Transfer some DCF tokens to owner for selling
+    const initialSupply = ethers.parseEther("2000000");
+    const sellAmount = ethers.parseEther("1000");
+    
+    // Approve router to spend tokens
+    await dcf.approve(router, sellAmount);
+    
+    // Create swap path: DCF -> USDT
+    const path = [await dcf.getAddress(), USDT];
+    
+    // Get router contract instance
+    const routerContract = await ethers.getContractAt("IUniswapV2Router02", router);
+    
+    // Perform swapExactTokensForTokensSupportingFeeOnTransferTokens
+    // This simulates selling tokens via the router to the pair
+    const deadline = Math.floor(Date.now() / 1000) + 3600;
+    
+    // Need to get the expected amount out first (approximate)
+    const amounts = await routerContract.getAmountsOut(sellAmount, path);
+    const minAmountOut = amounts[1];
+    
+    // Execute the swap
+    await routerContract.swapExactTokensForTokensSupportingFeeOnTransferTokens(
+      sellAmount,
+      minAmountOut,
+      path,
+      owner.address,
+      deadline
+    );
+    
+    // Check if liquidity was added by comparing USDT balance of helper
+    const finalUsdtBalance = await usdtContract.balanceOf(helperAddress);
+    
+    // In the original contract, the swap should trigger liquidity addition
+    // In the mutant (false condition), liquidity addition is skipped
+    // So if USDT balance increased, liquidity was added (original behavior)
+    // If not, the mutant is detected
+    expect(finalUsdtBalance).to.be.gt(initialUsdtBalance);
+  });
+});
+```

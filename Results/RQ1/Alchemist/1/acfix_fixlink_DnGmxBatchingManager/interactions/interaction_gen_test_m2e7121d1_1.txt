@@ -1,0 +1,65 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m2e7121d1 of DnGmxBatchingManager.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test DnGmxBatchingManager.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for DnGmxBatchingManager:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("DnGmxBatchingManager reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy DnGmxBatchingManager by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("DnGmxBatchingManager"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DnGmxBatchingManager mutant m2e7121d1 - keeper set to address(this)", function () {
+  it("should revert when external keeper address tries to call onlyKeeper functions", async function () {
+    const [owner, keeper, addr1] = await ethers.getSigners();
+    
+    // Deploy the contract - note: this contract has no constructor, it uses initialize()
+    const Factory = await ethers.getContractFactory("DnGmxBatchingManager");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // We need to initialize the contract
+    // For the test we need to mock/use real token addresses
+    // Using zero addresses for tokens as they are not used in this test
+    const zeroAddress = "0x0000000000000000000000000000000000000000";
+    
+    await instance.initialize(
+      zeroAddress,  // _sGlp
+      zeroAddress,  // _usdc
+      zeroAddress,  // _rewardRouter
+      zeroAddress,  // _glpManager
+      zeroAddress,  // _dnGmxJuniorVault
+      keeper.address  // _keeper - in the mutant this will be replaced with address(this)
+    );
+    
+    // The mutant sets keeper = address(this) instead of keeper = _keeper
+    // So the external keeper address should NOT be able to call onlyKeeper functions
+    // In the original contract, keeper would be keeper.address
+    // In the mutant, keeper would be the contract's own address
+    
+    // Test that the external keeper cannot call pauseDeposit (onlyKeeper function)
+    await expect(
+      instance.connect(keeper).pauseDeposit()
+    ).to.be.revertedWithCustomError(instance, "CallerNotKeeper");
+    
+    // Also verify that the contract owner also cannot call onlyKeeper functions
+    await expect(
+      instance.connect(owner).pauseDeposit()
+    ).to.be.revertedWithCustomError(instance, "CallerNotKeeper");
+    
+    // The only way to call onlyKeeper functions would be from the contract itself
+    // which is not possible through external transactions
+  });
+});
+```

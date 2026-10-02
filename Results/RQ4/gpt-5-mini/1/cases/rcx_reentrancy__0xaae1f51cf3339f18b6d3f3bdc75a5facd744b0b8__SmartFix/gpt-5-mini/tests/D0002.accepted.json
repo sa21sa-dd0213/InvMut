@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0002",
+ "property_summary": "After a single Deposit of amount v by caller a, the caller's recorded balance equals the amount v (i.e. the deposit is not double-counted).",
+ "render_status": "rendered",
+ "validation_status": "skipped",
+ "validation_error": null,
+ "kill": "bug_no_kill:spurious_callback",
+ "origin": "primary",
+ "change_summary": "Insert an extra addition to double-count msg.value so balances increment by twice the deposited amount.",
+ "mutated_unit_code": "function Deposit()\n    public\n    payable\n    {\n        require(((balances[msg.sender] + msg.value) >= balances[msg.sender]));\n        balances[msg.sender]+= msg.value;\n        balances[msg.sender]+= msg.value;\n        Log.AddMessage(msg.sender,msg.value,\"Put\");\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {DEP_BANK} from \"../src/DEP_BANK.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    DEP_BANK c;\n\n    function setUp() public {\n        c = new DEP_BANK();\n    }\n\n    function _run(uint256 depositAmount) internal {\n        depositAmount = bound(depositAmount, 0, 1000000000000000000000000000000);\n        vm.deal(address(this), VALUE_CAP);\n        vm.deal(address(c), VALUE_CAP);\n        vm.assume(address(this).balance >= depositAmount);\n        try c.Deposit{value: depositAmount}() {} catch { return; }\n        uint256 recorded;\n        try c.balances(address(this)) returns (uint256 __r) { recorded = __r; } catch { return; }\n        assertTrue(recorded == depositAmount);\n    }\n\n    function testFuzz_run(uint256 depositAmount) public {\n        _run(depositAmount);\n    }\n\n    receive() external payable {}\n}\n"
+}

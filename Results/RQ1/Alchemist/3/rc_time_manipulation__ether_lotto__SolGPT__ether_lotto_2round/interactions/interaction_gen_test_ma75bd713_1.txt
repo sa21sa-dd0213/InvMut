@@ -1,0 +1,63 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant ma75bd713 of EtherLotto.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EtherLotto.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EtherLotto:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EtherLotto reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EtherLotto by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EtherLotto"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant kill test - block.prevrandao vs block.timestamp", function () {
+  it("should kill the mutant by showing different results across blocks when block.timestamp changes", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = ethers.parseEther("10");
+
+    // Play once in the first block
+    await player.sendTransaction({
+      to: await instance.getAddress(),
+      value: TICKET_AMOUNT
+    });
+
+    // Get the result after first play
+    const potAfterFirst = await instance.pot();
+
+    // Mine a new block to change block.timestamp
+    await ethers.provider.send("evm_mine", []);
+
+    // Play again in a new block
+    await player.sendTransaction({
+      to: await instance.getAddress(),
+      value: TICKET_AMOUNT
+    });
+
+    // Get the result after second play
+    const potAfterSecond = await instance.pot();
+
+    // In the original contract, block.timestamp changes between blocks,
+    // so the random outcome can differ, potentially leading to different pot states.
+    // In the mutant, block.prevrandao is constant across blocks,
+    // so with same player address and block.difficulty, the outcome is identical,
+    // causing the pot to always be reset to 0 after each win.
+    // This test asserts that the pot can be non-zero after a loss, which
+    // the mutant would never allow (always win/loss same pattern, pot always 0 after first win).
+    expect(potAfterFirst).to.not.equal(potAfterSecond);
+  });
+});
+```

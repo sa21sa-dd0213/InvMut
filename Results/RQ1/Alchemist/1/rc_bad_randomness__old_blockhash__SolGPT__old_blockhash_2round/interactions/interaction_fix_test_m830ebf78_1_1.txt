@@ -1,0 +1,62 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PredictTheBlockHashChallenge mutant detection", function () {   it("should detect mutant m830ebf78 by allowing multiple lockInGuess calls and verifying only last guess counts", async function () {     const [owner, player] = await ethers.getSigners();          // Deploy contract with 1 ether     const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge");     const instance = await Factory.deploy({ value: ethers.parseEther("1") });     await instance.waitForDeployment();          // First lockInGuess - should succeed     const guess1 = ethers.keccak256(ethers.toUtf8Bytes("guess1"));     const tx1 = await instance.connect(player).lockInGuess(guess1, { value: ethers.parseEther("1") });     await tx1.wait();          // Second lockInGuess - should FAIL on original (revert), but succeed on mutant     const guess2 = ethers.keccak256(ethers.toUtf8Bytes("guess2"));          // On the mutant, this second call will succeed (no require check)     // We need to mine blocks to make the original guess stale, then settle     // On original, this would revert, but on mutant it succeeds          // Check if second call succeeds (mutant behavior)     try {       const tx2 = await instance.connect(player).lockInGuess(guess2, { value: ethers.parseEther("1") });       await tx2.wait();              // If we reach here, the mutant is detected (second call succeeded)       // Now settle to verify only guess2 matters       // Mine blocks to pass the target block       for (let i = 0; i < 10; i++) {         await ethers.provider.send("evm_mine", []);       }              const settleTx = instance.connect(player).settle();       await expect(settleTx).to.not.be.reverted;            } catch (error) {       // If it reverts, original behavior (mutant not detected this way)       // But the test should still pass because we're testing for mutant detection       expect(error.message).to.include("revert");     }   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PredictTheBlockHashChallenge { struct Guess { uint block; bytes32 guess; } mapping(address => Guess) guesses; constructor() public payable { require(msg.value == 1 ether); } function lockInGuess(bytes32 hash) public payable { require(guesses[msg.sender].block == 0); require(msg.value == 1 ether); guesses[msg.sender].guess = hash; guesses[msg.sender].block = block.number + 1; } function settle() public { require(guesses[msg.sender].block != 0); require(block.number > guesses[msg.sender].block); bytes32 answer = keccak256(abi.encodePacked(blockhash(guesses[msg.sender].block))); guesses[msg.sender].block = 0; if (guesses[msg.sender].guess == answer) { require(address(this).balance >= 2 ether); payable(msg.sender).transfer(2 ether); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PredictTheBlockHashChallenge mutant detection", function () {
+  it("should detect mutant m830ebf78 by allowing multiple lockInGuess calls and verifying only last guess counts", async function () {
+    const [owner, player] = await ethers.getSigners();
+
+    // Deploy contract with 1 ether
+    const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge");
+    const instance = await Factory.deploy({ value: ethers.parseEther("1") });
+    await instance.waitForDeployment();
+
+    // First lockInGuess - should succeed
+    const guess1 = ethers.keccak256(ethers.toUtf8Bytes("guess1"));
+    const tx1 = await instance.connect(player).lockInGuess(guess1, { value: ethers.parseEther("1") });
+    await tx1.wait();
+
+    // Second lockInGuess - should FAIL on original (revert), but succeed on mutant
+    const guess2 = ethers.keccak256(ethers.toUtf8Bytes("guess2"));
+
+    // On the mutant, this second call will succeed (no require check)
+    // We need to mine blocks to make the original guess stale, then settle
+    // On original, this would revert, but on mutant it succeeds
+
+    // Check if second call succeeds (mutant behavior)
+    try {
+      const tx2 = await instance.connect(player).lockInGuess(guess2, { value: ethers.parseEther("1") });
+      await tx2.wait();
+
+      // If we reach here, the mutant is detected (second call succeeded)
+      // Now settle to verify only guess2 matters
+      // Mine blocks to pass the target block
+      for (let i = 0; i < 10; i++) {
+        await ethers.provider.send("evm_mine", []);
+      }
+
+      const settleTx = instance.connect(player).settle();
+      await expect(settleTx).to.not.be.reverted;
+
+    } catch (error) {
+      // If it reverts, original behavior (mutant not detected this way)
+      // But the test should still pass because we're testing for mutant detection
+      expect(error.message).to.include("revert");
+    }
+  });
+});
+```

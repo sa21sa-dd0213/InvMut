@@ -1,0 +1,54 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("demo mutant med14c137", function () {   it("should detect mutant where if(true) replaces if(!_s) - call with valid external contract that succeeds", async function () {     const [owner] = await ethers.getSigners();          // Deploy the demo contract (no constructor args needed)     const DemoFactory = await ethers.getContractFactory("demo");     const demo = await DemoFactory.deploy();     await demo.waitForDeployment();          // Deploy a simple ERC20-like contract that can receive transferFrom calls     const MockTokenFactory = await ethers.getContractFactory("MockToken");     const mockToken = await MockTokenFactory.deploy();     await mockToken.waitForDeployment();          // Setup: mint tokens to owner and approve demo contract to spend them     const mintAmount = ethers.parseEther("100");     await mockToken.mint(owner.address, mintAmount);     await mockToken.approve(await demo.getAddress(), mintAmount);          // Create recipient addresses     const recipients = [owner.address]; // self-transfer for simplicity          // Call transfer - this should succeed on original (call returns true)     // but fail on mutant (always reverts due to if(true))     const tx = demo.transfer(       owner.address,       await mockToken.getAddress(),       recipients,       ethers.parseEther("10")     );          // The mutant will revert, so expect success on original but we're testing mutant     await expect(tx).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract demo { function transfer(address from, address caddress, address[] memory _tos, uint v)  public returns (bool) { require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); _d; if (! _s) { revert();} } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("demo mutant med14c137", function () {
+  it("should detect mutant where if(true) replaces if(!_s) - call with valid external contract that succeeds", async function () {
+    const [owner] = await ethers.getSigners();
+
+    // Deploy the demo contract (no constructor args needed)
+    const DemoFactory = await ethers.getContractFactory("demo");
+    const demo = await DemoFactory.deploy();
+    await demo.waitForDeployment();
+
+    // Deploy a simple ERC20-like contract that can receive transferFrom calls
+    const MockTokenFactory = await ethers.getContractFactory("MockToken");
+    const mockToken = await MockTokenFactory.deploy();
+    await mockToken.waitForDeployment();
+
+    // Setup: mint tokens to owner and approve demo contract to spend them
+    const mintAmount = ethers.parseEther("100");
+    await mockToken.mint(owner.address, mintAmount);
+    await mockToken.approve(await demo.getAddress(), mintAmount);
+
+    // Create recipient addresses
+    const recipients = [owner.address]; // self-transfer for simplicity
+
+    // Call transfer - this should succeed on original (call returns true)
+    // but fail on mutant (always reverts due to if(true))
+    const tx = demo.transfer(
+      owner.address,
+      await mockToken.getAddress(),
+      recipients,
+      ethers.parseEther("10")
+    );
+
+    // The mutant will revert, so expect success on original but we're testing mutant
+    await expect(tx).to.be.reverted;
+  });
+});
+```

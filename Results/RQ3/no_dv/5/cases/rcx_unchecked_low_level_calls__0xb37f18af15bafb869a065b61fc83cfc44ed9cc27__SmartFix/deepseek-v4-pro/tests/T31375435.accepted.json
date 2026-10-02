@@ -1,0 +1,12 @@
+{
+ "difference_id": "T31375435",
+ "property_summary": "For any nonzero Ether deposit via receive, the reference contract's depositsCount never decreases (it increases by 1), whereas the mutant that decrements will make depositsCount smaller for some deposit amounts/actor, violating the monotonic non-decrease rule.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change increment to a decrement so receive decreases depositsCount on each call, altering the observable state.",
+ "mutated_unit_code": "receive() external payable {\n        require(((depositsCount + 1) >= depositsCount));\n        depositsCount--;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n\n    function testFuzz_property(uint256 amount, address sender) public {\n        vm.assume(amount > 0);\n        vm.assume(sender != address(0));\n\n        vm.deal(sender, amount);\n\n        uint256 beforeCount = c.depositsCount();\n\n        vm.prank(sender);\n        (bool ok, ) = address(c).call{value: amount}(\"\");\n        require(ok, \"call to receive failed\");\n\n        uint256 afterCount = c.depositsCount();\n\n        assertTrue(afterCount >= beforeCount);\n    }\n}\n"
+}

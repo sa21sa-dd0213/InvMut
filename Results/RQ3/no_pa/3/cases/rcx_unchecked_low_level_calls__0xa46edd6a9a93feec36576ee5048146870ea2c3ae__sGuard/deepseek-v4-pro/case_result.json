@@ -1,0 +1,98 @@
+{
+ "case_id": "rcx_unchecked_low_level_calls__0xa46edd6a9a93feec36576ee5048146870ea2c3ae__sGuard",
+ "config_label": "deepseek-v4-pro",
+ "target_contract": "EBU",
+ "modification_kind": "control_flow",
+ "feasible": true,
+ "reason": null,
+ "n_accepted": 4,
+ "n_validated": 4,
+ "n_killing": 3,
+ "success": true,
+ "kills": [
+  {
+   "difference_id": "L0001",
+   "property": "When calling transfer with a non-empty array of recipients, C.transfer returns true in the reference but false in the mu",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Change return value from true to false.",
+   "mutated_unit_code": "    function transfer(address from,address caddress, address[] memory _tos, uint[] memory v)public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0;i<_tos.length;i++){\n\n            caddress.call(abi.encodeWithSelector(id,from,_tos[i],v[i]));\n        }\n        return false;\n    }",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "L0002",
+   "property": "With _tos length 2, the reference performs two transfers (i=0,1) while the bug performs only one (i=0), so after a call ",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Replace the loop ending condition with i<_tos.length-1 to skip the last iteration, altering which transfers happen.",
+   "mutated_unit_code": "    function transfer(address from,address caddress, address[] memory _tos, uint[] memory v)public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0;i<_tos.length-1;i++){\n\n            caddress.call(abi.encodeWithSelector(id,from,_tos[i],v[i]));\n        }\n        return true;\n    }",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  },
+  {
+   "difference_id": "L0003",
+   "property": "With two recipients (array length 2), the reference contract calls transferFrom twice leaving the recipient contract wit",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Replace the for loop increment with i+=2 to call transfer only on every other element in the arrays.",
+   "mutated_unit_code": "    function transfer(address from,address caddress, address[] memory _tos, uint[] memory v)public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0;i<_tos.length;i+=2){\n\n            caddress.call(abi.encodeWithSelector(id,from,_tos[i],v[i]));\n        }\n        return true;\n    }",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  },
+  {
+   "difference_id": "L0004",
+   "property": "Calling transfer(from, token, [recipient], [amount]) with a real ERC20-like token that tracks balances shows that after ",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Replace the argument to abi.encodeWithSelector, changing 'from' to 'address(this)' to transfer from the contract instead of the given address.",
+   "mutated_unit_code": "    function transfer(address from,address caddress, address[] memory _tos, uint[] memory v)public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0;i<_tos.length;i++){\n\n            caddress.call(abi.encodeWithSelector(id,address(this),_tos[i],v[i]));\n        }\n        return true;\n    }",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  }
+ ],
+ "tokens": {
+  "prompt": 10820,
+  "completion": 5172,
+  "reasoning": 0
+ },
+ "wallclock_s": 70.99980139732361,
+ "infra_error": null,
+ "rescore_vs_bug": {
+  "verdict": "REAL",
+  "kill_kinds": [
+   [
+    "L0002",
+    "assertion",
+    "bug_property_failed",
+    "assertion failed"
+   ],
+   [
+    "L0003",
+    "assertion",
+    "bug_property_failed",
+    "assertion failed"
+   ],
+   [
+    "L0004",
+    "assertion",
+    "bug_property_failed",
+    "from balance should decrease"
+   ]
+  ],
+  "action": "kept",
+  "note": "REAL=assertion verified"
+ }
+}

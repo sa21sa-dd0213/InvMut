@@ -1,0 +1,12 @@
+{
+ "difference_id": "T989f9e72",
+ "property_summary": "For any caller and any calldata/value, when the Owner calls Command forwarding some ETH, the contract C forwards the same ETH value to the target (so the call succeeds with value and may transfer ETH) — the mutant using staticcall disallows value transfer, so for some calldata/value the mutant will behave differently (the call will not forward ETH and may fail or not transfer funds).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace external call adr.call{value: msg.value}(data) with a low-level staticcall (disallowing value transfer) which will change behavior when Command attempts to send Ether or modify state on target.",
+ "mutated_unit_code": "function Command(address adr,bytes memory data)\n    payable\n    public\n    {\n        require(msg.sender == Owner);\n\n        // changed from call with value to staticcall without value\n        adr.staticcall(data);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MultiplicatorX3} from \"../src/MultiplicatorX3.sol\";\n\ncontract InvMutTest is Test {\n    MultiplicatorX3 c;\n    function setUp() public { c = new MultiplicatorX3(); }\n\n    function testFuzz_property(uint256 value, bytes calldata data) public {\n        value = bound(value, 0, 1 ether);\n\n        Receiver rec = new Receiver();\n\n        vm.deal(address(this), value + 1 ether);\n\n        bool ok;\n        try c.Command{value: value}(address(rec), data) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        if (ok) {\n            assertTrue(rec.received() == value);\n        } else {\n            assertTrue(rec.received() == 0);\n        }\n    }\n}\n\ncontract Receiver {\n    uint256 public received;\n    fallback() external payable {\n        received += msg.value;\n    }\n    receive() external payable {\n        received += msg.value;\n    }\n}\n"
+}

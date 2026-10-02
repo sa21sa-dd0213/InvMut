@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0004",
+ "property_summary": "For any target that reverts on low-level calls and any nonzero value, the reference contract's sendMoney call will revert (propagating the callee failure), whereas the mutant inverts the require and will instead NOT revert for such inputs, so the reference always reverts while the mutant sometimes succeeds.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Invert the require result to allow silent failure instead of reverting, changing whether the call reverts and thus observable behavior after sendMoney.",
+ "mutated_unit_code": "function sendMoney (address    _target,uint    _value, bytes memory _data) public onlyOwner  {\n    (bool __sent_result100, ) = _target.call{value: _value}(_data);\n    require(!__sent_result100);\n}\n",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n\n    function testFuzz_property(uint256 value) public {\n        value = bound(value, 0, 1 ether);\n\n        Reverter rev = new Reverter();\n\n        if (address(this).balance < value) {\n            vm.deal(address(this), value + 1);\n        }\n        (bool s, ) = address(c).call{value: value}(\"\");\n        require(s);\n\n        bool ok;\n        try c.sendMoney(address(rev), value, \"\") {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(!ok);\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"revert\");\n    }\n    receive() external payable {\n        revert(\"revert\");\n    }\n}\n"
+}

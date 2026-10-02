@@ -1,0 +1,22 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Private_Bank:
+        Contract Code: pragma solidity ^0.8.0; contract Private_Bank { mapping (address => uint) public balances; uint public MinDeposit = 1 ether; Log TransferLog; constructor(address _log) { TransferLog = Log(_log); } function Deposit() public payable { if(msg.value > MinDeposit) { require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); balances[msg.sender]+=msg.value; TransferLog.AddMessage(msg.sender,msg.value,"Deposit"); } } function CashOut(uint _am) public payable { if(_am<=balances[msg.sender]) { balances[msg.sender] = (balances[msg.sender] - _am); (bool _veri_ok,) = msg.sender.call{value: _am}(""); if(_veri_ok) { TransferLog.AddMessage(msg.sender,_am,"CashOut"); } else {revert (); } } } receive() external payable {} } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val,string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+
+    Consider the following mutant of Private_Bank:
+        Mutant m9f98cc6b of function Deposit replaces > with <
+        Mutant Diff: ---|         if(msg.value > MinDeposit) +++|         if(msg.value < MinDeposit)
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original function `Deposit` only allows deposits greater than `MinDeposit` (1 ether). The mutant changes the condition to `msg.value < MinDeposit`, meaning only deposits **less than** 1 ether would be accepted.
+
+**Hypothesis:**  
+A test case that sends a deposit of exactly 1 ether or more (e.g., 2 ether) and then checks that the balance increased and the deposit was recorded should pass on the original contract (since the condition `msg.value > MinDeposit` is satisfied). However, on the mutant, this deposit would fail because `msg.value < MinDeposit` is false, so the deposit logic is skipped and the balance remains unchanged. The test will detect the mutant by asserting that the balance increased after the deposit, which will fail on the mutant.

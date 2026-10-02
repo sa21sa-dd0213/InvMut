@@ -1,0 +1,75 @@
+{
+ "case_id": "rc_time_manipulation__roulette__SolGPT__roulette_1round",
+ "config_label": "deepseek-v4-pro",
+ "target_contract": "Roulette",
+ "modification_kind": "control_flow",
+ "feasible": true,
+ "reason": null,
+ "n_accepted": 3,
+ "n_validated": 3,
+ "n_killing": 0,
+ "success": false,
+ "kills": [
+  {
+   "difference_id": "L0002",
+   "property": "After a successful fallback call, pastBlockTime is updated in the reference but not in the bug, causing a subsequent cal",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Delete the statement 'pastBlockTime = block.timestamp;'",
+   "mutated_unit_code": "    fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        \n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "L0004",
+   "property": "After calling fallback with 10 ether when block.number % 15 != 0, the reference contract's balance increases by 10 ether",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Change 'require(msg.value == 10 ether)' to 'require(msg.value == 0 ether)'",
+   "mutated_unit_code": "    fallback() external payable {\n        require(msg.value == 0 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "L0001",
+   "property": "After a first fallback call with 10 ether at timestamp 1 (block.number = 1), the reference sets pastBlockTime to 1; that address's balance is reduced by 10 ether. On the mutant, the same call reverts due to require(pastBlockTime == 0) failing because pastBlockTime is already 0 (but the require checks with 0 so it passes — actually the mutant's inserted require checks pastBlockTime == 0, which passes on first call; we need a scenario where the mutant reverts and the reference doesn't. Actually let's think: the mutant requires pastBlockTime == 0, so the first call should succeed on both? No — the mutant's require(pastBlockTime == 0) passes on first call since pastBlockTime is 0. The divergence is that after the first call, the reference's pastBlockTime becomes non-zero, so a second call on the reference succeeds (if timestamp larger), but on the mutant the second call reverts because pastBlockTime != 0. So the concrete scenario: two fallback calls, first at block.timestamp=1, second at block.timestamp=2. Reference returns true (no revert) on second call, mutant reverts on second call.",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Insert a require statement that reverts if pastBlockTime is not zero, preventing the first call from setting it.",
+   "mutated_unit_code": "    fallback() external payable {\n        require(msg.value == 10 ether);\n        require(pastBlockTime == 0);\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  }
+ ],
+ "tokens": {
+  "prompt": 49530,
+  "completion": 29611,
+  "reasoning": 0
+ },
+ "wallclock_s": 331.5228126049042,
+ "infra_error": null,
+ "rescore_vs_bug": {
+  "verdict": "UNDET",
+  "kill_kinds": [
+   [
+    "L0005",
+    "UNDET-no-tests"
+   ],
+   [
+    "L0006",
+    "UNDET-no-tests"
+   ]
+  ],
+  "action": "disqualified",
+  "reason": "UNDET: counting kill has no rendered test -> unverifiable (user 2026-06-29)"
+ }
+}

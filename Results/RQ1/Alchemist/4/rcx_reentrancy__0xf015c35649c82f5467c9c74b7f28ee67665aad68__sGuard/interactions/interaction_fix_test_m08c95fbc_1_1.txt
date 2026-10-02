@@ -1,0 +1,67 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MY_BANK mutant m08c95fbc detection test", function () {   it("should detect mutant by allowing early withdrawal when it shouldn't", async function () {     const [owner, user] = await ethers.getSigners();          // Deploy Log contract first (required constructor arg for MY_BANK)     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();          // Deploy MY_BANK with log address     const BankFactory = await ethers.getContractFactory("MY_BANK");     const bank = await BankFactory.deploy(await log.getAddress());     await bank.waitForDeployment();          // Get current block timestamp     const blockNumBefore = await ethers.provider.getBlock("latest");     const currentTime = blockNumBefore!.timestamp;          // Set unlock time far in the future (e.g., current time + 1 hour)     const futureUnlock = currentTime + 3600;          // User deposits 2 ether with a future unlock time     const depositAmount = ethers.parseEther("2");     await bank.connect(user).Put(futureUnlock, { value: depositAmount });          // Verify balance was recorded     const holderInfo = await bank.Acc(user.address);     expect(holderInfo.balance).to.equal(depositAmount);          // Attempt to collect 1 ether immediately (should fail on original, succeed on mutant)     const collectAmount = ethers.parseEther("1");          // The mutant uses block.prevrandao instead of block.timestamp in the unlock time calculation.     // block.prevrandao is a random value that will likely be less than futureUnlock,     // causing the fallback to block.timestamp (current time), making funds immediately available.     // On the original, block.timestamp < futureUnlock, so the unlock time stays as futureUnlock,     // and the collection reverts because block.timestamp is not > acc.unlockTime.          // We expect the transaction to succeed on the mutant (detecting the bug)     // but revert on the original. Since we're testing the mutant, we check it succeeds.     const tx = await bank.connect(user).Collect(collectAmount);     await tx.wait();          // If we reach here, the mutant allowed early withdrawal - test passes (kills mutant)     const holderAfter = await bank.Acc(user.address);     expect(holderAfter.balance).to.equal(depositAmount - collectAmount);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } } contract MY_BANK is sGuard { function Put(uint _unlockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); LogFile.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant m08c95fbc detection test", function () {
+  it("should detect mutant by allowing early withdrawal when it shouldn't", async function () {
+    const [owner, user] = await ethers.getSigners();
+
+    // Deploy Log contract first (required constructor arg for MY_BANK)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Deploy MY_BANK with log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+
+    // Get current block timestamp
+    const blockNumBefore = await ethers.provider.getBlock("latest");
+    const currentTime = blockNumBefore!.timestamp;
+
+    // Set unlock time far in the future (e.g., current time + 1 hour)
+    const futureUnlock = currentTime + 3600;
+
+    // User deposits 2 ether with a future unlock time
+    const depositAmount = ethers.parseEther("2");
+    await bank.connect(user).Put(futureUnlock, { value: depositAmount });
+
+    // Verify balance was recorded
+    const holderInfo = await bank.Acc(user.address);
+    expect(holderInfo.balance).to.equal(depositAmount);
+
+    // Attempt to collect 1 ether immediately (should fail on original, succeed on mutant)
+    const collectAmount = ethers.parseEther("1");
+
+    // The mutant uses block.prevrandao instead of block.timestamp in the unlock time calculation.
+    // block.prevrandao is a random value that will likely be less than futureUnlock,
+    // causing the fallback to block.timestamp (current time), making funds immediately available.
+    // On the original, block.timestamp < futureUnlock, so the unlock time stays as futureUnlock,
+    // and the collection reverts because block.timestamp is not > acc.unlockTime.
+
+    // We expect the transaction to succeed on the mutant (detecting the bug)
+    // but revert on the original. Since we're testing the mutant, we check it succeeds.
+    const tx = await bank.connect(user).Collect(collectAmount);
+    await tx.wait();
+
+    // If we reach here, the mutant allowed early withdrawal - test passes (kills mutant)
+    const holderAfter = await bank.Acc(user.address);
+    expect(holderAfter.balance).to.equal(depositAmount - collectAmount);
+  });
+});
+```

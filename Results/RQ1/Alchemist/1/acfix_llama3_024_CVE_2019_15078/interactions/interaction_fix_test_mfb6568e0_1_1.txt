@@ -1,0 +1,95 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("XBORNID mutant mfb6568e0", function () {   it("should detect when distributionFinished is not set to true when totalDistributed equals totalSupply", async function () {     const [owner, investor1, investor2] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("XBORNID");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Initial setup: owner has totalDistributed tokens (200,000,000e18)     // totalRemaining = 300,000,000e18     // value = 1000e18 per distribution      // Calculate how many distributions are needed to reach totalSupply (500,000,000e18)     // We need to distribute 300,000,000e18 more tokens (totalRemaining)     // Each distribution gives 1000e18 tokens     const distributionsNeeded = 300000; // 300,000,000e18 / 1000e18      // Perform distributions until totalDistributed exactly equals totalSupply     for (let i = 0; i < distributionsNeeded - 1; i++) {       await instance.connect(investor1).getTokens();       // Reset blacklist for next investor (or use different accounts)       // For simplicity, we'll use different investors       if (i < distributionsNeeded - 2) {         // Create new signers for each distribution to avoid blacklist issues         const newInvestor = ethers.Wallet.createRandom().connect(ethers.provider);         // Fund the new investor with some ETH for gas         await owner.sendTransaction({           to: newInvestor.address,           value: ethers.parseEther("1.0")         });         // We'll need to adjust the loop to use new investors       }     }      // Alternative simpler approach: use multiple pre-funded accounts     // Let's create enough accounts to perform the distributions     const investors = [];     for (let i = 0; i < 10; i++) {       const wallet = ethers.Wallet.createRandom().connect(ethers.provider);       await owner.sendTransaction({         to: wallet.address,         value: ethers.parseEther("1.0")       });       investors.push(wallet);     }      // Distribute tokens using multiple investors     for (let i = 0; i < 300000; i++) {       const investorIndex = i % 10;       const investor = investors[investorIndex];              // Check if we've reached exactly totalSupply       const totalDistributed = await instance.totalDistributed();       const totalSupply = await instance.totalSupply();              if (totalDistributed >= totalSupply) {         break;       }              // Get the current value       const currentValue = await instance.value();              // Check if this distribution would exceed totalSupply       if (totalDistributed.add(currentValue) > totalSupply) {         // This would be the last distribution         break;       }              try {         await instance.connect(investor).getTokens();       } catch {         break;       }     }      // Now check that totalDistributed equals totalSupply     const finalTotalDistributed = await instance.totalDistributed();     const finalTotalSupply = await instance.totalSupply();          expect(finalTotalDistributed).to.equal(finalTotalSupply);          // Verify distributionFinished is true     expect(await instance.distributionFinished()).to.be.true;          // Attempt one more distribution - should fail if mutant is killed     // If mutant is present, this distribution will succeed (bug)     // If original code, this should revert     const newInvestor = ethers.Wallet.createRandom().connect(ethers.provider);     await owner.sendTransaction({       to: newInvestor.address,       value: ethers.parseEther("1.0")     });          // This should revert in original code (distributionFinished = true)     // In mutant, it might succeed because condition is > not >=     await expect(       instance.connect(newInvestor).getTokens()     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; library SafeMath { function mul(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a * b; assert(a == 0 || c / a == b); return c; } function div(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a / b; return c; } function sub(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } function add(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } } abstract contract ForeignToken { function balanceOf(address _owner) view public virtual returns (uint256); function transfer(address _to, uint256 _value) public virtual returns (bool); } abstract contract ERC20Basic { function balanceOf(address who) public view virtual returns (uint256); function transfer(address to, uint256 value) public virtual returns (bool); event Transfer(address indexed from, address indexed to, uint256 value); } abstract contract ERC20 is ERC20Basic { function allowance(address owner, address spender) public view virtual returns (uint256); function transferFrom(address from, address to, uint256 value) public virtual returns (bool); function approve(address spender, uint256 value) public virtual returns (bool); event Approval(address indexed owner, address indexed spender, uint256 value); } contract XBORNID is ERC20 { using SafeMath for uint256; address owner = msg.sender; mapping (address => uint256) balances; mapping (address => mapping (address => uint256)) allowed; mapping (address => bool) public blacklist; string public constant name = "XBORN ID"; string public constant symbol = "XBornID"; uint public constant decimals = 18; uint256 public totalSupply = 500000000e18; uint256 public totalDistributed = 200000000e18; uint256 public totalRemaining = (totalSupply - (totalDistributed)); uint256 public value = 1000e18; event Distr(address indexed to, uint256 amount); event DistrFinished(); event Burn(address indexed burner, uint256 value); bool public distributionFinished = false; modifier canDistr() { require(!distributionFinished); _; } modifier onlyOwner() { require(msg.sender == owner); _; } modifier onlyWhitelist() { require(blacklist[msg.sender] == false); _; } function XBornID() public { require(msg.sender == owner); balances[owner] = totalDistributed; } function transferOwnership(address newOwner) onlyOwner public { if (newOwner != address(0)) { owner = newOwner; } } function finishDistribution() onlyOwner canDistr public returns (bool) { distributionFinished = true; emit DistrFinished(); return true; } function distr(address _to, uint256 _amount) canDistr private returns (bool) { totalDistributed = (totalDistributed + (_amount)); totalRemaining = (totalRemaining - (_amount)); balances[_to] = (balances[_to] + (_amount)); emit Distr(_to, _amount); emit Transfer(address(0), _to, _amount); return true; if (totalDistributed >= totalSupply) { distributionFinished = true; } } receive() external payable { getTokens(); } function getTokens() payable canDistr onlyWhitelist public { if (value > totalRemaining) { value = totalRemaining; } require(value <= totalRemaining); address investor = msg.sender; uint256 toGive = value; distr(investor, toGive); if (toGive > 0) { blacklist[investor] = true; } if (totalDistributed >= totalSupply) { distributionFinished = true; } value = (value / (100000)).mul(99999); } function balanceOf(address _owner) view public override virtual returns (uint256) { return balances[_owner]; } modifier onlyPayloadSize(uint size) { assert(msg.data.length >= size + 4); _; } function transfer(address _to, uint256 _amount) onlyPayloadSize(2 * 32) public override virtual returns (bool success) { require(_to != address(0)); require(_amount <= balances[msg.sender]); balances[msg.sender] = (balances[msg.sender] - (_amount)); balances[_to] = (balances[_to] + (_amount)); emit Transfer(msg.sender, _to, _amount); return true; } function transferFrom(address _from, address _to, uint256 _amount) onlyPayloadSize(3 * 32) public override virtual returns (bool success) { require(_to != address(0)); require(_amount <= balances[_from]); require(_amount <= allowed[_from][msg.sender]); balances[_from] = (balances[_from] - (_amount)); allowed[_from][msg.sender] = (allowed[_from][msg.sender] - (_amount)); balances[_to] = (balances[_to] + (_amount)); emit Transfer(_from, _to, _amount); return true; } function approve(address _spender, uint256 _value) public override virtual returns (bool success) { if (_value != 0 && allowed[msg.sender][_spender] != 0) { return false; } allowed[msg.sender][_spender] = _value; emit Approval(msg.sender, _spender, _value); return true; } function allowance(address _owner, address _spender) view public override virtual returns (uint256) { return allowed[_owner][_spender]; } function getTokenBalance(address tokenAddress, address who) view public returns (uint){ ForeignToken t = ForeignToken(tokenAddress); uint bal = t.balanceOf(who); return bal; } function withdraw() onlyOwner public { uint256 etherBalance = address(this).balance; payable(owner).transfer(etherBalance); } function burn(uint256 _value) onlyOwner public { require(_value <= balances[msg.sender]); address burner = msg.sender; balances[burner] = (balances[burner] - (_value)); totalSupply = (totalSupply - (_value)); totalDistributed = (totalDistributed - (_value)); emit Burn(burner, _value); } function withdrawForeignTokens(address _tokenContract) onlyOwner public returns (bool) { ForeignToken token = ForeignToken(_tokenContract); uint256 amount = token.balanceOf(address(this)); return token.transfer(owner, amount); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("XBORNID mutant mfb6568e0", function () {
+  it("should detect when distributionFinished is not set to true when totalDistributed equals totalSupply", async function () {
+    const [owner, investor1, investor2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("XBORNID");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Initial setup: owner has totalDistributed tokens (200,000,000e18)
+    // totalRemaining = 300,000,000e18
+    // value = 1000e18 per distribution
+
+    // Create enough accounts to perform the distributions
+    const investors = [];
+    for (let i = 0; i < 10; i++) {
+      const wallet = ethers.Wallet.createRandom().connect(ethers.provider);
+      await owner.sendTransaction({
+        to: wallet.address,
+        value: ethers.parseEther("1.0")
+      });
+      investors.push(wallet);
+    }
+
+    // Distribute tokens using multiple investors
+    for (let i = 0; i < 300000; i++) {
+      const investorIndex = i % 10;
+      const investor = investors[investorIndex];
+      
+      // Check if we've reached exactly totalSupply
+      const totalDistributed = await instance.totalDistributed();
+      const totalSupply = await instance.totalSupply();
+      
+      if (totalDistributed >= totalSupply) {
+        break;
+      }
+      
+      // Get the current value
+      const currentValue = await instance.value();
+      
+      // Check if this distribution would exceed totalSupply
+      if (totalDistributed + currentValue > totalSupply) {
+        // This would be the last distribution
+        break;
+      }
+      
+      try {
+        await instance.connect(investor).getTokens();
+      } catch {
+        break;
+      }
+    }
+
+    // Now check that totalDistributed equals totalSupply
+    const finalTotalDistributed = await instance.totalDistributed();
+    const finalTotalSupply = await instance.totalSupply();
+    
+    expect(finalTotalDistributed).to.equal(finalTotalSupply);
+    
+    // Verify distributionFinished is true
+    expect(await instance.distributionFinished()).to.be.true;
+    
+    // Attempt one more distribution - should fail if mutant is killed
+    // If mutant is present, this distribution will succeed (bug)
+    // If original code, this should revert
+    const newInvestor = ethers.Wallet.createRandom().connect(ethers.provider);
+    await owner.sendTransaction({
+      to: newInvestor.address,
+      value: ethers.parseEther("1.0")
+    });
+    
+    // This should revert in original code (distributionFinished = true)
+    // In mutant, it might succeed because condition is > not >=
+    await expect(
+      instance.connect(newInvestor).getTokens()
+    ).to.be.reverted;
+  });
+});
+```

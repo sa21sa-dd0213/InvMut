@@ -1,0 +1,12 @@
+{
+ "difference_id": "Td7c0b6d0",
+ "property_summary": "For any input where _tos is non-empty and the callee address implements a function transferFrom that returns (i.e. the low-level call succeeds), the reference C.transfer always completes successfully (does not revert) and returns true; the mutant inverts the inner require and will revert whenever the callee call succeeds, so there exist inputs (a non-empty _tos and a callee that accepts the call) that make the mutant revert while the reference succeeds.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Invert the require to revert when the caddress.call returns true, causing successful inner calls to cause overall revert and change return behavior.",
+ "mutated_unit_code": "function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){\n    require(_tos.length > 0);\n    bytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n    for(uint i=0;i<_tos.length;i++){\n\n    { (bool _s,) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v)); require(!_s); }\n    }\n    return true;\n}\n",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airdrop} from \"../src/airdrop.sol\";\n\ncontract InvMutTest is Test {\n    airdrop c;\n    function setUp() public { c = new airdrop(); }\n\n    function testFuzz_property(address actor, uint256 v, uint256 len) public {\n        uint256 boundedLen = bound(len, 0, 10);\n        vm.assume(boundedLen > 0);\n\n        CalleeAlwaysTrue callee = new CalleeAlwaysTrue();\n\n        address[] memory tos = new address[](boundedLen);\n        for (uint i = 0; i < boundedLen; i++) {\n            tos[i] = address(callee);\n        }\n\n        bool ok;\n        try c.transfer(actor, address(callee), tos, v) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok);\n    }\n}\n\ncontract CalleeAlwaysTrue {\n    function transferFrom(address, address, uint256) external pure returns (bool) {\n        return true;\n    }\n}\n"
+}

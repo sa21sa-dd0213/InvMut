@@ -1,0 +1,12 @@
+{
+ "difference_id": "T2d33a668",
+ "property_summary": "For any call by the owner to withdraw an amount not exceeding the contract's balance to a recipient that cannot accept Ether (reverts in receive/fallback), the correct contract reverts the entire call, while the mutant silently succeeds without transferring Ether.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace transfer with call{value: _value}(\"\"), which does not revert on failure due to missing explicit success check.",
+ "mutated_unit_code": "function withdraw(uint _value) public onlyOwner {\n        payable(msg.sender).call{value: _value}(\"\");\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n    function testFuzz_property(uint256 amount) public {\n        vm.assume(amount > 0);\n        address owner = c.owner();\n        vm.deal(address(c), amount);\n        address reverter = address(new Reverter());\n        vm.prank(owner);\n        bool ok = true;\n        try c.withdraw(amount) { ok = false; } catch { ok = true; }\n        assertTrue(ok);\n    }\n}\ncontract Reverter { fallback() external payable { revert(); } }\n"
+}

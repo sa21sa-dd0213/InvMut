@@ -1,0 +1,27 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Reentrance:
+        Contract Code: pragma solidity ^0.8.0; contract Reentrance { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public payable { require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender])); userBalance[msg.sender] += msg.value; } function withdrawBalance() public{ uint256 tmp__1 = userBalance[msg.sender]; userBalance[msg.sender] = 0; { (bool _s, bytes memory _d) = msg.sender.call{value: tmp__1}(""); _d; if (! _s) { revert(); } } } }
+
+    Consider the following mutant of Reentrance:
+        Mutant mc853a685 of function withdrawBalance replaces revert(); with 
+        Mutant Diff: ---|              revert(); +++|
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Looking at the original contract, the `withdrawBalance` function:
+1. Stores the user's balance in `tmp__1`
+2. Sets the user's balance to 0
+3. Sends the ether to the caller
+4. If the external call fails, it calls `revert()` to revert the entire transaction
+
+The mutant removes the `revert()` call inside the `if (!_s)` block. This means that if the external call fails, the function will NOT revert - it will simply continue execution, but the user's balance has already been set to 0.
+
+**Hypothesis**: The mutant removes the revert when the external call fails. Therefore, a test case that calls `withdrawBalance` from a contract that deliberately rejects ether (e.g., has a `receive()` or `fallback()` function that reverts) and then checks that the user's balance was NOT deducted (i.e., remains unchanged) should kill the mutant. On the original contract, the transaction would revert and the balance would be preserved, but on the mutant, the balance would be incorrectly set to 0 despite the user not receiving the funds.

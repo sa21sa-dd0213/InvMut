@@ -1,0 +1,60 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m257374c1 of Roulette.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Roulette.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Roulette:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Roulette reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Roulette by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Roulette"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant kill test - m257374c1", function () {
+  it("should kill mutant by proving block.number+1 condition is off by one", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    const contractAddress = await instance.getAddress();
+
+    // Get current block number
+    const currentBlock = await ethers.provider.getBlock("latest");
+    let blockNumber = currentBlock.number;
+
+    // Find a block number that is NOT a multiple of 15, but block.number+1 IS a multiple of 15
+    // We need: block.number % 15 != 0 AND (block.number + 1) % 15 == 0
+    // This means block.number = 14, 29, 44, etc.
+    const targetBlock = blockNumber + ((14 - (blockNumber % 15) + 15) % 15);
+    
+    // Mine blocks until we reach the target block number
+    const blocksToMine = targetBlock - blockNumber;
+    for (let i = 0; i < blocksToMine; i++) {
+      await ethers.provider.send("evm_mine", []);
+    }
+
+    // Now we are at block number where: block.number % 15 != 0 AND (block.number+1) % 15 == 0
+    // Send exactly 10 ether to trigger fallback
+    const tx = await owner.sendTransaction({
+      to: contractAddress,
+      value: ethers.parseEther("10")
+    });
+    await tx.wait();
+
+    // Check contract balance - should still have 10 ether since original condition should NOT trigger payout
+    const balanceAfter = await ethers.provider.getBalance(contractAddress);
+    // The mutant would incorrectly trigger payout here, so this assertion kills it
+    expect(balanceAfter).to.equal(ethers.parseEther("10"));
+  });
+});
+```

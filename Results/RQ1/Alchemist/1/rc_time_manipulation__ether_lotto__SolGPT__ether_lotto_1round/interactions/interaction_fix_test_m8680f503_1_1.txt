@@ -1,0 +1,74 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EtherLotto mutant m8680f503 detection", function () {   it("should detect the mutated winning condition by verifying player wins only when random != 0", async function () {     const [owner, player] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("EtherLotto");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const TICKET_AMOUNT = ethers.parseEther("10");     const FEE_AMOUNT = ethers.parseEther("1");      // Play multiple times and track outcomes     let winsWhenRandomZero = 0;     let winsWhenRandomOne = 0;      for (let i = 0; i < 20; i++) {       // Get current block info before playing       const blockBefore = await ethers.provider.getBlock("latest");       const timestamp = blockBefore!.timestamp + 1;       const difficulty = blockBefore!.difficulty;        // Compute expected random value for this play       const expectedRandom = BigInt(         ethers.keccak256(           ethers.AbiCoder.defaultAbiCoder().encode(             ["uint256", "uint256"],             [timestamp, difficulty]           )         )       ) % 2n;        // Player plays       const playerBalanceBefore = await ethers.provider.getBalance(player.address);       const playTx = await instance.connect(player).play({ value: TICKET_AMOUNT });       await playTx.wait();       const playerBalanceAfter = await ethers.provider.getBalance(player.address);        const netChange = playerBalanceAfter - playerBalanceBefore;        // Determine if player won (received pot minus fee)       if (netChange > 0n) {         if (expectedRandom === 0n) {           winsWhenRandomZero++;         } else {           winsWhenRandomOne++;         }       }     }      // In the original contract, player wins only when random == 0     // In the mutant, player wins only when random != 0     // So we assert that wins happen when random != 0 (mutant behavior)     expect(winsWhenRandomZero).to.equal(0);     expect(winsWhenRandomOne).to.be.greaterThan(0);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant m8680f503 detection", function () {
+  it("should detect the mutated winning condition by verifying player wins only when random != 0", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = ethers.parseEther("10");
+    const FEE_AMOUNT = ethers.parseEther("1");
+
+    // Play multiple times and track outcomes
+    let winsWhenRandomZero = 0;
+    let winsWhenRandomOne = 0;
+
+    for (let i = 0; i < 20; i++) {
+      // Get current block info before playing
+      const blockBefore = await ethers.provider.getBlock("latest");
+      const timestamp = blockBefore!.timestamp + 1;
+      const difficulty = blockBefore!.difficulty;
+
+      // Compute expected random value for this play
+      const expectedRandom = BigInt(
+        ethers.keccak256(
+          ethers.AbiCoder.defaultAbiCoder().encode(
+            ["uint256", "uint256"],
+            [timestamp, difficulty]
+          )
+        )
+      ) % 2n;
+
+      // Player plays
+      const playerBalanceBefore = await ethers.provider.getBalance(player.address);
+      const playTx = await instance.connect(player).play({ value: TICKET_AMOUNT });
+      await playTx.wait();
+      const playerBalanceAfter = await ethers.provider.getBalance(player.address);
+
+      const netChange = playerBalanceAfter - playerBalanceBefore;
+
+      // Determine if player won (received pot minus fee)
+      if (netChange > 0n) {
+        if (expectedRandom === 0n) {
+          winsWhenRandomZero++;
+        } else {
+          winsWhenRandomOne++;
+        }
+      }
+    }
+
+    // In the original contract, player wins only when random == 0
+    // In the mutant, player wins only when random != 0
+    // So we assert that wins happen when random != 0 (mutant behavior)
+    expect(winsWhenRandomZero).to.equal(0);
+    expect(winsWhenRandomOne).to.be.greaterThan(0);
+  });
+});
+```

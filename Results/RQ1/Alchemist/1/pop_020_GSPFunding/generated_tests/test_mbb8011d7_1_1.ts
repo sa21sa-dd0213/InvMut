@@ -1,0 +1,107 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("GSPFunding mutant mbb8011d7 test", function () {
+  it("should detect the mutant that changes subtraction to division in buyShares", async function () {
+    const [owner, user1] = await ethers.getSigners();
+
+    // Deploy mock ERC20 tokens
+    const ERC20Mock = await ethers.getContractFactory("contracts/mocks/ERC20Mock.sol:ERC20Mock");
+    const baseToken = await ERC20Mock.deploy("Base", "BASE", 18);
+    await baseToken.waitForDeployment();
+    const quoteToken = await ERC20Mock.deploy("Quote", "QUOTE", 18);
+    await quoteToken.waitForDeployment();
+
+    // Deploy GSPFunding
+    const GSPFunding = await ethers.getContractFactory("GSPFunding");
+    const gsp = await GSPFunding.deploy();
+    await gsp.waitForDeployment();
+
+    // Initialize the contract with required parameters
+    // Set base and quote tokens
+    await gsp.connect(owner)._BASE_TOKEN_(await baseToken.getAddress());
+    await gsp.connect(owner)._QUOTE_TOKEN_(await quoteToken.getAddress());
+
+    // Set initial reserves and targets
+    await gsp.connect(owner)._BASE_RESERVE_(ethers.parseEther("1000"));
+    await gsp.connect(owner)._QUOTE_RESERVE_(ethers.parseEther("2000"));
+    await gsp.connect(owner)._BASE_TARGET_(ethers.parseEther("1000"));
+    await gsp.connect(owner)._QUOTE_TARGET_(ethers.parseEther("2000"));
+
+    // Set I and K values
+    await gsp.connect(owner)._I_(ethers.parseEther("2")); // price ratio
+    await gsp.connect(owner)._K_(ethers.parseEther("0.5")); // K parameter
+
+    // Set a non-zero MT_FEE_BASE_ to trigger the mutation
+    await gsp.connect(owner)._MT_FEE_BASE_(ethers.parseEther("100"));
+
+    // Set RState to ONE
+    await gsp.connect(owner)._RState_(0);
+
+    // Mint total supply to simulate existing liquidity
+    await gsp.connect(owner)._mint(owner.address, ethers.parseEther("10000"));
+    await gsp.connect(owner)._setReserve(ethers.parseEther("1000"), ethers.parseEther("2000"));
+
+    // Transfer base tokens to GSP to simulate user deposit
+    const baseAmount = ethers.parseEther("500");
+    await baseToken.mint(user1.address, baseAmount);
+    await baseToken.connect(user1).transfer(await gsp.getAddress(), baseAmount);
+
+    // Call buyShares - in the original, baseBalance = balance - _MT_FEE_BASE_
+    // In the mutant, baseBalance = balance / _MT_FEE_BASE_
+    // The original would compute baseInput = (balance - fee) - baseReserve
+    // The mutant would compute baseInput = (balance / fee) - baseReserve
+
+    // Get the actual base token balance of the contract
+    const contractBaseBalance = await baseToken.balanceOf(await gsp.getAddress());
+
+    // Calculate expected baseInput for the ORIGINAL contract
+    const mtFeeBase = await gsp._MT_FEE_BASE_();
+    const baseReserve = await gsp._BASE_RESERVE_();
+    const expectedBaseInput = contractBaseBalance - mtFeeBase - baseReserve;
+
+    // Call buyShares
+    const tx = await gsp.connect(user1).buyShares(user1.address);
+    const receipt = await tx.wait();
+
+    // For the mutant, the baseInput would be different
+    // Original: baseInput = contractBaseBalance - mtFeeBase - baseReserve
+    // Mutant: baseInput = (contractBaseBalance / mtFeeBase) - baseReserve
+
+    // Since we expect the original behavior, check that the transaction succeeded
+    // and that the state changed correctly
+    expect(receipt).to.not.be.null;
+
+    // Verify the shares were minted correctly by checking total supply increased
+    const totalSupplyAfter = await gsp.totalSupply();
+    expect(totalSupplyAfter).to.be.gt(ethers.parseEther("10000"));
+
+    // The key assertion: if the mutant is active, the calculation would produce
+    // a drastically different result that would either revert or produce wrong shares
+    // For the mutant with our values:
+    // contractBaseBalance = 1000 + 500 = 1500 (initial reserve + user deposit)
+    // mtFeeBase = 100
+    // baseInput_mutant = (1500 / 100) - 1000 = 15 - 1000 = negative → would revert
+    // baseInput_original = 1500 - 100 - 1000 = 400 → would succeed
+
+    // So if the mutant is active, the transaction would revert
+    // If the original code runs, it succeeds
+    // This test would detect the mutant by expecting success but getting revert
+    // Or vice versa - let's check if it reverted
+
+    // Actually, let's deploy a fresh instance and test more carefully
+    // The mutation would cause baseInput to be incorrect, leading to wrong share calculation
+    // We can verify by checking the actual baseInput used
+
+    // For the original code with our setup:
+    // baseInput = 1500 - 100 - 1000 = 400
+    // The buyShares should succeed and mint shares based on 400 base input
+
+    // For the mutant:
+    // baseInput = (1500 / 100) - 1000 = 15 - 1000 = -985 → this would revert
+    // because require(baseInput > 0) would fail
+
+    // So a simple assertion that the transaction succeeds would kill the mutant
+    // because the mutant would revert
+  });
+});

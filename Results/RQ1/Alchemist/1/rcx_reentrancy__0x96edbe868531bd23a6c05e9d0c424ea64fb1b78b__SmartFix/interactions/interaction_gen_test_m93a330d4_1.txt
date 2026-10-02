@@ -1,0 +1,55 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m93a330d4 of PENNY_BY_PENNY.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PENNY_BY_PENNY.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PENNY_BY_PENNY:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PENNY_BY_PENNY reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PENNY_BY_PENNY by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PENNY_BY_PENNY"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PENNY_BY_PENNY mutant m93a330d4 detection", function () {
+  it("should detect mutated LogFile value by verifying logged amount matches msg.value exactly", async function () {
+    const [owner] = await ethers.getSigners();
+    
+    // Deploy LogFile first (needed as constructor argument for PENNY_BY_PENNY)
+    const LogFileFactory = await ethers.getContractFactory("LogFile");
+    const logFile = await LogFileFactory.deploy();
+    await logFile.waitForDeployment();
+    
+    // Deploy PENNY_BY_PENNY with LogFile address
+    const PennyFactory = await ethers.getContractFactory("PENNY_BY_PENNY");
+    const penny = await PennyFactory.deploy();
+    await penny.waitForDeployment();
+    
+    // Initialize the contract (required before Put can be called meaningfully)
+    await (await penny.SetLogFile(await logFile.getAddress())).wait();
+    await (await penny.Initialized()).wait();
+    
+    // Send exactly 100 wei to Put function
+    const testAmount = ethers.parseEther("0.0000000000000001"); // 100 wei
+    const tx = await penny.connect(owner).Put(0, { value: testAmount });
+    await tx.wait();
+    
+    // Read the last entry from LogFile's History array
+    const historyLength = await logFile.History.length;
+    const lastEntry = await logFile.History(historyLength - 1n);
+    
+    // The mutant logs msg.value+1, so original logs 100 wei, mutant logs 101 wei
+    // Assert that the logged value matches the actual sent amount
+    expect(lastEntry.Val).to.equal(testAmount);
+  });
+});
+```

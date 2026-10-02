@@ -1,0 +1,65 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant me575be82 of X_WALLET.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test X_WALLET.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for X_WALLET:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("X_WALLET reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy X_WALLET by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("X_WALLET"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("X_WALLET mutant me575be82 detection test", function () {
+  it("should kill mutant by detecting incorrect unlockTime when _unlockTime <= block.timestamp", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy Log contract first (required constructor argument for X_WALLET)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy X_WALLET with Log address
+    const Factory = await ethers.getContractFactory("X_WALLET");
+    const instance = await Factory.deploy(await log.getAddress());
+    await instance.waitForDeployment();
+    
+    // Get current block timestamp
+    const blockNum = await ethers.provider.getBlockNumber();
+    const block = await ethers.provider.getBlock(blockNum);
+    const currentTimestamp = block!.timestamp;
+    
+    // Call Put with _unlockTime less than current timestamp
+    // In original: unlockTime will be set to block.timestamp
+    // In mutant: unlockTime will be set to block.prevrandao (a random number)
+    const putValue = ethers.parseEther("2");
+    await instance.connect(addr1).Put(currentTimestamp - 100, { value: putValue });
+    
+    // Now attempt Collect with the full balance
+    // In original: block.timestamp > unlockTime (since unlockTime = block.timestamp, strict > fails)
+    // We need to wait at least 1 second for original to work
+    await ethers.provider.send("evm_increaseTime", [1]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // Check that collect succeeds in original but will likely fail in mutant
+    // because block.prevrandao is much larger than current timestamp
+    const collectAmount = ethers.parseEther("1");
+    
+    // In the mutant, block.prevrandao will be some large random number
+    // so block.timestamp > acc.unlockTime will be false, causing revert
+    await expect(
+      instance.connect(addr1).Collect(collectAmount)
+    ).to.be.reverted;
+  });
+});
+```

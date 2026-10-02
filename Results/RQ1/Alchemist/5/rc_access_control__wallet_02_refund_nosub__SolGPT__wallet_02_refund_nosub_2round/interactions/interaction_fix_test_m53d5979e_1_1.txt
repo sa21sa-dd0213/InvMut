@@ -1,0 +1,47 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Wallet mutant m53d5979e - overflow assertion test", function () {   it("should revert when depositing amount that would overflow the balance in the original assertion", async function () {     const [owner] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Wallet");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Get the maximum uint256 value     const maxUint256 = ethers.MaxUint256;          // First deposit to set a base balance     const baseDeposit = ethers.parseEther("1");     await instance.connect(owner).deposit({ value: baseDeposit });      // Now deposit an amount that, when added to the existing balance,      // would overflow in the original assertion (msg.value + current balance > balance)     // Original assertion: balances[msg.sender] + msg.value > balances[msg.sender]     // For overflow: msg.value should be maxUint256 - currentBalance + 1     const currentBalance = await instance.balances(owner.address);     const overflowAmount = maxUint256 - currentBalance + BigInt(1);          // In the mutant, the assertion becomes: balances[msg.sender] + msg.value + 1 > balances[msg.sender]     // This will always be true (since msg.value + 1 > 0), but the actual addition will overflow     await expect(       instance.connect(owner).deposit({ value: overflowAmount })     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Wallet { address creator; mapping(address => uint256) balances; constructor() public { creator = payable(msg.sender); } function deposit() public payable { assert(balances[msg.sender] + msg.value > balances[msg.sender]); balances[msg.sender] += msg.value; } function withdraw(uint256 amount) public { require(amount <= balances[msg.sender]); payable(msg.sender).transfer(amount); balances[msg.sender] -= amount; } function refund() public { payable(msg.sender).transfer(balances[msg.sender]); balances[msg.sender] = 0; } function migrateTo(address to) public { require(creator == msg.sender); payable(to).transfer(address(this).balance); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Wallet mutant m53d5979e - overflow assertion test", function () {
+  it("should revert when depositing amount that would overflow the balance in the original assertion", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Wallet");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get the maximum uint256 value
+    const maxUint256 = ethers.MaxUint256;
+
+    // First deposit to set a base balance
+    const baseDeposit = ethers.parseEther("1");
+    await instance.connect(owner).deposit({ value: baseDeposit });
+
+    // Now deposit an amount that, when added to the existing balance,
+    // would overflow in the original assertion (msg.value + current balance > balance)
+    // Original assertion: balances[msg.sender] + msg.value > balances[msg.sender]
+    // For overflow: msg.value should be maxUint256 - currentBalance + 1
+    const currentBalance = await instance.balances(owner.address);
+    const overflowAmount = maxUint256 - currentBalance + BigInt(1);
+
+    // In the mutant, the assertion becomes: balances[msg.sender] + msg.value + 1 > balances[msg.sender]
+    // This will always be true (since msg.value + 1 > 0), but the actual addition will overflow
+    await expect(
+      instance.connect(owner).deposit({ value: overflowAmount })
+    ).to.be.reverted;
+  });
+});
+```

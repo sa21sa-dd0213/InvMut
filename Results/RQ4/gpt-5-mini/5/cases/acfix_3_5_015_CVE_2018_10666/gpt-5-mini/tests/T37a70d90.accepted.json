@@ -1,0 +1,12 @@
+{
+ "difference_id": "T37a70d90",
+ "property_summary": "For every caller address, calling setOwner(...) on the reference contract reverts unless the caller is the admin; the mutant removes that admin check so some non-admin callers can successfully call setOwner, violating this rule for some inputs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Change require message in onlyAdmin to a different string; behavior (pass/fail) unchanged but the modifier body is modified. This does not alter return value of setOwner when call succeeds, so to produce a differing return value we instead modify onlyAdmin to not revert but to flip a state-invisible side effect: here we replace the require with a no-op so the setOwner call can be invoked by any sender, but to preserve that setOwner still completes for the original admin we make onlyAdmin always succeed (no require). This changes which callers can call setOwner but does not change return value; however combined with the mutant setOwner return change this unit edit alone can alter observed behavior for a call that previously returned true. To meet the requirement of one-statement edit inside onlyAdmin and to ensure compilation, we replace the require with an unconditional expression (no require) resulting in the modifier doing nothing.",
+ "mutated_unit_code": "modifier onlyAdmin() {\n    // require(msg.sender == admin, \"Only admin can call address(this) function\");\n    _;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Owned} from \"../src/Owned.sol\";\n\ncontract InvMutTest is Test {\n    Owned c;\n    function setUp() public { c = new Owned(); }\n    function testFuzz_property(address caller, address newOwner) public {\n        vm.assume(caller != address(0));\n        vm.assume(newOwner != address(0));\n\n        bool ok;\n        vm.deal(caller, 1 ether);\n        vm.prank(caller);\n        try c.setOwner(newOwner) returns (bool success) {\n            ok = success;\n        } catch {\n            ok = false;\n        }\n\n        if (caller == address(this)) {\n            assertTrue(ok);\n        } else {\n            assertTrue(!ok);\n        }\n    }\n}\n"
+}

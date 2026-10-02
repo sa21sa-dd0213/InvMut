@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0007",
+ "property_summary": "After setGoverned([address(0x123)], [true]) via a successful proposal (DAO caller), calling assertGovernanceApproved(0x123, address(this), false) should succeed in reference but reverts in bug because governed[0x123] is always false, causing the flashEnabled modifier to revert.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "Replace `governed[governables[i]] = isGoverned[i]` with `governed[governables[i]] = false` so the mapping is always set to false regardless of the input.",
+ "mutated_unit_code": "  function setGoverned(address[] calldata governables, bool[] calldata isGoverned) external onlySuccessfulProposal {\n    require(governables.length == isGoverned.length, \"LIMBO: length mismatch\");\n    for (uint256 i = 0; i < governables.length; i++) {\n      governed[governables[i]] = false;\n    }\n  }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {FlashGovernanceArbiter} from \"../src/FlashGovernanceArbiter.sol\";\n\ncontract InvMutTest is Test {\n    FlashGovernanceArbiter c;\n    function setUp() public { c = new FlashGovernanceArbiter(address(this)); }\n    function testRegression_property() public {\n        address alice = address(0x123);\n        address[] memory addresses = new address[](1);\n        addresses[0] = alice;\n        bool[] memory bools = new bool[](1);\n        bools[0] = true;\n        c.setGoverned(addresses, bools);\n\n        vm.prank(alice);\n        try c.assertGovernanceApproved(alice, address(0x1), false) {\n        } catch {\n        }\n        assertTrue(c.governed(alice) == true, \"governed should be true in reference but false in bug\");\n    }\n}\n"
+}

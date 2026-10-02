@@ -1,0 +1,106 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m1caf238f of DCF.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test DCF.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for DCF:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("DCF reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy DCF by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("DCF"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DCF mutant kill test - m1caf238f", function () {
+  it("should detect the mutant by verifying correct deadAmount calculation during sell", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy DCF with a liquidity receive address
+    const liquidityReceiveAddress = owner.address;
+    const Factory = await ethers.getContractFactory("DCF");
+    const dcf = await Factory.deploy(liquidityReceiveAddress);
+    await dcf.waitForDeployment();
+    
+    // Get the deployed helper address
+    const helperAddress = await dcf.helperAddress();
+    
+    // Get the pair address
+    const pairAddress = await dcf.pairAddress();
+    
+    // Get the USDT token address from the contract
+    const usdtAddress = await dcf.USDT();
+    
+    // Get router address
+    const routerAddress = await dcf.router();
+    
+    // Impersonate the router to simulate a sell transaction
+    // First, we need to set up the conditions for a sell (to == pairAddress)
+    
+    // Fund the contract with some tokens to handle fees
+    const initialSupply = ethers.parseEther("2000000");
+    const ownerBalance = await dcf.balanceOf(owner.address);
+    
+    // Transfer some tokens to addr1 to simulate a seller
+    const sellAmount = ethers.parseEther("1000");
+    await dcf.transfer(addr1.address, sellAmount);
+    
+    // Set up white address to allow the sell through normal logic
+    // First set the caller (cfo) to be able to call setWhite
+    await dcf.setCaller(owner.address);
+    await dcf.setWhite(addr1.address, false); // Ensure addr1 is not whitelisted
+    await dcf.setWhite(dcf.target, true); // Keep contract whitelisted for fee handling
+    
+    // Now we need to trigger a sell transaction where to == pairAddress
+    // We need to approve the transfer from addr1 to the pair
+    const dcfAsAddr1 = dcf.connect(addr1);
+    await dcfAsAddr1.approve(pairAddress, sellAmount);
+    
+    // Get the pair contract to interact with it
+    const pairFactory = await ethers.getContractFactory("IUniswapV2Pair");
+    const pair = pairFactory.attach(pairAddress);
+    
+    // Get initial balance of the pair before the sell
+    const initialPairBalance = await dcf.balanceOf(pairAddress);
+    
+    // Perform the transfer to the pair (simulating a sell)
+    // We need to do this via transferFrom to simulate the swap
+    const tx = await dcfAsAddr1.transfer(pairAddress, sellAmount);
+    await tx.wait();
+    
+    // Get final balance of the pair after the sell and burn
+    const finalPairBalance = await dcf.balanceOf(pairAddress);
+    
+    // Calculate expected deadAmount based on original formula: (amount - fee) / deadCfg
+    const fee = sellAmount * 5n / 100n; // 5% fee
+    const deadCfg = await dcf.deadCfg();
+    const expectedDeadAmount = (sellAmount - fee) / deadCfg;
+    
+    // The pair balance should be reduced by the deadAmount (burned tokens)
+    // But also increased by the transfer amount minus fee
+    // Expected: initialPairBalance + (sellAmount - fee) - expectedDeadAmount
+    const expectedFinalBalance = initialPairBalance + (sellAmount - fee) - expectedDeadAmount;
+    
+    // In the mutant, deadAmount = (sellAmount + fee) / deadCfg, which is larger
+    // This would result in a smaller final balance
+    const mutantDeadAmount = (sellAmount + fee) / deadCfg;
+    const mutantExpectedBalance = initialPairBalance + (sellAmount - fee) - mutantDeadAmount;
+    
+    // The test should pass for original (expectedFinalBalance matches)
+    // and fail for mutant (mutantExpectedBalance would be different)
+    // We assert that the balance is NOT equal to what the mutant would produce
+    expect(finalPairBalance).to.not.equal(mutantExpectedBalance);
+    
+    // Also verify that the balance is what the original would produce
+    expect(finalPairBalance).to.equal(expectedFinalBalance);
+  });
+});
+```

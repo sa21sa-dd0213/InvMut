@@ -1,0 +1,32 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract X_WALLET:
+        Contract Code: pragma solidity ^0.8.0; contract X_WALLET { function Put(uint _unlockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+
+    Consider the following mutant of X_WALLET:
+        Mutant me41bfd3c of function Collect replaces >= with ==
+        Mutant Diff: ---|         if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) +++|         if( acc.balance>=MinSum && acc.balance==_am && block.timestamp>acc.unlockTime)
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+**Step-by-step reasoning:**
+
+1. **Original logic**: The `Collect` function allows a user to withdraw an amount `_am` only if:
+   - `acc.balance >= MinSum` (balance is at least 1 ether)
+   - `acc.balance >= _am` (balance is at least the withdrawal amount)
+   - `block.timestamp > acc.unlockTime` (time lock has expired)
+
+2. **Mutant change**: The second condition is changed from `acc.balance >= _am` to `acc.balance == _am`. This means the user can only withdraw if their balance *exactly equals* the requested amount, not if it's greater or equal.
+
+3. **Impact**: If a user has a balance larger than the requested withdrawal amount (e.g., balance = 5 ether, request 2 ether), the original allows the withdrawal, but the mutant would reject it because 5 != 2.
+
+4. **Test hypothesis**: A test where a user deposits more than the minimum (e.g., 5 ether), waits for the unlock time, then attempts to withdraw a smaller amount (e.g., 2 ether) should succeed on the original contract (since 5 >= 2) but fail on the mutant (since 5 != 2).
+
+**Hypothesis**: "The mutant changes the condition from `acc.balance >= _am` to `acc.balance == _am`, which prevents withdrawals when the user's balance exceeds the requested amount. Therefore, a test case that first deposits a balance greater than both `MinSum` and the intended withdrawal amount, waits for the unlock time, and then attempts to withdraw a smaller amount should pass on the original contract but revert on the mutant."

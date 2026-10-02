@@ -1,0 +1,23 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract B:
+        Contract Code: pragma solidity ^0.8.0; contract B { address public owner = payable(msg.sender); function go()  public payable { address target = 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C; { (bool _s, bytes memory _d) = target.call{value: msg.value}(""); _d; if (! _s) { revert();} } payable(owner).transfer(address(this).balance); } fallback() external payable { } }
+
+    Consider the following mutant of B:
+        Mutant mdf335fbc of function go replaces msg.value with msg.value-1
+        Mutant Diff: ---| 	{ (bool _s, bytes memory _d) = target.call{value: msg.value}(""); _d; if (! _s) { +++| 	{ (bool _s, bytes memory _d) = target.call{value: msg.value-1}(""); _d; if (! _s) {
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes `msg.value` to `msg.value - 1`, meaning the contract sends one wei less to the target than it actually receives from the caller. After the external call, the contract transfers its entire balance (`address(this).balance`) to the owner.  
+
+If a user sends exactly 1 wei, the original would forward 1 wei to the target and then transfer the remaining balance (0 wei) to the owner. The mutant would forward 0 wei to the target, leaving 1 wei in the contract, which then gets sent to the owner. The difference in the owner's final balance or the amount received by the target would reveal the mutation.  
+
+**Hypothesis**: A test case that sends exactly 1 wei to the `go()` function, then checks that the owner's balance after the call is unchanged (since the contract should forward all value and end with zero balance), should kill the mutant. In the mutant, the owner would receive 1 wei, causing an unexpected balance change.

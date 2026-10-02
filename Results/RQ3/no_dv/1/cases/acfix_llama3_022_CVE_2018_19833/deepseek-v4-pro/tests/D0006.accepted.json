@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0006",
+ "property_summary": "For any valid burn by the owner, totalSupply must decrease by the same amount as the caller's balance decreases; the bug subtracts from address(1) instead of the caller, so the caller's balance is not reduced while totalSupply still decreases, breaking equality of the caller's balance decrease and totalSupply decrease.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change balanceOf subtraction from msg.sender to a different address (e.g., address(1))",
+ "mutated_unit_code": "function burn(uint256 _value)  public onlyOwner returns (bool success) {\n        require(balanceOf[msg.sender] >= _value);\n        balanceOf[address(1)] -= _value;\n        totalSupply -= _value;\n        emit Burn(msg.sender, _value);\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ERCDDAToken} from \"../src/ERCDDAToken.sol\";\n\ncontract InvMutTest is Test {\n    ERCDDAToken c;\n    function setUp() public {\n        c = new ERCDDAToken(0, \"\", \"\");\n    }\n\n    function testFuzz_property(uint256 mintAmount, uint256 burnAmount) public {\n        uint256 maxUint = type(uint256).max;\n        vm.assume(mintAmount <= maxUint / 2);\n        vm.assume(burnAmount <= mintAmount);\n        vm.assume(mintAmount > 0);\n\n        vm.startPrank(address(this));\n        c.mintToken(address(this), mintAmount);\n\n        uint256 balanceBefore = c.balanceOf(address(this));\n        c.burn(burnAmount);\n        uint256 balanceAfter = c.balanceOf(address(this));\n        vm.stopPrank();\n\n        assertTrue(balanceBefore - balanceAfter == burnAmount);\n    }\n}"
+}

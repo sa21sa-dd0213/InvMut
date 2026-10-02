@@ -1,0 +1,12 @@
+{
+ "difference_id": "T9c4bfaf0",
+ "property_summary": "For any target contract that may revert on receiving Ether, the reference C's sendMoney (using low-level call) does not revert the caller when the callee reverts (it forwards the call and lets the callee's revert not revert C), so address(c).balance decreases by the sent amount only when the low-level call succeeds; replacing call with transfer causes C.sendMoney to revert when the callee rejects funds, so there exist inputs (a reverting recipient and a positive value) where the reference completes but the mutated version would revert (or equivalently, the post-call address(c).balance differs).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change low-level call to a transfer to enforce revert on failure (use transfer instead of call), which can alter whether sendMoney's effects (value transfer and reverts) occur.",
+ "mutated_unit_code": "function sendMoney(address _target, uint _value, bytes memory _data) public onlyOwner {\n\n        payable(_target).transfer(_value);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n\n    function testFuzz_property(uint256 amount, bool shouldRevert) public {\n        amount = bound(amount, 0, 1 ether);\n\n        RevertibleReceiver rec = new RevertibleReceiver(shouldRevert);\n\n        vm.deal(address(c), amount);\n\n        bool ok;\n        try c.sendMoney(address(rec), amount, \"\") {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        if (shouldRevert && amount > 0) {\n            assertTrue(ok);\n        } else {\n            assertTrue(ok);\n        }\n    }\n}\n\ncontract RevertibleReceiver {\n    bool public shouldRevert;\n    constructor(bool _shouldRevert) payable {\n        shouldRevert = _shouldRevert;\n    }\n    receive() external payable {\n        if (shouldRevert) revert(\"reject\");\n    }\n    fallback() external payable {\n        if (shouldRevert) revert(\"reject\");\n    }\n}\n"
+}

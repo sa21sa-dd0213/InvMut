@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract PENNY_BY_PENNY:
+        Contract Code: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } } contract PENNY_BY_PENNY is sGuard { struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; uint public MinSum; LogFile Log; bool intitalized; function SetMinSum(uint _val)  public nonReentrant_ { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log)  public nonReentrant_ { if(intitalized)revert(); Log = LogFile(_log); } function Initialized()  public nonReentrant_ { intitalized = true; } function Put(uint _lockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); if(add_uint256(block.timestamp, _lockTime)>acc.unlockTime)acc.unlockTime=add_uint256(block.timestamp, _lockTime); Log.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); Log.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } } contract LogFile is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+
+    Consider the following mutant of PENNY_BY_PENNY:
+        Mutant m282ba337 of function SetMinSum replaces function SetMinSum(uint _val)  public nonReentrant_ with function SetMinSum(uint _val)  public
+        Mutant Diff: ---|      function SetMinSum(uint _val)  public nonReentrant_ { +++|      function SetMinSum(uint _val)  public  {
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant removes the `nonReentrant_` modifier from the `SetMinSum` function. The `nonReentrant_` modifier includes a reentrancy guard that locks the contract during execution and reverts if called while already locked.  
+
+**Hypothesis**: A test case that calls `SetMinSum` while inside a reentrant call (for example, by triggering the fallback function which calls `Put`, which itself calls back into `SetMinSum` via a reentrant pattern) should revert on the original contract due to the reentrancy guard, but will succeed on the mutant because the guard is missing. Therefore, a test that verifies the function cannot be reentered (i.e., expects a revert on a second nested call to `SetMinSum`) will kill the mutant.

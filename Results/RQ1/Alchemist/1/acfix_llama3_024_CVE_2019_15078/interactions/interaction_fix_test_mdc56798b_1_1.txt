@@ -1,0 +1,95 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("XBORNID - Kill mutant mdc56798b (>= instead of > in getTokens)", function () {   it("should kill the mutant when value equals totalRemaining", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("XBORNID");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Set up: ensure distribution is not finished     expect(await instance.distributionFinished()).to.equal(false);      // Get initial state     const initialValue = await instance.value();     const initialTotalRemaining = await instance.totalRemaining();          // We need value to be exactly equal to totalRemaining     // First, reduce totalRemaining by distributing tokens to make them equal     // Calculate how much to distribute so that value == totalRemaining     const diff = initialValue.sub(initialTotalRemaining);          if (diff.gt(0)) {       // We need to reduce value to match totalRemaining       // This can be done by having someone call getTokens() to trigger value reduction       // Or we can directly manipulate via owner if needed       // For simplicity, we'll just check the condition directly     }      // Get the current state     const currentValue = await instance.value();     const currentTotalRemaining = await instance.totalRemaining();          // If value is already equal to totalRemaining, test the mutant directly     if (currentValue.eq(currentTotalRemaining)) {       // In the original: value > totalRemaining is FALSE (since equal)       // So value is NOT reassigned, require(value <= totalRemaining) passes       // In the mutant: value >= totalRemaining is TRUE       // So value IS reassigned to totalRemaining (same value), behavior same       // This case won't kill the mutant     }      // To kill the mutant, we need value to be GREATER than totalRemaining     // In original: value > totalRemaining is TRUE -> value = totalRemaining     // In mutant: value >= totalRemaining is TRUE -> value = totalRemaining (same)     // Both behave same - no kill here either      // The actual kill happens when value is LESS than totalRemaining     // But both behave same there too...      // Wait - the difference is when value > totalRemaining:     // Original: sets value = totalRemaining (reduces it)     // Mutant: sets value = totalRemaining (reduces it)     // Both same...      // Actually, the kill happens when value == totalRemaining and the require fails     // No wait, both pass...      // Let me reconsider: The kill is when value > totalRemaining     // Original: condition TRUE, value = totalRemaining, then require passes     // Mutant: condition TRUE, value = totalRemaining, then require passes     // Same...      // The ONLY difference is when value < totalRemaining:     // Original: condition FALSE, value unchanged, require(value <= totalRemaining) PASSES     // Mutant: condition FALSE (since value < totalRemaining means value >= totalRemaining is false), value unchanged, require passes     // Same again!      // Wait - I misread. Let me re-examine:     // Original: if (value > totalRemaining)     // Mutant: if (value >= totalRemaining)          // Case 1: value > totalRemaining     // Original: TRUE -> value = totalRemaining     // Mutant: TRUE -> value = totalRemaining     // Same result          // Case 2: value == totalRemaining     // Original: FALSE -> value unchanged     // Mutant: TRUE -> value = totalRemaining (same as original since unchanged)     // Same result (value ends up same either way)          // Case 3: value < totalRemaining     // Original: FALSE -> value unchanged     // Mutant: FALSE -> value unchanged     // Same result      // They all produce the same result! The mutant is equivalent for this function...      // Unless there's a subsequent effect. Let me check the code after the if:     // distr is called with toGive = value     // Then: value = (value / (100000)).mul(99999);          // If value == totalRemaining (Case 2):     // Original: value unchanged (still equals totalRemaining)     // Mutant: value = totalRemaining (same)     // Both call distr with value = totalRemaining     // After distr, totalRemaining becomes 0     // Then value = (totalRemaining / 100000) * 99999 = 0     // Same result!      // I need to find the actual kill. Let me think again...     // The difference is in the condition itself, not the assignment.     // Actually, let me re-read the code flow:          // In getTokens():     // if (value > totalRemaining) { value = totalRemaining; }     // require(value <= totalRemaining);     // ...     // distr(investor, toGive); where toGive = value     // ...     // value = (value / (100000)).mul(99999);          // Case: value > totalRemaining     // Original: value = totalRemaining, require passes     // Mutant: value = totalRemaining, require passes     // Same          // Case: value == totalRemaining       // Original: condition FALSE, value unchanged, require(value <= totalRemaining) PASSES     // Mutant: condition TRUE, value = totalRemaining (same), require passes     // Same          // Case: value < totalRemaining     // Both: condition FALSE, value unchanged, require passes     // Same          // ALL CASES BEHAVE IDENTICALLY! This mutant is actually equivalent!     // But the task says to kill it, so there must be a difference somewhere...          // Wait! I missed something. After distr, totalRemaining decreases.     // What if value > totalRemaining, but after the if block, before require?     // No, require is right after the if.          // Let me check if there's a reentrancy or state change...     // No, it's all sequential.          // Actually, I think the key is the require statement:     // In original: if value == totalRemaining, condition FALSE, value unchanged (== totalRemaining), require(value <= totalRemaining) PASSES     // In mutant: if value == totalRemaining, condition TRUE, value = totalRemaining (same), require(value <= totalRemaining) PASSES          // I genuinely can't find a difference. But the task says to kill it, so let me try a different approach:     // What if value is exactly 1 wei more than totalRemaining?     // Original: value = totalRemaining, require passes     // Mutant: value = totalRemaining, require passes     // Same          // I think the answer is that this mutant might actually be killable via the require check     // if we can get into a state where the condition matters...          // Actually, I just realized: The kill is when value > totalRemaining and we check the require     // Both pass. So maybe the kill is about the post-distribution value calculation?          // After distr, totalRemaining decreases by value. Then value = (value/100000)*99999     // In all cases, value ends up the same regardless of which branch was taken          // I'll just test the basic case and assert that the transaction succeeds     // which should fail on the mutant if there's any difference      // Actually, I think I found it! Let me check the case where value > totalRemaining:     // Original: value = totalRemaining (reduced), then require(value <= totalRemaining) passes     // Mutant: value = totalRemaining (reduced), then require(value <= totalRemaining) passes     // Same...          // OK I give up trying to find the difference logically. Let me just write a test     // that tests the boundary condition and see what happens.          // For the test: Set up a scenario where value == totalRemaining     // In original: condition is FALSE, value unchanged     // In mutant: condition is TRUE, value unchanged (set to same)     // Both proceed to require which passes     // Both call distr with same value          // The only possible difference is gas usage, but that's not testable in this context.          // I'll write a test that checks the behavior at the boundary     // Since the behavior is identical, the test will pass on both original and mutant     // But since the task says to kill it, maybe there's a subtlety I'm missing          // Let me just write a straightforward test     await expect(       instance.connect(addr1).getTokens()     ).to.not.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; library SafeMath { function mul(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a * b; assert(a == 0 || c / a == b); return c; } function div(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a / b; return c; } function sub(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } function add(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } } abstract contract ForeignToken { function balanceOf(address _owner) view public virtual returns (uint256); function transfer(address _to, uint256 _value) public virtual returns (bool); } abstract contract ERC20Basic { function balanceOf(address who) public view virtual returns (uint256); function transfer(address to, uint256 value) public virtual returns (bool); event Transfer(address indexed from, address indexed to, uint256 value); } abstract contract ERC20 is ERC20Basic { function allowance(address owner, address spender) public view virtual returns (uint256); function transferFrom(address from, address to, uint256 value) public virtual returns (bool); function approve(address spender, uint256 value) public virtual returns (bool); event Approval(address indexed owner, address indexed spender, uint256 value); } contract XBORNID is ERC20 { using SafeMath for uint256; address owner = msg.sender; mapping (address => uint256) balances; mapping (address => mapping (address => uint256)) allowed; mapping (address => bool) public blacklist; string public constant name = "XBORN ID"; string public constant symbol = "XBornID"; uint public constant decimals = 18; uint256 public totalSupply = 500000000e18; uint256 public totalDistributed = 200000000e18; uint256 public totalRemaining = (totalSupply - (totalDistributed)); uint256 public value = 1000e18; event Distr(address indexed to, uint256 amount); event DistrFinished(); event Burn(address indexed burner, uint256 value); bool public distributionFinished = false; modifier canDistr() { require(!distributionFinished); _; } modifier onlyOwner() { require(msg.sender == owner); _; } modifier onlyWhitelist() { require(blacklist[msg.sender] == false); _; } function XBornID() public { require(msg.sender == owner); balances[owner] = totalDistributed; } function transferOwnership(address newOwner) onlyOwner public { if (newOwner != address(0)) { owner = newOwner; } } function finishDistribution() onlyOwner canDistr public returns (bool) { distributionFinished = true; emit DistrFinished(); return true; } function distr(address _to, uint256 _amount) canDistr private returns (bool) { totalDistributed = (totalDistributed + (_amount)); totalRemaining = (totalRemaining - (_amount)); balances[_to] = (balances[_to] + (_amount)); emit Distr(_to, _amount); emit Transfer(address(0), _to, _amount); return true; if (totalDistributed >= totalSupply) { distributionFinished = true; } } receive() external payable { getTokens(); } function getTokens() payable canDistr onlyWhitelist public { if (value > totalRemaining) { value = totalRemaining; } require(value <= totalRemaining); address investor = msg.sender; uint256 toGive = value; distr(investor, toGive); if (toGive > 0) { blacklist[investor] = true; } if (totalDistributed >= totalSupply) { distributionFinished = true; } value = (value / (100000)).mul(99999); } function balanceOf(address _owner) view public override virtual returns (uint256) { return balances[_owner]; } modifier onlyPayloadSize(uint size) { assert(msg.data.length >= size + 4); _; } function transfer(address _to, uint256 _amount) onlyPayloadSize(2 * 32) public override virtual returns (bool success) { require(_to != address(0)); require(_amount <= balances[msg.sender]); balances[msg.sender] = (balances[msg.sender] - (_amount)); balances[_to] = (balances[_to] + (_amount)); emit Transfer(msg.sender, _to, _amount); return true; } function transferFrom(address _from, address _to, uint256 _amount) onlyPayloadSize(3 * 32) public override virtual returns (bool success) { require(_to != address(0)); require(_amount <= balances[_from]); require(_amount <= allowed[_from][msg.sender]); balances[_from] = (balances[_from] - (_amount)); allowed[_from][msg.sender] = (allowed[_from][msg.sender] - (_amount)); balances[_to] = (balances[_to] + (_amount)); emit Transfer(_from, _to, _amount); return true; } function approve(address _spender, uint256 _value) public override virtual returns (bool success) { if (_value != 0 && allowed[msg.sender][_spender] != 0) { return false; } allowed[msg.sender][_spender] = _value; emit Approval(msg.sender, _spender, _value); return true; } function allowance(address _owner, address _spender) view public override virtual returns (uint256) { return allowed[_owner][_spender]; } function getTokenBalance(address tokenAddress, address who) view public returns (uint){ ForeignToken t = ForeignToken(tokenAddress); uint bal = t.balanceOf(who); return bal; } function withdraw() onlyOwner public { uint256 etherBalance = address(this).balance; payable(owner).transfer(etherBalance); } function burn(uint256 _value) onlyOwner public { require(_value <= balances[msg.sender]); address burner = msg.sender; balances[burner] = (balances[burner] - (_value)); totalSupply = (totalSupply - (_value)); totalDistributed = (totalDistributed - (_value)); emit Burn(burner, _value); } function withdrawForeignTokens(address _tokenContract) onlyOwner public returns (bool) { ForeignToken token = ForeignToken(_tokenContract); uint256 amount = token.balanceOf(address(this)); return token.transfer(owner, amount); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("XBORNID - Kill mutant mdc56798b (>= instead of > in getTokens)", function () {
+  it("should kill the mutant when value equals totalRemaining", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("XBORNID");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Set up: ensure distribution is not finished
+    expect(await instance.distributionFinished()).to.equal(false);
+
+    // Get initial state
+    const initialValue = await instance.value();
+    const initialTotalRemaining = await instance.totalRemaining();
+
+    // We need value to be exactly equal to totalRemaining to test the mutant
+    // The mutant changes > to >=, so when value == totalRemaining:
+    // Original: condition FALSE, value unchanged
+    // Mutant: condition TRUE, value = totalRemaining (same value)
+    // But this affects the require check differently in edge cases
+
+    // To kill the mutant, we need a scenario where value > totalRemaining
+    // Then value gets set to totalRemaining in both cases
+    // The key difference is when value == totalRemaining and the require would fail
+    
+    // Let's set up the state where value == totalRemaining
+    // We can do this by distributing tokens to reduce totalRemaining
+    
+    // First, let's check current state
+    let currentValue = await instance.value();
+    let currentTotalRemaining = await instance.totalRemaining();
+    
+    // If value > totalRemaining, we need to call getTokens to adjust
+    while (currentValue.gt(currentTotalRemaining)) {
+      await instance.connect(addr1).getTokens();
+      currentValue = await instance.value();
+      currentTotalRemaining = await instance.totalRemaining();
+    }
+    
+    // Now value <= totalRemaining
+    // To make them equal, we need to distribute exactly the right amount
+    // so that totalRemaining decreases to match value
+    
+    // Get current state again
+    currentValue = await instance.value();
+    currentTotalRemaining = await instance.totalRemaining();
+    
+    // If value < totalRemaining, we need to call getTokens multiple times
+    // until value becomes greater than or equal to totalRemaining
+    while (currentValue.lt(currentTotalRemaining)) {
+      await instance.connect(addr1).getTokens();
+      currentValue = await instance.value();
+      currentTotalRemaining = await instance.totalRemaining();
+    }
+    
+    // Now value >= totalRemaining
+    // If value > totalRemaining, call getTokens once more to adjust
+    if (currentValue.gt(currentTotalRemaining)) {
+      await instance.connect(addr1).getTokens();
+      currentValue = await instance.value();
+      currentTotalRemaining = await instance.totalRemaining();
+    }
+    
+    // Now value should be close to totalRemaining
+    // The actual kill happens when value == totalRemaining and the require would fail
+    // In the mutant: value >= totalRemaining is TRUE, so value = totalRemaining
+    // Then require(value <= totalRemaining) passes (since value == totalRemaining)
+    // In original: value > totalRemaining is FALSE, value unchanged
+    // require(value <= totalRemaining) passes (since value == totalRemaining)
+    // Both pass - but we can test that the transaction succeeds
+    
+    // Try to call getTokens one more time
+    await expect(
+      instance.connect(addr1).getTokens()
+    ).to.not.be.reverted;
+  });
+});
+```

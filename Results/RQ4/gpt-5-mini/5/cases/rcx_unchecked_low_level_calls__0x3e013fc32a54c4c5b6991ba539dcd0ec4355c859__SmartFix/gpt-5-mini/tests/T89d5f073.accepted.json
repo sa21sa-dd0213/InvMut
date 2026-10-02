@@ -1,0 +1,12 @@
+{
+ "difference_id": "T89d5f073",
+ "property_summary": "For every call to Command by Owner forwarding VALUE to an external address with arbitrary calldata, the reference contract P never reverts (i.e., Command always returns/does not revert) because it uses an unchecked low-level call that does not propagate callee reverts; the mutant M uses delegatecall and requires success, so there exist calldata/target that cause Command to revert — the test asserts that Command never reverts on P but can revert on M for some fuzzed target/value/callee behavior.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace call to delegatecall so the target executes in this contract's context, potentially changing storage and affecting subsequent Command-observable state.",
+ "mutated_unit_code": "function Command(address adr,bytes memory data)\n    payable\n    public\n    {\n        require(msg.sender == Owner);\n\n        (bool success, bytes memory ret) = adr.delegatecall(data);\n        require(success);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MultiplicatorX4} from \"../src/MultiplicatorX4.sol\";\n\ncontract InvMutTest is Test {\n    MultiplicatorX4 c;\n    address deployer;\n\n    function setUp() public {\n        deployer = address(this);\n        c = new MultiplicatorX4();\n    }\n\n    function testFuzz_property(address target, uint256 value) public {\n        value = bound(value, 0, 1 ether);\n\n        Reverter rev = new Reverter();\n        Callee ok = new Callee();\n\n        address chosen = (uint160(target) & 1 == 0) ? address(rev) : address(ok);\n\n        vm.deal(deployer, value + 1 ether);\n\n        vm.prank(deployer);\n\n        bool okCall;\n        try c.Command{value: value}(chosen, \"\\x00\") {\n            okCall = true;\n        } catch {\n            okCall = false;\n        }\n\n        assertTrue(okCall);\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"revert\");\n    }\n    receive() external payable {\n        revert(\"revert\");\n    }\n}\n\ncontract Callee {\n    event Called(address sender, uint256 value, bytes data);\n    fallback() external payable {\n        emit Called(msg.sender, msg.value, msg.data);\n    }\n    receive() external payable {\n        emit Called(msg.sender, msg.value, \"\\x01\");\n    }\n}\n"
+}

@@ -1,0 +1,46 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant test - m2a1a5945", function () {
+  it("should detect the block.timestamp to block.prevrandao mutation in Collect", async function () {
+    const [owner, user] = await ethers.getSigners();
+    
+    // Deploy Log contract first (required constructor argument for MY_BANK)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy MY_BANK with Log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+    
+    const bankAddress = await bank.getAddress();
+    
+    // Deposit 2 ether with unlock time = current block timestamp + 1 hour
+    const depositAmount = ethers.parseEther("2");
+    const currentBlock = await ethers.provider.getBlock("latest");
+    const unlockTime = currentBlock!.timestamp + 3600; // 1 hour from now
+    
+    await (await bank.connect(user).Put(unlockTime, { value: depositAmount })).wait();
+    
+    // Verify balance was recorded
+    let holder = await bank.Acc(user.address);
+    expect(holder.balance).to.equal(depositAmount);
+    
+    // Now advance time past unlock time using hardhat's evm_increaseTime
+    await ethers.provider.send("evm_increaseTime", [3601]); // advance 1 hour + 1 second
+    await ethers.provider.send("evm_mine", []); // mine a new block
+    
+    // Attempt to collect the full balance
+    // On original: should succeed because block.timestamp > unlockTime
+    // On mutant: should revert because block.prevrandao is not related to time and won't reliably be > unlockTime
+    await expect(
+      bank.connect(user).Collect(depositAmount)
+    ).to.be.reverted;
+    
+    // Verify balance unchanged (mutant killed because Collect failed when it should have succeeded)
+    holder = await bank.Acc(user.address);
+    expect(holder.balance).to.equal(depositAmount);
+  });
+});

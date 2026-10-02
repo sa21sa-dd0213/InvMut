@@ -1,0 +1,12 @@
+{
+ "difference_id": "T614b23ab",
+ "property_summary": "After any successful fallback call where the block number is divisible by 15, the contract's balance must be 0; the buggy version retains the 10 ether because the transfer is missing.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Remove the ether payout block, so balance is never transferred to the caller.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp + 1;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 initialBalance, uint64 blockNum) public {\n        initialBalance = bound(initialBalance, 10 ether, type(uint64).max);\n        blockNum = uint64(bound(blockNum, 0, type(uint64).max - 1));\n        vm.assume(blockNum > 0);\n        vm.assume(blockNum % 15 == 0);\n\n        address sender = makeAddr(\"sender\");\n        vm.deal(sender, initialBalance);\n        vm.roll(blockNum);\n        vm.warp(1);\n\n        vm.prank(sender);\n        (bool success, ) = address(c).call{value: 10 ether}(\"\");\n        require(success, \"Fallback failed\");\n\n        assertEq(address(c).balance, 0, \"Balance should be 0 after payout block\");\n    }\n}"
+}

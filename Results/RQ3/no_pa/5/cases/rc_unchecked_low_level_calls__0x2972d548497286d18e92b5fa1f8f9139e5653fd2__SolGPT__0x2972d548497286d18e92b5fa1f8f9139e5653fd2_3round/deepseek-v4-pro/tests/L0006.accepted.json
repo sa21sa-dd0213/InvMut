@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0006",
+ "property_summary": "Call transfer with a valid token that reverts on transferFrom: the reference version reverts the whole transfer (require checks the call success), while the buggy version ignores the revert and returns true, so address(c).balance remains unchanged but assertTrue(false) catches the divergence.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "-{ (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v[i])); require(_s); }; +caddress.call(abi.encodeWithSelector(id, from, _tos[i], v[i]));",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint[] memory v) public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n\n        for(uint i=0; i<_tos.length; i++){\n            caddress.call(abi.encodeWithSelector(id, from, _tos[i], v[i]));\n        }\n\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {demo} from \"../src/demo.sol\";\n\ncontract InvMutTest is Test {\n    demo c;\n    function setUp() public { c = new demo(); }\n    function testRegression_property() public {\n        TokenRevert token = new TokenRevert();\n        address from = address(0x1);\n        address[] memory tos = new address[](1);\n        tos[0] = address(0x2);\n        uint[] memory vals = new uint[](1);\n        vals[0] = 100;\n\n        bool ok;\n        try c.transfer(from, address(token), tos, vals) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        assertTrue(ok == false);\n    }\n}\n\ncontract TokenRevert {\n    function transferFrom(address, address, uint256) external pure returns (bool) {\n        revert(\"revert\");\n    }\n}\n"
+}

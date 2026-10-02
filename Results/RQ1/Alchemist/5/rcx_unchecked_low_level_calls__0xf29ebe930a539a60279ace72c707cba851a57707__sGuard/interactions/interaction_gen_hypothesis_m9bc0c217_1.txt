@@ -1,0 +1,38 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract B:
+        Contract Code: pragma solidity ^0.8.0; contract B { address public owner = payable(msg.sender); function go() public payable { address target = 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C; target.call{value: msg.value}(""); payable(owner).transfer(address(this).balance); } fallback() external payable { } }
+
+    Consider the following mutant of B:
+        Mutant m9bc0c217 of function go replaces msg.value with msg.value-1
+        Mutant Diff: ---|         target.call{value: msg.value}(""); +++|         target.call{value: msg.value-1}("");
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let’s reason through this step by step.
+
+The original `go()` function sends the entire `msg.value` to `target` via a low-level `call`. After that, it transfers the contract’s entire balance to `owner`.  
+
+In the mutant, `msg.value` is replaced by `msg.value - 1`. This means the contract will send **1 wei less** to `target` than what was received in the transaction.  
+
+Because the transfer to `owner` sends `address(this).balance` (the entire contract balance after the `call`), and the `call` sent 1 wei less, the contract will retain 1 wei after the function completes.  
+
+A test that sends exactly 1 wei in the transaction would be particularly revealing:  
+- Original: sends 1 wei to `target`, then transfers 0 wei to owner → contract balance becomes 0.  
+- Mutant: sends 0 wei (`1 - 1 = 0`) to `target`, then transfers contract’s full balance (1 wei) to owner → contract balance becomes 0 as well, so this might not catch it.  
+
+But if you send **2 wei**:  
+- Original: sends 2 wei to `target`, contract balance becomes 0 → owner gets 0.  
+- Mutant: sends 1 wei to `target`, contract still has 1 wei left → owner gets 1 wei.  
+
+Checking the **final balance of the owner** or the **final balance of the contract** after the call will expose the difference.
+
+**Hypothesis:**  
+A test that sends a specific amount of ether (e.g., 2 wei) to `go()`, then checks that the contract’s balance is zero after execution, should pass on the original but fail on the mutant because the mutant leaves 1 wei in the contract.

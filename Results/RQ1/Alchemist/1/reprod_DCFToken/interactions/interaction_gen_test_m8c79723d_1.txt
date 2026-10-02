@@ -1,0 +1,61 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m8c79723d of DCF.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test DCF.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for DCF:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("DCF reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy DCF by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("DCF"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DCF mutant m8c79723d test", function () {
+  it("should kill the mutant by calling onlyCaller function with address > cfo", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy DCF with a liquidity receive address
+    const liquidityReceiveAddress = addr2.address;
+    const Factory = await ethers.getContractFactory("DCF");
+    const instance = await Factory.deploy(liquidityReceiveAddress);
+    await instance.waitForDeployment();
+    
+    // Set the CFO (caller) to addr1
+    await instance.setCaller(addr1.address);
+    
+    // Get a signer whose address is numerically greater than addr1
+    // We'll use addr2, but we need to ensure addr2 > addr1 numerically
+    // If not, we can use a different approach - create a wallet with higher address
+    let higherAddress = addr2;
+    
+    // Check if addr2 > addr1 numerically, if not create a new wallet
+    if (addr2.address.toLowerCase() <= addr1.address.toLowerCase()) {
+      // Create a deterministic wallet with a higher address
+      const higherWallet = ethers.Wallet.createRandom().connect(ethers.provider);
+      // Keep trying until we get an address > addr1
+      while (higherWallet.address.toLowerCase() <= addr1.address.toLowerCase()) {
+        const newWallet = ethers.Wallet.createRandom().connect(ethers.provider);
+        higherWallet.address = newWallet.address;
+      }
+      higherAddress = higherWallet;
+    }
+    
+    // Try to call distributeToken() from the higher address (not the CFO)
+    // In original: should revert because msg.sender != cfo
+    // In mutant: should succeed because msg.sender >= cfo
+    await expect(
+      instance.connect(higherAddress).distributeToken()
+    ).to.be.revertedWith("onlyCaller");
+  });
+});
+```

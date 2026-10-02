@@ -1,0 +1,122 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("W_WALLET mutant ma48f70f9 detection", function () {
+  it("should detect the mutant by calling Put with _unlockTime equal to block.timestamp and then checking Collect behavior", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy Log contract first (required constructor argument for W_WALLET)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy W_WALLET with Log address
+    const Factory = await ethers.getContractFactory("W_WALLET");
+    const instance = await Factory.deploy(await log.getAddress());
+    await instance.waitForDeployment();
+    
+    // Get current block timestamp
+    const blockNumBefore = await ethers.provider.getBlockNumber();
+    const blockBefore = await ethers.provider.getBlock(blockNumBefore);
+    const currentTimestamp = blockBefore.timestamp;
+    
+    // Call Put with _unlockTime equal to current timestamp
+    // In original: _unlockTime > block.timestamp is false, so unlockTime = block.timestamp
+    // In mutant: _unlockTime >= block.timestamp is true, so unlockTime = _unlockTime (same value)
+    // BUT: The mutant would set unlockTime to _unlockTime (which is block.timestamp)
+    // while original also sets it to block.timestamp - same state, but let's test edge case
+    
+    // Actually, the key difference is when _unlockTime is block.timestamp + 1
+    // Let's use a different approach: test with _unlockTime = block.timestamp - 1
+    // to see if the condition difference affects behavior
+    
+    // Let's try a scenario that exposes the bug more clearly:
+    // Call Put with _unlockTime = block.timestamp - 100 (in the past)
+    // Original: condition false -> unlockTime = block.timestamp
+    // Mutant: condition false -> unlockTime = block.timestamp
+    // Both same. Need to find where they differ...
+    
+    // The difference occurs when _unlockTime == block.timestamp
+    // Original: condition false -> unlockTime = block.timestamp
+    // Mutant: condition true -> unlockTime = _unlockTime (which equals block.timestamp)
+    // State is identical! The mutant might be semantically equivalent?
+    
+    // Wait - let me re-examine: The issue is when _unlockTime is EXACTLY block.timestamp
+    // Original: _unlockTime > block.timestamp? false -> unlockTime = block.timestamp
+    // Mutant: _unlockTime >= block.timestamp? true -> unlockTime = _unlockTime = block.timestamp
+    // Same result! This mutant may not be killable...
+    
+    // Let me check the actual behavior more carefully
+    // Send 1 ether to fund the wallet first
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    
+    // Now test the Put function with _unlockTime = block.timestamp
+    const blockNum = await ethers.provider.getBlockNumber();
+    const block = await ethers.provider.getBlock(blockNum);
+    const timestamp = block.timestamp;
+    
+    // Call Put with unlockTime = current timestamp
+    const tx = await instance.connect(addr1).Put(timestamp, {
+      value: ethers.parseEther("1")
+    });
+    await tx.wait();
+    
+    // Check the stored unlockTime
+    const acc = await instance.Acc(addr1.address);
+    console.log("Stored unlockTime:", acc.unlockTime.toString());
+    console.log("Block timestamp:", timestamp);
+    
+    // The unlockTime should be >= block.timestamp
+    // In both original and mutant, it should be block.timestamp
+    expect(acc.unlockTime).to.equal(timestamp);
+    
+    // Now test Collect - it should fail because block.timestamp is not > unlockTime
+    // Wait, it should fail because condition is block.timestamp > acc.unlockTime
+    // Since unlockTime == block.timestamp, block.timestamp > unlockTime is false
+    // So Collect should revert in both cases
+    
+    // Hmm, let me think differently...
+    // The actual difference would appear if we could have _unlockTime == block.timestamp
+    // and then in a future block, try to Collect
+    
+    // Let me try another approach - test with _unlockTime = block.timestamp - 1
+    // This is in the past
+    const tx2 = await instance.connect(addr1).Put(timestamp - 1, {
+      value: ethers.parseEther("1")
+    });
+    await tx2.wait();
+    
+    const acc2 = await instance.Acc(addr1.address);
+    // Original: _unlockTime > block.timestamp? false -> unlockTime = block.timestamp
+    // Mutant: _unlockTime >= block.timestamp? false -> unlockTime = block.timestamp
+    // Same result again
+    
+    // I need to find the exact case where they differ...
+    // The ONLY case is when _unlockTime == block.timestamp
+    // But since both set unlockTime to block.timestamp, the state is identical
+    // This mutant might actually be semantically equivalent in all cases!
+    
+    // Unless... the test checks the internal logic differently?
+    // Let me just run a basic test to verify the contract works
+    
+    // Test 1: Put with _unlockTime in the future
+    const futureTime = timestamp + 1000;
+    const tx3 = await instance.connect(addr1).Put(futureTime, {
+      value: ethers.parseEther("1")
+    });
+    await tx3.wait();
+    
+    const acc3 = await instance.Acc(addr1.address);
+    expect(acc3.unlockTime).to.equal(futureTime);
+    
+    // Test 2: Try Collect before unlock time (should fail)
+    await expect(
+      instance.connect(addr1).Collect(ethers.parseEther("1"))
+    ).to.be.reverted;
+    
+    console.log("Test completed - mutant may be equivalent to original");
+  });
+});

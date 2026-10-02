@@ -1,0 +1,12 @@
+{
+ "difference_id": "T93b45e76",
+ "property_summary": "For any caller, only the account returned by owner() (i.e. the deployer after initialization) may successfully call updateRoundImplementation; replacing msg.sender with tx.origin breaks this because a proxied call from a contract (msg.sender != tx.origin) would be allowed only in the buggy contract, allowing a different origin to update roundImplementation.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change the onlyOwner check to compare owner() against tx.origin instead of msg.sender, allowing calls that are proxied differently to pass and thus enabling different callers to update roundImplementation.",
+ "mutated_unit_code": "modifier onlyOwner() {\n        require(owner() == tx.origin, \"Ownable: caller is not the owner\");\n        _;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.17;\nimport {Test} from \"forge-std/Test.sol\";\nimport {RoundFactory} from \"../src/RoundFactory.sol\";\n\ncontract InvMutTest is Test {\n    RoundFactory c;\n\n    function setUp() public { c = new RoundFactory(); }\n\n    function testFuzz_property(address attackerOrigin, address proxyDeployer, address newImpl) public {\n        vm.assume(attackerOrigin != address(0));\n        vm.assume(proxyDeployer != address(0));\n        vm.assume(newImpl != address(0));\n        c.initialize();\n\n        address owner = c.owner();\n        vm.assume(owner == address(this));\n\n        ProxyCaller proxy = new ProxyCaller();\n\n        bool okOwnerCall;\n        try c.updateRoundImplementation(payable(newImpl)) {\n            okOwnerCall = true;\n        } catch {\n            okOwnerCall = false;\n        }\n\n        vm.deal(attackerOrigin, 1 ether);\n        vm.prank(attackerOrigin);\n        bool okProxiedCall;\n        try proxy.callUpdateRoundImplementation(address(c), payable(newImpl)) {\n            okProxiedCall = true;\n        } catch {\n            okProxiedCall = false;\n        }\n\n        assertTrue(okOwnerCall && !okProxiedCall);\n    }\n}\n\ncontract ProxyCaller {\n    function callUpdateRoundImplementation(address target, address payable impl) external {\n        (bool success, ) = target.call(abi.encodeWithSignature(\"updateRoundImplementation(address)\", impl));\n        require(success, \"forward failed\");\n    }\n}\n"
+}

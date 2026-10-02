@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tdb020d1a",
+ "property_summary": "In the reference contract, any successful lockInGuess call requires exactly 1 ether, so the contract's balance strictly increases by 1 ether per call; the mutant allows locking a guess without sending ether, so the contract balance can increase by 0 after a call, violating the invariant that balance delta is 1 ether.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the require for msg.value == 1 ether, allowing guessing without payment",
+ "mutated_unit_code": "function lockInGuess(bytes32 hash) public payable {\n        require(guesses[msg.sender].block == 0);\n\n        guesses[msg.sender].guess = hash;\n        guesses[msg.sender].block = block.number + 1;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {PredictTheBlockHashChallenge} from \"../src/PredictTheBlockHashChallenge.sol\";\n\ncontract InvMutTest is Test {\n    PredictTheBlockHashChallenge c;\n    function setUp() public { c = new PredictTheBlockHashChallenge{value: 1 ether}(); }\n    function testFuzz_property(bytes32 hash, uint256 valueSent) public {\n        vm.assume(valueSent <= 1 ether);\n        address actor = address(0x1234);\n        vm.deal(actor, valueSent);\n        uint256 balBefore = address(c).balance;\n        vm.prank(actor);\n        try c.lockInGuess{value: valueSent}(hash) {\n            uint256 balAfter = address(c).balance;\n            assertTrue(balAfter == balBefore + 1 ether);\n        } catch {\n        }\n    }\n}\n"
+}

@@ -1,0 +1,70 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mc9e1d2ab of GameItems.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test GameItems.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for GameItems:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("GameItems reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy GameItems by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("GameItems"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("GameItems - kill mutant mc9e1d2ab (mint: <= changed to ==)", function () {
+  it("should allow minting quantity less than remaining supply for finite supply items, but mutant should revert", async function () {
+    const [owner, buyer] = await ethers.getSigners();
+    
+    // Deploy Neuron contract first (required for GameItems constructor)
+    const NeuronFactory = await ethers.getContractFactory("Neuron");
+    const neuron = await NeuronFactory.deploy(owner.address, owner.address, owner.address);
+    await neuron.waitForDeployment();
+    
+    // Deploy GameItems
+    const GameItemsFactory = await ethers.getContractFactory("GameItems");
+    const gameItems = await GameItemsFactory.deploy(owner.address, owner.address);
+    await gameItems.waitForDeployment();
+    
+    // Instantiate Neuron contract in GameItems
+    await gameItems.instantiateNeuronContract(await neuron.getAddress());
+    
+    // Create a finite supply game item with itemsRemaining = 10
+    await gameItems.createGameItem(
+      "Test Item",
+      "https://test.uri",
+      true,  // finiteSupply = true
+      true,  // transferable
+      10,    // itemsRemaining
+      ethers.parseEther("1"), // itemPrice
+      100    // dailyAllowance
+    );
+    
+    // Give buyer enough NRN tokens to purchase
+    const price = ethers.parseEther("1"); // quantity = 1 * price = 1 NRN
+    await neuron.mint(buyer.address, price);
+    
+    // Approve GameItems to spend buyer's NRN
+    await neuron.addSpender(gameItems.target);
+    
+    // Set up daily allowance replenishment by calling getAllowanceRemaining
+    // This ensures allowanceRemaining is properly initialized
+    await gameItems.connect(buyer).getAllowanceRemaining(buyer.address, 0);
+    
+    // Try to mint quantity = 1 when itemsRemaining = 10
+    // Original: should succeed (1 <= 10)
+    // Mutant: should revert (1 != 10)
+    await expect(
+      gameItems.connect(buyer).mint(0, 1)
+    ).to.be.reverted;
+  });
+});
+```
