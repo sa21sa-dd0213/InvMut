@@ -1,0 +1,12 @@
+{
+ "difference_id": "Te32fb85b",
+ "property_summary": "Correct C reverts the entire transfer if any sub-call fails, while the mutant silently ignores failures and returns true; thus the invariant: if at least one sub-call reverts, transfer must revert.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Delete the `revert();` inside the failure check so failed sub-calls are silently ignored and the function succeeds instead of reverting.",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint[] memory v)  public returns (bool) {\n\trequire(_tos.length > 0);\n\tbytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n\tfor(uint i = 0;i < _tos.length;i++){\n\t{ (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v[i])); _d; if (! _s) {\n\t} }\n\t}\n\treturn true;\n\t}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EBU} from \"../src/EBU.sol\";\n\ncontract InvMutTest is Test {\n    EBU c;\n    function setUp() public { c = new EBU(); }\n\n    function testFuzz_property(uint256 numTos, uint256 failIndex) public {\n        numTos = bound(numTos, 2, 20);\n        failIndex = bound(failIndex, 0, numTos - 1);\n\n        Reverter failing = new Reverter();\n        Noop successToken = new Noop();\n\n        address from = address(0x1000);\n        address[] memory tos = new address[](numTos);\n        uint[] memory values = new uint[](numTos);\n        for (uint i = 0; i < numTos; i++) {\n            if (i == failIndex) {\n                tos[i] = address(failing);\n            } else {\n                tos[i] = address(successToken);\n            }\n            values[i] = 1;\n        }\n\n        vm.prank(from);\n        bool success;\n        try c.transfer(from, address(failing), tos, values) {\n        } catch {\n            success = true;\n        }\n        try c.transfer(from, address(failing), tos, values) returns (bool ok) {\n            success = false;\n        } catch {\n            success = true;\n        }\n        assertTrue(success, \"transfer did not revert when a sub-call failed\");\n    }\n}\n\ncontract Reverter {\n    fallback() external payable { revert(); }\n}\n\ncontract Noop {\n    function transferFrom(address, address, uint256) external pure returns (bool) { return true; }\n}\n"
+}

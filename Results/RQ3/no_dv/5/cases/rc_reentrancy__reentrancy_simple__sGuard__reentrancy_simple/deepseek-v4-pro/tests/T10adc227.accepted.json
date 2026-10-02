@@ -1,0 +1,12 @@
+{
+ "difference_id": "T10adc227",
+ "property_summary": "After any call to addToBalance, the sum of all userBalances must equal the total ether sent to addToBalance; the mutant breaks this by crediting tx.origin instead of msg.sender, causing balance discrepancies when called via an intermediary.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace msg.sender with tx.origin in addToBalance so the recorded balance goes to the original transaction sender rather than the immediate caller.",
+ "mutated_unit_code": "function addToBalance()  public nonReentrant_ payable {\n         userBalance[tx.origin] = add_uint256(userBalance[tx.origin], msg.value);\n     }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n    function testFuzz_property(uint256 amount1, uint256 amount2, uint8 seed) public {\n        amount1 = bound(amount1, 1 ether, 100 ether);\n        amount2 = bound(amount2, 1 ether, 100 ether);\n        address eoa = address(uint160(uint256(keccak256(abi.encode(seed)))));\n        vm.assume(eoa != address(0) && eoa != address(this) && eoa != address(c));\n\n        Proxy proxy = new Proxy(address(c));\n\n        vm.deal(address(proxy), amount1);\n        vm.deal(eoa, amount2);\n\n        uint256 balProxyBefore = c.getBalance(address(proxy));\n        uint256 balEoaBefore = c.getBalance(eoa);\n        uint256 cBalBefore = address(c).balance;\n\n        vm.prank(address(proxy));\n        proxy.forward{value: amount1}();\n\n        vm.prank(eoa);\n        c.addToBalance{value: amount2}();\n\n        uint256 balProxyAfter = c.getBalance(address(proxy));\n        uint256 balEoaAfter = c.getBalance(eoa);\n        uint256 cBalAfter = address(c).balance;\n\n        uint256 totalUserBal = balProxyAfter + balEoaAfter;\n        uint256 totalReceived = cBalAfter - cBalBefore;\n        assertTrue(totalUserBal == totalReceived);\n    }\n}\n\ncontract Proxy {\n    Reentrance public target;\n    constructor(address _target) { target = Reentrance(_target); }\n    function forward() external payable {\n        target.addToBalance{value: msg.value}();\n    }\n    receive() external payable {}\n}"
+}

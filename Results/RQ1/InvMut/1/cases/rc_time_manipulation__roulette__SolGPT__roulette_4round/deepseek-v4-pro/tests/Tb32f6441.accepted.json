@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tb32f6441",
+ "property_summary": "For any call to fallback with 10 ether that succeeds, after the call the contract's balance must equal the prior balance plus 10 ether; the bugged version transfers all balance when block.number is a multiple of 10 but not 15, reducing the balance.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replace the block.number modulo check with a different divisor to change the condition under which ether is transferred out.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        if(block.number % 10 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 blockNumber, uint256 blockTime) public {\n        vm.assume(blockNumber > 0);\n        vm.assume(blockTime > 0);\n        vm.roll(blockNumber);\n        vm.warp(blockTime);\n        address sender = makeAddr(\"sender\");\n        vm.deal(sender, 10 ether);\n        uint256 balanceBefore = address(c).balance;\n        vm.prank(sender);\n        (bool ok,) = address(c).call{value: 10 ether}(\"\");\n        assertTrue(ok);\n        if (blockNumber % 15 == 0) {\n            assertEq(address(c).balance, 0);\n        } else {\n            assertEq(address(c).balance, balanceBefore + 10 ether);\n        }\n    }\n}"
+}

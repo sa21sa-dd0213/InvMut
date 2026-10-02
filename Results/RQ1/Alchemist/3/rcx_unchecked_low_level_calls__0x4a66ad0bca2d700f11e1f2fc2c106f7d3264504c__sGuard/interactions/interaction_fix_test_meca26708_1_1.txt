@@ -1,0 +1,78 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("EBU mutant meca26708 test", function () {   it("should detect when from address is changed to address(0)", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy the contract (no constructor arguments needed)     const Factory = await ethers.getContractFactory("EBU");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Get the caddress from the contract (the token contract address)     const caddress = await instance.caddress();          // Create a simple ERC20-like token at caddress for testing     // We need to simulate the transferFrom call - deploy a mock token     const TokenFactory = await ethers.getContractFactory("MockERC20");     const token = await TokenFactory.deploy();     await token.waitForDeployment();          // Replace the caddress in the EBU contract with our mock token     // Note: This is necessary because the contract has a hardcoded address     // In real scenario, we'd deploy with the actual token at that address     // For testing purposes, we'll deploy a token and update the caddress     // But since caddress is immutable in the contract, we need to use the actual address     // Let's just test the behavior by calling transfer with a recipient          // Fund the from address (0x9797...) with tokens on the mock token     const fromAddress = "0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9";     const mintAmount = ethers.parseEther("1000");     await token.mint(fromAddress, mintAmount);          // Approve the EBU contract to spend tokens from the from address     // This is needed for transferFrom to work     await token.connect(await ethers.getImpersonatedSigner(fromAddress)).approve(await instance.getAddress(), mintAmount);          // Prepare test data     const recipients = [addr1.address];     const amounts = [ethers.parseEther("1")];          // Call transfer from the authorized address (owner is 0x9797...)     // In this test setup, owner is not the same as fromAddress     // We need to use impersonation or adjust the test     // Let's use the owner as the from address for simplicity     // Actually, the require checks msg.sender == 0x9797..., so we need to use that address     const fromSigner = await ethers.getImpersonatedSigner(fromAddress);          // The original contract will succeed, mutant will fail     // because mutant uses address(0) as from in transferFrom     const tx = await instance.connect(fromSigner).transfer(recipients, amounts);     await tx.wait();          // Check that the transfer happened in the original (from address lost tokens)     // For the mutant, this would fail because address(0) has no tokens     const balance = await token.balanceOf(addr1.address);     expect(balance).to.equal(ethers.parseEther("1"));   }); });  // Mock ERC20 token for testing // This would be deployed separately, but for the test to work we need it // In practice, you'd use the actual token at caddress
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function mul_uint256(uint256 a, uint256 b) internal pure returns (uint256) { if (a == 0) { return 0; } uint256 c = a * b; assert(c / a == b); return c; } } contract EBU is sGuard { address public from = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9; address public caddress = 0x1f844685f7Bf86eFcc0e74D8642c54A257111923; function transfer( address[] memory _tos, uint[] memory v)public returns (bool){ require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9); require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ caddress.call(abi.encodeWithSelector(id,from,_tos[i],mul_uint256(v[i], 1000000000000000000))); } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant meca26708 test", function () {
+  it("should detect when from address is changed to address(0)", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy the contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get the caddress from the contract (the token contract address)
+    const caddress = await instance.caddress();
+
+    // Create a simple ERC20-like token at caddress for testing
+    // We need to simulate the transferFrom call - deploy a mock token
+    const TokenFactory = await ethers.getContractFactory("MockERC20");
+    const token = await TokenFactory.deploy();
+    await token.waitForDeployment();
+
+    // Replace the caddress in the EBU contract with our mock token
+    // Note: This is necessary because the contract has a hardcoded address
+    // In real scenario, we'd deploy with the actual token at that address
+    // For testing purposes, we'll deploy a token and update the caddress
+    // But since caddress is immutable in the contract, we need to use the actual address
+    // Let's just test the behavior by calling transfer with a recipient
+
+    // Fund the from address (0x9797...) with tokens on the mock token
+    const fromAddress = "0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9";
+    const mintAmount = ethers.parseEther("1000");
+    await token.mint(fromAddress, mintAmount);
+
+    // Approve the EBU contract to spend tokens from the from address
+    // This is needed for transferFrom to work
+    const fromSigner = await ethers.getImpersonatedSigner(fromAddress);
+    await token.connect(fromSigner).approve(await instance.getAddress(), mintAmount);
+
+    // Prepare test data
+    const recipients = [addr1.address];
+    const amounts = [ethers.parseEther("1")];
+
+    // Call transfer from the authorized address (owner is 0x9797...)
+    // In this test setup, owner is not the same as fromAddress
+    // We need to use impersonation or adjust the test
+    // Let's use the owner as the from address for simplicity
+    // Actually, the require checks msg.sender == 0x9797..., so we need to use that address
+    // The original contract will succeed, mutant will fail
+    // because mutant uses address(0) as from in transferFrom
+    const tx = await instance.connect(fromSigner).transfer(recipients, amounts);
+    await tx.wait();
+
+    // Check that the transfer happened in the original (from address lost tokens)
+    // For the mutant, this would fail because address(0) has no tokens
+    const balance = await token.balanceOf(addr1.address);
+    expect(balance).to.equal(ethers.parseEther("1"));
+  });
+});
+
+// Mock ERC20 token for testing
+// This would be deployed separately, but for the test to work we need it
+// In practice, you'd use the actual token at caddress
+```

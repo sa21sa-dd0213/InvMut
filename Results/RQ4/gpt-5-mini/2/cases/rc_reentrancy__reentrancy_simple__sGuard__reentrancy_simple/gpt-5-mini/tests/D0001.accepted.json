@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "Invariant: after any caller invokes addToBalance() with some wei, the caller's stored userBalance equals the previous balance plus the sent value; the mutant that sets balance to msg.value instead breaks this because it drops prior balance when msg.sender had nonzero balance.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Move the state update that increases the caller's balance to after performing no-op (keeps same expression) — here we replace the single statement with one that sets balance to msg.value only (dropping previous balance), changing stored balances observed after addToBalance.",
+ "mutated_unit_code": "function addToBalance()  public nonReentrant_ payable {\n         userBalance[msg.sender] = msg.value;\n     }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n\n    function testFuzz_property(address actor, uint128 firstDeposit, uint128 secondDeposit) public {\n        vm.assume(actor != address(0));\n        uint256 a = uint256(firstDeposit);\n        uint256 b = uint256(secondDeposit);\n\n        vm.deal(actor, a + b + 1 ether);\n\n        vm.prank(actor);\n        c.addToBalance{value: a}();\n\n        uint256 balanceAfterFirst = c.getBalance(actor);\n\n        vm.prank(actor);\n        c.addToBalance{value: b}();\n\n        uint256 finalBalance = c.getBalance(actor);\n\n        assertTrue(finalBalance == balanceAfterFirst + b);\n    }\n}\n"
+}

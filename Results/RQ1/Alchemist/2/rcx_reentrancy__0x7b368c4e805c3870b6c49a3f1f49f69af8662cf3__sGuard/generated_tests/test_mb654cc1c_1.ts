@@ -1,0 +1,85 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("W_WALLET mutant mb654cc1c - reentrancy guard removed from Put", function () {
+  it("should detect removal of nonReentrant modifier on Put by performing a reentrancy attack", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy Log contract first (required constructor argument for W_WALLET)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+    
+    // Deploy W_WALLET with Log address
+    const WalletFactory = await ethers.getContractFactory("W_WALLET");
+    const wallet = await WalletFactory.deploy(await logInstance.getAddress());
+    await wallet.waitForDeployment();
+    const walletAddress = await wallet.getAddress();
+    
+    // Deploy a malicious reentrancy contract
+    const ReentrancyAttacker = await ethers.getContractFactory("ReentrancyAttacker");
+    const attackerContract = await ReentrancyAttacker.deploy(walletAddress);
+    await attackerContract.waitForDeployment();
+    
+    // Fund the attacker contract with some ether for the initial Put call
+    await owner.sendTransaction({
+      to: await attackerContract.getAddress(),
+      value: ethers.parseEther("2")
+    });
+    
+    // Set a low unlock time so Collect can be called
+    await attackerContract.connect(attacker).setUnlockTime(1);
+    
+    // Perform the attack: this should succeed on the mutant (reentrancy possible)
+    // but would revert on the original due to nonReentrant modifier
+    const tx = await attackerContract.connect(attacker).attack({ value: ethers.parseEther("1") });
+    
+    // On the mutant, the attack should succeed and drain funds
+    // On the original, this would revert
+    // We expect the attack to succeed (mutant is vulnerable)
+    await expect(tx).to.not.be.reverted;
+    
+    // Verify that the attacker was able to call Put recursively via fallback
+    // Check that the balance of the attacker contract is > 0 (funds were drained)
+    const attackerBalance = await ethers.provider.getBalance(await attackerContract.getAddress());
+    expect(attackerBalance).to.be.gt(ethers.parseEther("1"));
+  });
+});
+
+// Helper contract for reentrancy attack
+// This should be in a separate file (ReentrancyAttacker.sol) in contracts/
+contract ReentrancyAttacker {
+    address public wallet;
+    uint public unlockTime;
+    
+    constructor(address _wallet) {
+        wallet = _wallet;
+    }
+    
+    function setUnlockTime(uint _time) public {
+        unlockTime = _time;
+    }
+    
+    function attack() public payable {
+        // First Put call - this will trigger the fallback on receive
+        (bool success, ) = wallet.call{value: msg.value}(abi.encodeWithSignature("Put(uint256)", unlockTime));
+        require(success, "Initial Put failed");
+    }
+    
+    // Fallback - reenter via Put when receiving ether from Collect
+    fallback() external payable {
+        if (address(wallet).balance >= 1 ether) {
+            // Try to call Collect to drain more funds
+            (bool success, ) = wallet.call(abi.encodeWithSignature("Collect(uint256)", ethers.parseEther("1")));
+            success;
+        }
+    }
+    
+    receive() external payable {
+        // Trigger reentrancy via Put
+        if (address(wallet).balance >= 1 ether) {
+            (bool success, ) = wallet.call{value: 0}(abi.encodeWithSignature("Put(uint256)", unlockTime));
+            success;
+        }
+    }
+}

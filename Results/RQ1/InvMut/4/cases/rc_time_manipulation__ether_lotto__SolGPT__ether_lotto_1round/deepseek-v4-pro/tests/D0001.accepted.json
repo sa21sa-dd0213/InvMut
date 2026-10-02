@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "After any sequence of calls to play(), the contract's pot is exactly the sum of all ticket amounts received minus any payouts already made; the buggy version leaves pot at zero so it fails this invariant on the first winning play.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace `pot += msg.value;` with `pot += 0;` so pot is never increased by the ticket amount.",
+ "mutated_unit_code": "    function play()  public payable {\n        require(msg.value == TICKET_AMOUNT);\n        pot += 0;\n\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n\n        if (random == 0) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    function setUp() public { c = new EtherLotto(); }\n    function testFuzz_property(address player) public {\n        vm.assume(player != address(0));\n        uint256 ticketAmount = 10;\n        vm.deal(player, ticketAmount);\n        vm.prank(player);\n        try c.play{value: ticketAmount}() {\n            assertEq(c.pot(), address(c).balance, \"pot should equal contract balance\");\n        } catch {\n        }\n    }\n}\n"
+}

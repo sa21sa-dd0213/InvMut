@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "With _tos of length 2, the reference contract calls transferFrom for both addresses (index 0 and 1), while the buggy contract starts at i=1 and only calls for the second address, resulting in different observable state on the token contract.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "Replace the loop with one that starts at i = 1 instead of i = 0.",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint[] memory v)  public returns (bool) {\n\trequire(_tos.length > 0);\n\tbytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n\tfor(uint i = 1;i < _tos.length;i++){\n\t{ (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v[i])); _d; if (! _s) {\n\trevert();} }\n\t}\n\treturn true;\n\t}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EBU} from \"../src/EBU.sol\";\n\ncontract InvMutTest is Test {\n    EBU c;\n    function setUp() public { c = new EBU(); }\n    function testRegression_property() public {\n        address token = address(new MockToken());\n\n        address from = address(0x123);\n        address[] memory tos = new address[](2);\n        tos[0] = address(0x456);\n        tos[1] = address(0x789);\n        uint[] memory amounts = new uint[](2);\n        amounts[0] = 100;\n        amounts[1] = 200;\n\n        bool success = c.transfer(from, token, tos, amounts);\n        require(success, \"transfer failed\");\n\n        uint256 callCount = MockToken(token).callCount();\n        assertTrue(callCount == 2, \"expected callCount to be 2 for reference, but bug may produce 1\");\n    }\n}\n\ncontract MockToken {\n    uint256 public callCount;\n    function transferFrom(address, address, uint256) external returns (bool) {\n        callCount++;\n        return true;\n    }\n}"
+}

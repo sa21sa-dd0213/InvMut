@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "After deploying C with owner = address(this) and funding it with 1 wei via vm.deal, a call to withdrawAll(owner) reverts in the reference (transfer throws on failure to a contract) but succeeds in the buggy version (send returns false silently). The scenario must be: recipient is a contract that rejects payments, making transfer revert and send return false. The buggy version does not revert, so the balance stays at 1 wei, while the reference reverts, leaving balance unchanged.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Change transfer to send",
+ "mutated_unit_code": "    function withdrawAll(address _recipient) public {\n\n        require(msg.sender == owner);\n        payable(_recipient).send(address(this).balance);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Phishable} from \"../src/Phishable.sol\";\n\ncontract InvMutTest is Test {\n    Phishable c;\n    function setUp() public { c = new Phishable(address(this)); }\n    function testRegression_property() public {\n        Rejector rejector = new Rejector();\n        vm.deal(address(c), 1 wei);\n        bool ok;\n        try c.withdrawAll(address(rejector)) { ok = true; } catch { ok = false; }\n        assertTrue(!ok, \"Reference should revert when sending to a contract that rejects transfers\");\n    }\n}\n\ncontract Rejector {\n    receive() external payable {\n        revert(\"I reject ETH\");\n    }\n    fallback() external payable {\n        revert(\"I reject ETH\");\n    }\n}"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0014",
+ "property_summary": "After calling XBornID() which sets totalDistributed = 200000000e18, then calling burn(1) which reduces totalDistributed by 1, the reference contract's totalDistributed becomes 199999999999999999999999999 (200000000e18 - 1), while the buggy contract (which subtracted during distr, but burn also subtracts) ends up with totalDistributed = 199999999999999999999999999 as well? Wait, burn subtracts the same way in both, so the divergence should be from distr. Actually since XBornID doesn't call distr, we need a scenario where distr is called. Let's call XBornID() then getTokens() from an unblacklisted investor: in P, totalDistributed = 200000000e18 + 1000e18 = 200001000e18; in M, totalDistributed = 200000000e18 - 1000e18 = 199999000e18. Then balanceOf the investor is 1000e18 in both. So we assert that totalDistributed > totalDistributed in M? Actually P.totalDistributed() > M.totalDistributed().",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Replace totalDistributed addition with subtraction to reduce the tracked distributed amount.",
+ "mutated_unit_code": "    function distr(address _to, uint256 _amount) canDistr private returns (bool) {\n        totalDistributed = (totalDistributed - (_amount));\n        totalRemaining = (totalRemaining - (_amount));\n        balances[_to] = (balances[_to] + (_amount));\n        emit Distr(_to, _amount);\n        emit Transfer(address(0), _to, _amount);\n        return true;\n\n        if (totalDistributed >= totalSupply) {\n            distributionFinished = true;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {XBORNID} from \"../src/XBORNID.sol\";\n\ncontract InvMutTest is Test {\n    XBORNID c;\n    function setUp() public { c = new XBORNID(); }\n    function testRegression_property() public {\n        c.XBornID();\n        address investor = address(0x1234);\n        vm.deal(investor, 1 ether);\n        vm.prank(investor);\n        c.getTokens();\n        assertTrue(c.totalDistributed() > 199999000e18);\n    }\n}"
+}

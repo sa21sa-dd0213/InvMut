@@ -1,0 +1,60 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant m31665876 (sha256 replacement)", function () {
+  it("should detect the hash function mutation by verifying deterministic outcome with keccak256", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = ethers.parseEther("10");
+    const FEE_AMOUNT = ethers.parseEther("1");
+
+    // Precompute what the original keccak256 would produce for block.timestamp and block.difficulty
+    // We need to know the exact values that will be used in the transaction
+    // Get the block info before calling play
+    const blockBefore = await ethers.provider.getBlock("latest");
+    const timestamp = blockBefore.timestamp;
+    const difficulty = blockBefore.difficulty;
+
+    // Compute expected result using keccak256 (original behavior)
+    const encodedData = ethers.AbiCoder.defaultAbiCoder().encode(
+      ["uint256", "uint256"],
+      [timestamp, difficulty]
+    );
+    const keccakHash = ethers.keccak256(encodedData);
+    const keccakResult = BigInt(keccakHash) % 2n;
+
+    // Compute expected result using sha256 (mutant behavior)
+    // ethers v6 doesn't have a built-in sha256, so we use the Web Crypto API via ethers
+    const sha256Hash = ethers.sha256(encodedData);
+    const sha256Result = BigInt(sha256Hash) % 2n;
+
+    // Only proceed if the two hash functions produce different results for this input
+    // This ensures the test is meaningful
+    if (keccakResult === sha256Result) {
+      // If they happen to match, we need to mine a new block to get different values
+      await ethers.provider.send("evm_mine", []);
+      // Recursively try again with new block values
+      await this.test!.fn!(this.test!.ctx!);
+      return;
+    }
+
+    // Determine expected pot state after play based on keccak256 result (original contract)
+    const expectedPotAfter = keccakResult === 0n ? ethers.parseEther("0") : TICKET_AMOUNT;
+
+    // Execute the play function
+    await player.sendTransaction({
+      to: instance.target,
+      value: TICKET_AMOUNT,
+    });
+
+    // Check the pot - if the contract uses sha256 instead of keccak256,
+    // the pot will be different from what we expect
+    const actualPot = await instance.pot();
+
+    // The mutant should cause this assertion to fail because sha256 gives different result
+    expect(actualPot).to.equal(expectedPotAfter);
+  });
+});

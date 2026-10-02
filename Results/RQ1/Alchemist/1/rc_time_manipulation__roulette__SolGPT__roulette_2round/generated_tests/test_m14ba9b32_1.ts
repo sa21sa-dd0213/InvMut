@@ -1,0 +1,44 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant m14ba9b32 test", function () {
+  it("should send balance when block.number is divisible by 15, but mutant never sends", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Fund the contract with some ether
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("100")
+    });
+
+    // Get player's balance before
+    const balanceBefore = await ethers.provider.getBalance(player.address);
+
+    // We need to send a transaction when block.number % 15 == 0
+    // First, mine blocks until we are at a block where block.number % 15 == 0
+    let currentBlock = await ethers.provider.getBlockNumber();
+    const blocksToMine = (15 - (currentBlock % 15)) % 15;
+    for (let i = 0; i < blocksToMine; i++) {
+      await ethers.provider.send("evm_mine", []);
+    }
+
+    // Now block.number % 15 == 0
+    // Send exactly 10 ether from player to trigger the fallback
+    const tx = await player.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    await tx.wait();
+
+    // Check player's balance after - in original, they should receive the contract's balance
+    const balanceAfter = await ethers.provider.getBalance(player.address);
+    
+    // In the original, player gets the entire contract balance (100 ether + 10 ether - gas)
+    // In the mutant, they only lose 10 ether (no payout)
+    // The mutant will fail because balanceAfter will be less than balanceBefore (only gas + 10 ether loss)
+    expect(balanceAfter).to.be.gt(balanceBefore);
+  });
+});

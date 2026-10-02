@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0002",
+ "property_summary": "For any call to sendMoney, the contract's ETH balance must decrease by exactly _value if and only if the external call succeeds; the mutant always decreases the balance regardless of call success or failure.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Remove the require statement that checks the call success, so sendMoney always completes even when the external call fails.",
+ "mutated_unit_code": "function sendMoney (address    _target,uint    _value) public onlyOwner  {\n(bool __sent_result100, ) = _target.call{value: _value}(\"\");\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n    function testFuzz_property(uint256 _value, address _target, uint256 _initialBalance) public {\n        vm.assume(_value <= type(uint128).max);\n        vm.assume(_initialBalance >= _value);\n        vm.assume(_initialBalance <= type(uint128).max);\n        Reverter reverter = new Reverter();\n        vm.deal(address(c), _initialBalance);\n        uint256 prevBalance = address(c).balance;\n        vm.prank(c.owner());\n        bool ok = true;\n        try c.sendMoney(address(reverter), _value) { ok = true; } catch { ok = false; }\n        uint256 newBalance = address(c).balance;\n        assertTrue(ok ? newBalance == prevBalance - _value : newBalance == prevBalance);\n    }\n}\n\ncontract Reverter {\n    fallback() external payable { revert(); }\n}"
+}

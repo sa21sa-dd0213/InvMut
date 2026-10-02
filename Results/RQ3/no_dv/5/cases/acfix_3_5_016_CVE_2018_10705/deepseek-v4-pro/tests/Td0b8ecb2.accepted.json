@@ -1,0 +1,12 @@
+{
+ "difference_id": "Td0b8ecb2",
+ "property_summary": "For any caller addrCaller and candidate newOwner, only the original deployer (admin) is able to successfully change c.owner() via setOwner; the mutant that checks msg.sender == owner instead of admin allows the current owner (when different from admin) to change owner, so there exist fuzzed inputs where a caller that is the current owner (but not the admin) can change the owner in the mutant but not in the reference.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Modify onlyAdmin modifier to require msg.sender equals owner (instead of admin), allowing setOwner to be called by owner rather than admin which may change who can successfully call setOwner and thus change owner observable after call.",
+ "mutated_unit_code": "modifier onlyAdmin() {\n    require(msg.sender == owner, \"Only admin can call address(this) function\");\n    _;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Owned} from \"../src/Owned.sol\";\n\ncontract InvMutTest is Test {\n    Owned c;\n\n    function setUp() public { c = new Owned(); }\n\n    function testFuzz_property(address caller, address newOwner) public {\n\n        address admin = address(this);\n\n        vm.assume(caller != address(0));\n        vm.assume(newOwner != address(0));\n\n        bool ok;\n        try c.setOwner(caller) { ok = true; } catch { ok = false; }\n        assertTrue(ok);\n        assertTrue(c.owner() == caller);\n\n        vm.assume(caller != admin);\n\n        vm.prank(caller);\n        bool ok2;\n        try c.setOwner(newOwner) {\n            ok2 = true;\n        } catch {\n            ok2 = false;\n        }\n\n        assertTrue(!ok2 || c.owner() == caller);\n    }\n}\n"
+}

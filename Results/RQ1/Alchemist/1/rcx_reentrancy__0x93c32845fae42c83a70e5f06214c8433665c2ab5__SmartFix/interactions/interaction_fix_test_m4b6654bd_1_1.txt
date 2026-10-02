@@ -1,0 +1,62 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("X_WALLET mutant detection - m4b6654bd", function () {   it("should detect mutant by measuring gas consumption difference in Put function", async function () {     const [owner] = await ethers.getSigners();          // Deploy Log contract first (required constructor argument for X_WALLET)     const LogFactory = await ethers.getContractFactory("Log");     const logInstance = await LogFactory.deploy();     await logInstance.waitForDeployment();          // Deploy X_WALLET with Log address     const Factory = await ethers.getContractFactory("X_WALLET");     const instance = await Factory.deploy(await logInstance.getAddress());     await instance.waitForDeployment();          // Get the expected gas cost for a Put call on the original contract     // The original has an extra require statement that consumes gas     // We'll measure gas for a specific Put call     const putAmount = ethers.parseEther("1.0");     const tx = await instance.connect(owner).Put(       Math.floor(Date.now() / 1000) + 3600, // unlock time 1 hour from now       { value: putAmount }     );     const receipt = await tx.wait();     const gasUsed = receipt.gasUsed;          // The mutant removes the require statement, so it will use less gas     // A successful Put call on the original should use more gas than the mutant     // We expect gasUsed to be at least 21000 (minimum transaction gas) + some execution gas     // The mutant would have lower gas due to missing require check     expect(gasUsed).to.be.gt(21000);          // Additionally verify the function still works correctly     const balance = await instance.Acc(owner.address);     expect(balance.balance).to.equal(putAmount);          // The key assertion: gas cost should match expected original behavior     // If the mutant were deployed, this gas value would be lower     // We can detect the mutant by comparing against a known baseline     // For a valid Put call, the original uses ~50000-60000 gas     // The mutant would use ~1000-2000 less gas due to removed require     expect(gasUsed).to.be.closeTo(55000n, 15000n);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract X_WALLET { function Put(uint _unlockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("X_WALLET mutant detection - m4b6654bd", function () {
+  it("should detect mutant by measuring gas consumption difference in Put function", async function () {
+    const [owner] = await ethers.getSigners();
+
+    // Deploy Log contract first (required constructor argument for X_WALLET)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+
+    // Deploy X_WALLET with Log address
+    const Factory = await ethers.getContractFactory("X_WALLET");
+    const instance = await Factory.deploy(await logInstance.getAddress());
+    await instance.waitForDeployment();
+
+    // Get the expected gas cost for a Put call on the original contract
+    // The original has an extra require statement that consumes gas
+    // We'll measure gas for a specific Put call
+    const putAmount = ethers.parseEther("1.0");
+    const tx = await instance.connect(owner).Put(
+      Math.floor(Date.now() / 1000) + 3600, // unlock time 1 hour from now
+      { value: putAmount }
+    );
+    const receipt = await tx.wait();
+    const gasUsed = receipt.gasUsed;
+
+    // The mutant removes the require statement, so it will use less gas
+    // A successful Put call on the original should use more gas than the mutant
+    // We expect gasUsed to be at least 21000 (minimum transaction gas) + some execution gas
+    // The mutant would have lower gas due to missing require check
+    expect(gasUsed).to.be.gt(21000);
+
+    // Additionally verify the function still works correctly
+    const balance = await instance.Acc(owner.address);
+    expect(balance.balance).to.equal(putAmount);
+
+    // The key assertion: gas cost should match expected original behavior
+    // If the mutant were deployed, this gas value would be lower
+    // We can detect the mutant by comparing against a known baseline
+    // For a valid Put call, the original uses ~50000-60000 gas
+    // The mutant would use ~1000-2000 less gas due to removed require
+    expect(gasUsed).to.be.closeTo(55000n, 15000n);
+  });
+});
+```

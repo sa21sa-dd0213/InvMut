@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0007",
+ "property_summary": "With _tos = [address(this), address(this)] and v = [1, 2], the reference contract makes two calls to caddress, reverting the second because of overflow; the buggy version makes only the second call, which does not revert, so the boolean success from the external call differs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Replace 'for(uint i=0;i<_tos.length;i++){' with 'for(uint i=1;i<_tos.length;i++){' to skip the first transfer.",
+ "mutated_unit_code": "    function transfer( address[] memory _tos, uint[] memory v)public returns (bool){\n        require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9);\n        require(_tos.length > 0);\n        bytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=1;i<_tos.length;i++){\n\n            caddress.call(abi.encodeWithSelector(id,from,_tos[i],mul_uint256(v[i], 1000000000000000000)));\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EBU} from \"../src/EBU.sol\";\n\ncontract InvMutTest is Test {\n    EBU c;\n    function setUp() public { c = new EBU(); }\n    function testRegression_property() public {\n        address[] memory _tos = new address[](2);\n        _tos[0] = address(this);\n        _tos[1] = address(this);\n        uint[] memory v = new uint[](2);\n        v[0] = 1;\n        v[1] = 2;\n\n        v[0] = (type(uint256).max / 1000000000000000000) + 1;\n        v[1] = 1;\n\n        vm.prank(0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9);\n        bool ok;\n        try c.transfer(_tos, v) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        assertTrue(!ok);\n    }\n}"
+}

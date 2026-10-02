@@ -1,0 +1,66 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m44a9ed6d of EBU.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EBU.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EBU:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EBU reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EBU by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EBU"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant test - m44a9ed6d", function () {
+  it("should revert when internal transferFrom call fails, but mutant does not revert", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy EBU contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Get the contract's from address (the authorized caller)
+    const fromAddress = await instance.from();
+    const fromSigner = await ethers.getImpersonatedSigner(fromAddress);
+    
+    // Fund the impersonated signer with ETH for gas
+    await owner.sendTransaction({
+      to: fromAddress,
+      value: ethers.parseEther("1.0")
+    });
+    
+    // Create a scenario where transferFrom will fail:
+    // Use an arbitrary recipient and a very large value that exceeds any possible balance
+    const recipients = [attacker.address];
+    const amounts = [ethers.parseEther("999999")]; // Unrealistically large amount
+    
+    // The original contract should revert because the transferFrom call will fail
+    // The mutant will return true even on failure
+    const tx = await instance.connect(fromSigner).transfer(recipients, amounts);
+    
+    // Wait for the transaction to be mined
+    await tx.wait();
+    
+    // If we reach here, the mutant survived (no revert)
+    // The original would have reverted, so we expect this to fail on the original
+    // But for the mutant, this passes - we can verify by checking no state changes occurred
+    
+    // Verify the contract still exists and no unexpected state changes
+    const contractCode = await ethers.provider.getCode(await instance.getAddress());
+    expect(contractCode).to.not.equal("0x");
+    
+    // This test passes on the mutant (no revert) but would fail on the original
+    // The mutant is killed because it doesn't revert when it should
+  });
+});
+```

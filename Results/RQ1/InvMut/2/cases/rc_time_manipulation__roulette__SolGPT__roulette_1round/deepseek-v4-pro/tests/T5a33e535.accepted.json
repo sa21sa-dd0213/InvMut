@@ -1,0 +1,12 @@
+{
+ "difference_id": "T5a33e535",
+ "property_summary": "After any fallback invocation that does not revert, the contract's pastBlockTime must be greater than or equal to the block.timestamp of the previous fallback call's block; the mutant never updates pastBlockTime, so a second call with a later timestamp will succeed when it should fail due to the require(block.timestamp > pastBlockTime) check being satisfied with the stale old timestamp.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the pastBlockTime update so pastBlockTime stays unchanged, altering future fallback eligibility.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        \n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 block1, uint48 ts1, uint48 ts2, uint256 block2) public {\n        vm.assume(ts2 > ts1);\n        vm.assume(block1 != block2);\n        vm.deal(address(this), 20 ether);\n        vm.warp(ts1);\n        vm.roll(block1);\n        (bool ok1,) = address(c).call{value: 10 ether}(\"\");\n        vm.assume(ok1);\n        vm.warp(ts2);\n        vm.roll(block2);\n        (bool ok2,) = address(c).call{value: 10 ether}(\"\");\n        assertTrue(!ok2 || c.pastBlockTime() >= ts2);\n    }\n}\n"
+}

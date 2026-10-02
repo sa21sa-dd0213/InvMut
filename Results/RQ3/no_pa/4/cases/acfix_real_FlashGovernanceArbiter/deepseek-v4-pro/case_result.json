@@ -1,0 +1,121 @@
+{
+ "case_id": "acfix_real_FlashGovernanceArbiter",
+ "config_label": "deepseek-v4-pro",
+ "target_contract": "FlashGovernanceArbiter",
+ "modification_kind": "control_flow",
+ "feasible": true,
+ "reason": null,
+ "n_accepted": 6,
+ "n_validated": 6,
+ "n_killing": 0,
+ "success": false,
+ "kills": [
+  {
+   "difference_id": "L0001",
+   "property": "Call endConfiguration() then assertGovernanceApproved(...). In P, configured stays false so revert; in M, configured sta",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Delete the body of endConfiguration so it no longer sets configured to true.",
+   "mutated_unit_code": "  function endConfiguration() public {\n  }",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "L0002",
+   "property": "After calling endConfiguration() on the reference (configured set to true) and then calling assertGovernanceApproved(add",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Change the assignment from true to false.",
+   "mutated_unit_code": "  function endConfiguration() public {\n    configured = false;\n  }",
+   "kill": "bug_fail",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "L0005",
+   "property": "After calling assertGovernanceApproved from an address that is both the DAO and a governed address, the reference contra",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Replace the conditional guard so that setDAO only runs when configured is false, regardless of who calls it.",
+   "mutated_unit_code": "  function setDAO(address dao) public {\n    require(!configured, \"EK\");\n    DAO = dao;\n    delete governer;\n  }",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "L0006",
+   "property": "After calling assertGovernanceApproved on behalf of a non-DAO/non-governed caller, the governed status of that caller re",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Replace the condition in the require statement to always succeed when governed status is false.",
+   "mutated_unit_code": "  function setGoverned(address[] calldata governables, bool[] calldata isGoverned) external onlySuccessfulProposal {\n    require(governables.length != isGoverned.length, \"LIMBO: length mismatch\");\n    for (uint256 i = 0; i < governables.length; i++) {\n      governed[governables[i]] = isGoverned[i];\n    }\n  }",
+   "kill": "bug_fail",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "L0007",
+   "property": "After calling setGoverned([user], [true]) then assertGovernanceApproved(user, address(this), false) should succeed in th",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Replace the bool assignment in the for loop with 'governed[governables[i]] = false' so that all addresses are set to ungoverned.",
+   "mutated_unit_code": "  function setGoverned(address[] calldata governables, bool[] calldata isGoverned) external onlySuccessfulProposal {\n    require(governables.length == isGoverned.length, \"LIMBO: length mismatch\");\n    for (uint256 i = 0; i < governables.length; i++) {\n      governed[governables[i]] = false;\n    }\n  }",
+   "kill": "bug_fail",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "L0008",
+   "property": "When called by a governed address with no pending decision and enough time passed, the reference contract succeeds while",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Insert a revert at the beginning of the function to always reject the governance action.",
+   "mutated_unit_code": "  function assertGovernanceApproved(\n    address sender,\n    address target,\n    bool emergency\n  ) public flashEnabled{\n    revert(\"forced rejection\");\n    if (\n      IERC20(flashGovernanceConfig.asset).transferFrom(sender, address(this), flashGovernanceConfig.amount) &&\n      pendingFlashDecision[target][sender].unlockTime < block.timestamp\n    ) {\n      require(\n        emergency || (block.timestamp - security.lastFlashGovernanceAct > security.epochSize),\n        \"LIMBO: flash governance disabled for rest of epoch\"\n      );\n      pendingFlashDecision[target][sender] = flashGovernanceConfig;\n      pendingFlashDecision[target][sender].unlockTime += block.timestamp;\n\n      security.lastFlashGovernanceAct = block.timestamp;\n      emit flashDecision(sender, flashGovernanceConfig.asset, flashGovernanceConfig.amount, target);\n    } else {\n      revert(\"LIMBO: governance decision rejected.\");\n    }\n  }",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  }
+ ],
+ "tokens": {
+  "prompt": 153153,
+  "completion": 42503,
+  "reasoning": 0
+ },
+ "wallclock_s": 522.2308526039124,
+ "infra_error": null,
+ "rescore": {
+  "rule": "assertion_violation_only",
+  "orig_success": true,
+  "disqualified": [
+   {
+    "diff": "L0002",
+    "verdict": "compile",
+    "reason": "compile_fail_not_real_kill"
+   },
+   {
+    "diff": "L0006",
+    "verdict": "compile",
+    "reason": "compile_fail_not_real_kill"
+   },
+   {
+    "diff": "L0007",
+    "verdict": "compile",
+    "reason": "compile_fail_not_real_kill"
+   }
+  ],
+  "remaining_counting_kills": 0
+ }
+}

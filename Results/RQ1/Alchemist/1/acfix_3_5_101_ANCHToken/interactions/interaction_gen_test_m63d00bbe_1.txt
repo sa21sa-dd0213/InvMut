@@ -1,0 +1,75 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m63d00bbe of ANCHToken.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test ANCHToken.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for ANCHToken:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("ANCHToken reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy ANCHToken by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("ANCHToken"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ANCHToken mutant m63d00bbe - Approval event emission", function () {
+  it("should emit Approval event when approve is called; mutant removes the event emission", async function () {
+    const [owner, spender] = await ethers.getSigners();
+    
+    // Deploy ANCHToken - need to provide constructor arguments
+    // Constructor requires: address _route, address _USDToken
+    // We need a UniswapV2 router address - we'll use a zero address as it's just for deployment
+    // The USD token can be a dummy address
+    const Factory = await ethers.getContractFactory("ANCHToken");
+    const instance = await Factory.deploy(
+      "0x0000000000000000000000000000000000000001", // _route (dummy Uniswap router)
+      "0x0000000000000000000000000000000000000002"  // _USDToken (dummy USD token)
+    );
+    await instance.waitForDeployment();
+
+    // Call approve with a specific amount
+    const amount = ethers.parseEther("100");
+    
+    // Get the transaction and check for the Approval event
+    const tx = await instance.connect(owner).approve(spender.address, amount);
+    const receipt = await tx.wait();
+    
+    // Check that the Approval event was emitted with correct parameters
+    const event = receipt.logs.find(
+      (log) => {
+        try {
+          const parsed = instance.interface.parseLog({
+            topics: log.topics,
+            data: log.data
+          });
+          return parsed.name === "Approval";
+        } catch {
+          return false;
+        }
+      }
+    );
+    
+    // If the mutant removed the event emission, event will be undefined
+    // The original contract emits the event, so this assertion should pass on original
+    expect(event).to.not.be.undefined;
+    
+    if (event) {
+      const parsedEvent = instance.interface.parseLog({
+        topics: event.topics,
+        data: event.data
+      });
+      expect(parsedEvent.args.owner).to.equal(owner.address);
+      expect(parsedEvent.args.spender).to.equal(spender.address);
+      expect(parsedEvent.args.value).to.equal(amount);
+    }
+  });
+});
+```

@@ -1,0 +1,39 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PredictTheBlockHashChallenge mutant test (mfeda8edf)", function () {   it("should kill the mutant by locking in guess and settling in same block", async function () {     const [owner] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge");     const instance = await Factory.deploy({ value: ethers.parseEther("1") });     await instance.waitForDeployment();      const hashToGuess = ethers.keccak256(ethers.toUtf8Bytes("test"));          // Lock in guess - mutant sets block = block.number * 1 (current block)     await instance.connect(owner).lockInGuess(hashToGuess, { value: ethers.parseEther("1") });      // Try to settle in the same block - should revert on mutant because     // block.number > guesses[msg.sender].block is false (both equal current block)     // Original would also revert, but for different reason (target is next block)     await expect(       instance.connect(owner).settle()     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PredictTheBlockHashChallenge { struct Guess { uint block; bytes32 guess; } mapping(address => Guess) guesses; constructor() public payable { require(msg.value == 1 ether); } function lockInGuess(bytes32 hash) public payable { require(guesses[msg.sender].block == 0); require(msg.value == 1 ether); guesses[msg.sender].guess = hash; guesses[msg.sender].block = block.number + 1; } function settle() public { require(guesses[msg.sender].block != 0); require(block.number > guesses[msg.sender].block); bytes32 answer = keccak256(abi.encodePacked(blockhash(guesses[msg.sender].block))); guesses[msg.sender].block = 0; if (guesses[msg.sender].guess == answer) { payable(msg.sender).transfer(2 ether); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PredictTheBlockHashChallenge mutant test (mfeda8edf)", function () {
+  it("should kill the mutant by locking in guess and settling in same block", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge");
+    const instance = await Factory.deploy({ value: ethers.parseEther("1") });
+    await instance.waitForDeployment();
+
+    const hashToGuess = ethers.keccak256(ethers.toUtf8Bytes("test"));
+    
+    // Lock in guess - mutant sets block = block.number * 1 (current block)
+    await instance.connect(owner).lockInGuess(hashToGuess, { value: ethers.parseEther("1") });
+
+    // Try to settle in the same block - should revert on mutant because
+    // block.number > guesses[msg.sender].block is false (both equal current block)
+    // Original would also revert, but for different reason (target is next block)
+    await expect(
+      instance.connect(owner).settle()
+    ).to.be.reverted;
+  });
+});
+```

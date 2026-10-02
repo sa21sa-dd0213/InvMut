@@ -1,0 +1,56 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MultiplicatorX4 - kill mutant m0f81f149", function () {   it("should revert when calling Command from unauthorized address in original, but mutant allows it", async function () {     const [owner, attacker] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("MultiplicatorX4");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Fund the contract so attacker can attempt to drain it     const fundAmount = ethers.parseEther("10");     await owner.sendTransaction({       to: await instance.getAddress(),       value: fundAmount     });      // Attacker tries to call Command with a simple data payload and some ETH     const attackValue = ethers.parseEther("1");     const dummyData = "0xdeadbeef";      // In the original contract this should revert because attacker != Owner     // In the mutant (which removes the require) this will succeed     const attackerBalanceBefore = await ethers.provider.getBalance(attacker.address);     const contractBalanceBefore = await ethers.provider.getBalance(await instance.getAddress());      const tx = instance.connect(attacker).Command(attacker.address, dummyData, { value: attackValue });      // The mutant will let this succeed; the original would revert     // We expect the transaction to succeed (kill the mutant) by checking that     // the attacker can send ETH to themselves via the call     await expect(tx).to.not.be.reverted;      const contractBalanceAfter = await ethers.provider.getBalance(await instance.getAddress());          // The contract should have lost the attackValue (sent back to attacker)     // In original this would never execute because of revert     expect(contractBalanceAfter).to.be.lessThan(contractBalanceBefore);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract MultiplicatorX4 { address public Owner = msg.sender; receive() external payable {} function withdraw() payable public { require(msg.sender == Owner); payable(Owner).transfer(address(this).balance); } function Command(address adr,bytes memory data) payable public { require(msg.sender == Owner); adr.call{value: msg.value}(data); } function multiplicate(address adr) public payable { if(msg.value>=address(this).balance) { require(((address(this).balance + msg.value) >= address(this).balance)); payable(adr).transfer(address(this).balance+msg.value); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MultiplicatorX4 - kill mutant m0f81f149", function () {
+  it("should revert when calling Command from unauthorized address in original, but mutant allows it", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("MultiplicatorX4");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Fund the contract so attacker can attempt to drain it
+    const fundAmount = ethers.parseEther("10");
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: fundAmount
+    });
+
+    // Attacker tries to call Command with a simple data payload and some ETH
+    const attackValue = ethers.parseEther("1");
+    const dummyData = "0xdeadbeef";
+
+    // In the original contract this should revert because attacker != Owner
+    // In the mutant (which removes the require) this will succeed
+    const attackerBalanceBefore = await ethers.provider.getBalance(attacker.address);
+    const contractBalanceBefore = await ethers.provider.getBalance(await instance.getAddress());
+
+    const tx = instance.connect(attacker).Command(attacker.address, dummyData, { value: attackValue });
+
+    // The mutant will let this succeed; the original would revert
+    // We expect the transaction to succeed (kill the mutant) by checking that
+    // the attacker can send ETH to themselves via the call
+    await expect(tx).to.not.be.reverted;
+
+    const contractBalanceAfter = await ethers.provider.getBalance(await instance.getAddress());
+    
+    // The contract should have lost the attackValue (sent back to attacker)
+    // In original this would never execute because of revert
+    expect(contractBalanceAfter).to.be.lessThan(contractBalanceBefore);
+  });
+});
+```

@@ -1,0 +1,61 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m021d5b11 of EBU.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EBU.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EBU:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EBU reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EBU by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EBU"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU reference (ethers v6; deploy may require constructor arguments)", function () {
+  it("should detect mutant m021d5b11 by verifying multiplication vs addition in transfer amount", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Verify the hardcoded from address matches the deployer
+    const fromAddress = await instance.from();
+    expect(fromAddress).to.equal("0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9");
+
+    // Fund the contract with enough ether for the test
+    await owner.sendTransaction({
+      to: await instance.caddress(),
+      value: ethers.parseEther("10")
+    });
+
+    // Test with v[i] = 2, original computes 2 * 10^18, mutant computes 2 + 10^18
+    const tos = [addr1.address];
+    const v = [2];
+
+    // Get initial balance of recipient
+    const initialBalance = await ethers.provider.getBalance(addr1.address);
+
+    // Execute transfer from the authorized address (0x9797...)
+    const authorizedSigner = await ethers.getImpersonatedSigner(fromAddress);
+    const tx = await instance.connect(authorizedSigner).transfer(tos, v);
+    await tx.wait();
+
+    // Check the final balance of recipient
+    const finalBalance = await ethers.provider.getBalance(addr1.address);
+    const transferredAmount = finalBalance - initialBalance;
+
+    // Original would transfer 2 * 10^18 = 2 ether
+    // Mutant would transfer 2 + 10^18 = 1.000000000000000002 ether
+    expect(transferredAmount).to.equal(ethers.parseEther("2"));
+  });
+});
+```

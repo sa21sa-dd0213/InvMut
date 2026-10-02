@@ -1,0 +1,12 @@
+{
+ "difference_id": "Td821d841",
+ "property_summary": "For any caller and any deposit amount, after a successful withdrawAll the caller's recorded credit is zero in the correct contract; the mutant sets the stored credit to double the withdrawn amount, breaking this invariant for some inputs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Set credit[msg.sender] to double the withdrawn amount after successful call, altering stored credit value observed after withdrawAll.",
+ "mutated_unit_code": "function withdrawAll () public __lock_modifier0  {\nuint     oCredit = credit[msg.sender];\nif (oCredit>0)\n{\nbalance-=oCredit;\n(bool callResult, ) = msg.sender.call{value: oCredit}(\"\");\nrequire(callResult);\ncredit[msg.sender]=oCredit * 2;\n}\n\n}\n",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ReentrancyDAO} from \"../src/ReentrancyDAO.sol\";\n\ncontract InvMutTest is Test {\n    ReentrancyDAO c;\n    function setUp() public { c = new ReentrancyDAO(); }\n\n    function testFuzz_property(address actor, uint256 amount) public {\n        vm.assume(actor != address(0));\n        amount = bound(amount, 1, 1 ether);\n\n        vm.deal(actor, amount);\n        vm.prank(actor);\n        c.deposit{value: amount}();\n\n        vm.prank(actor);\n        bool ok;\n        try c.withdrawAll() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        uint256 balBefore = address(c).balance;\n\n        vm.prank(actor);\n        bool ok2;\n        try c.withdrawAll() {\n            ok2 = true;\n        } catch {\n            ok2 = false;\n        }\n\n        uint256 balAfter = address(c).balance;\n\n        assertTrue(!(ok == true) || (ok2 == true && balAfter == balBefore));\n    }\n}\n"
+}

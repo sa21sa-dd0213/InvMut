@@ -1,0 +1,12 @@
+{
+ "difference_id": "Td256e64e",
+ "property_summary": "After a settle() by any caller, if the caller's original guess did not match the hash of the block in which they locked, the contract's balance must not decrease by 2 ether. The mutant always decreases it, violating this rule when the guess is wrong.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the if-guard so 2 ether is always transferred after settling",
+ "mutated_unit_code": "function settle() public {\n        require(guesses[msg.sender].block != 0);\n        require(block.number > guesses[msg.sender].block);\n\n        bytes32 answer = keccak256(abi.encodePacked(blockhash(guesses[msg.sender].block)));\n\n        guesses[msg.sender].block = 0;\n        payable(msg.sender).transfer(2 ether);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {PredictTheBlockHashChallenge} from \"../src/PredictTheBlockHashChallenge.sol\";\n\ncontract InvMutTest is Test {\n    PredictTheBlockHashChallenge c;\n    function setUp() public {\n        c = new PredictTheBlockHashChallenge{value: 1 ether}();\n    }\n\n    function testFuzz_property(uint256 blockLag, bytes32 guessHash) public {\n        vm.assume(blockLag >= 2);\n        blockLag = bound(blockLag, 2, 1000000);\n\n        address user = address(0xBEEF);\n        vm.deal(user, 1 ether);\n\n        vm.roll(5);\n        vm.prank(user);\n        c.lockInGuess{value: 1 ether}(guessHash);\n\n        vm.roll(block.number + blockLag);\n\n        uint256 balanceBefore = address(c).balance;\n\n        vm.prank(user);\n        c.settle();\n\n        uint256 balanceAfter = address(c).balance;\n\n        bytes32 correctAnswer = keccak256(abi.encodePacked(blockhash(block.number - blockLag + 1)));\n\n        if (guessHash != correctAnswer) {\n            assertTrue(balanceAfter != balanceBefore - 2 ether);\n        } else {\n            assertTrue(balanceAfter == balanceBefore - 2 ether);\n        }\n    }\n}"
+}

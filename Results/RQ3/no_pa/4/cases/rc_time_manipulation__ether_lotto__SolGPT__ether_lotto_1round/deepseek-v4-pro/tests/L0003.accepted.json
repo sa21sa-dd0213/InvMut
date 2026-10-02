@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "After a single play() call from a non-bank user with msg.value = 10, when random == 0, the reference updates pot to 10 before transfer, so the user receives pot - FEE_AMOUNT = 9, while the bug subtracts to -10 which underflows (revert on transfer), causing a revert difference.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "Replace the addition 'pot += msg.value' with subtraction 'pot -= msg.value'",
+ "mutated_unit_code": "    function play()  public payable {\n        require(msg.value == TICKET_AMOUNT);\n        pot -= msg.value;\n\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n\n        if (random == 0) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    function setUp() public { c = new EtherLotto(); }\n    function testRegression_property() public {\n        vm.deal(address(0x1), 10 ether);\n        vm.prank(address(0x1));\n        c.play{value: 10}();\n        assertTrue(address(c).balance != 0);\n    }\n}\n"
+}

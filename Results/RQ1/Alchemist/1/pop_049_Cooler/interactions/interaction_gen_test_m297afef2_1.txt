@@ -1,0 +1,77 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m297afef2 of Cooler.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Cooler.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Cooler:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Cooler reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Cooler by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Cooler"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Cooler mutant m297afef2 - isDefaulted", function () {
+  it("should detect mutant that removes the return statement from isDefaulted", async function () {
+    const [owner, lender, borrower] = await ethers.getSigners();
+    
+    // Deploy CoolerFactory (which deploys the Cooler implementation)
+    const CoolerFactory = await ethers.getContractFactory("CoolerFactory");
+    const factory = await CoolerFactory.deploy();
+    await factory.waitForDeployment();
+    
+    // Deploy mock ERC20 tokens for collateral and debt
+    const ERC20 = await ethers.getContractFactory("ERC20");
+    const collateral = await ERC20.deploy("Collateral", "COLL", 18);
+    const debt = await ERC20.deploy("Debt", "DEBT", 18);
+    await collateral.waitForDeployment();
+    await debt.waitForDeployment();
+    
+    // Generate a cooler for the owner
+    await factory.connect(owner).generateCooler(collateral.target, debt.target);
+    const coolerAddress = await factory.coolersFor(collateral.target, debt.target, 0);
+    const cooler = await ethers.getContractAt("Cooler", coolerAddress);
+    
+    // Setup: borrower creates a loan request
+    const amount = ethers.parseEther("1000");
+    const interest = ethers.parseEther("0.1"); // 10% interest
+    const loanToCollateral = ethers.parseEther("2"); // 200% collateral ratio
+    const duration = 7 * 24 * 60 * 60; // 7 days
+    
+    // Borrower needs collateral tokens
+    await collateral.mint(borrower.address, ethers.parseEther("1000"));
+    await collateral.connect(borrower).approve(coolerAddress, ethers.parseEther("1000"));
+    
+    await cooler.connect(borrower).requestLoan(amount, interest, loanToCollateral, duration);
+    
+    // Lender clears the request
+    const collateralNeeded = await cooler.collateralFor(amount, loanToCollateral);
+    await debt.mint(lender.address, amount);
+    await debt.connect(lender).approve(coolerAddress, amount);
+    
+    await cooler.connect(lender).clearRequest(0, false, false);
+    
+    // Get the loan ID (should be 0)
+    const loan = await cooler.getLoan(0);
+    
+    // Initially the loan should NOT be defaulted
+    expect(await cooler.isDefaulted(0)).to.be.false;
+    
+    // Fast forward past the expiry
+    await ethers.provider.send("evm_increaseTime", [duration + 1]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // Now the loan SHOULD be defaulted - the mutant would return false here
+    expect(await cooler.isDefaulted(0)).to.be.true;
+  });
+});
+```

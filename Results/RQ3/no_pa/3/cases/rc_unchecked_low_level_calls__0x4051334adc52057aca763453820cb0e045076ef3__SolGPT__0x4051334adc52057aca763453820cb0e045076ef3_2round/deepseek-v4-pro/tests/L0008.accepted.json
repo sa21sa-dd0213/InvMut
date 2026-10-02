@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0008",
+ "property_summary": "When calling transfer with a caddress that expects transferFrom to revert, the reference contract reverts due to require(_s) after the call, while the buggy contract succeeds silently without reverting.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "Delete the require statement after the call",
+ "mutated_unit_code": "function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){\nrequire(_tos.length > 0);\nbytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\nfor(uint i=0;i<_tos.length;i++){\n\n{ (bool _s,) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v)); }\n}\nreturn true;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airdrop} from \"../src/airdrop.sol\";\n\ncontract InvMutTest is Test {\n    airdrop c;\n    function setUp() public { c = new airdrop(); }\n    function testRegression_property() public {\n        Reverter reverter = new Reverter();\n        address[] memory tos = new address[](1);\n        tos[0] = address(0x1);\n\n        bool ok;\n        try c.transfer(address(0x2), address(reverter), tos, 100) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(!ok, \"transfer should have reverted due to failed inner call\");\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"transferFrom failed\");\n    }\n}\n"
+}

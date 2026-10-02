@@ -1,0 +1,12 @@
+{
+ "difference_id": "Teff0b3b0",
+ "property_summary": "For any owner-invoked Command sending msg.value to a callee whose fallback is payable and records received amount, the reference forwards exactly msg.value (so address(c).balance decreases by msg.value and the callee's recorded received equals msg.value); the mutant may forward the entire contract balance, causing the callee to observe/receive more than msg.value (violating the equality).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace adr.call{value: msg.value}(data) with a direct low-level call that forwards all contract balance instead of msg.value, changing transferred value semantics.",
+ "mutated_unit_code": "function Command(address adr,bytes memory data)\n    payable\n    public\n    {\n        require(msg.sender == Owner);\n\n        // change: forward entire contract balance rather than msg.value\n        adr.call{value: address(this).balance}(data);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MultiplicatorX3} from \"../src/MultiplicatorX3.sol\";\n\ncontract InvMutTest is Test {\n    MultiplicatorX3 c;\n    function setUp() public { c = new MultiplicatorX3(); }\n\n    function testFuzz_property(uint256 sendAmt, uint256 seed) public {\n        sendAmt = bound(sendAmt, 0, 1 ether);\n\n        ReceiverRec rec = new ReceiverRec();\n\n        uint256 initialFund = 0.5 ether;\n        vm.deal(address(this), initialFund + sendAmt);\n        (bool okFund,) = address(c).call{value: initialFund}(\"\");\n        require(okFund);\n\n        vm.deal(address(this), sendAmt);\n        bool ok;\n        try c.Command{value: sendAmt}(address(rec), \"\") {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(rec.received() == sendAmt);\n    }\n}\n\ncontract ReceiverRec {\n    uint256 public received;\n    fallback() external payable {\n        received = msg.value;\n    }\n    receive() external payable {\n        received = msg.value;\n    }\n}\n"
+}

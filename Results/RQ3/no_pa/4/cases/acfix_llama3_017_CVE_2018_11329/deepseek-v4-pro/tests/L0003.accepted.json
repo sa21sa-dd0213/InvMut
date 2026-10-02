@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "After seedMarket(10 ether), user1 calls collectDrugs(ref) with leftover `claimedDrugs` of 864000, then `marketDrugs` = 86400 in the reference but 4320 in the bug due to divisor 20 instead of 10.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Change the line that adds to marketDrugs to use a larger divisor, reducing the amount added.",
+ "mutated_unit_code": "    function collectDrugs(address ref) public{\n        require(initialized);\n        if(referrals[msg.sender] == address(0) && referrals[msg.sender]!=msg.sender){\n            referrals[msg.sender]=ref;\n        }\n        uint256 drugsUsed=getMyDrugs();\n        uint256 newKilo=SafeMath.div(drugsUsed,DRUGS_TO_PRODUCE_1KILO);\n        Kilos[msg.sender]=SafeMath.add(Kilos[msg.sender],newKilo);\n        claimedDrugs[msg.sender]=0;\n        lastCollect[msg.sender]=block.timestamp;\n\n        claimedDrugs[referrals[msg.sender]]=SafeMath.add(claimedDrugs[referrals[msg.sender]],SafeMath.div(drugsUsed,5));\n\n        marketDrugs=SafeMath.add(marketDrugs,SafeMath.div(drugsUsed,20));\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherCartel} from \"../src/EtherCartel.sol\";\n\ncontract InvMutTest is Test {\n    EtherCartel c;\n    function setUp() public { c = new EtherCartel(); }\n    function testRegression_property() public {\n        address user1 = address(0x1);\n        address user2 = address(0x2);\n\n        vm.deal(user1, 1 ether);\n        vm.deal(user2, 0 ether);\n\n        vm.prank(user1);\n        c.seedMarket{value: 0}(10 ether);\n\n        vm.prank(user1);\n        c.getFreeKilo();\n\n        vm.warp(block.timestamp + 86400);\n\n        vm.deal(address(c), 1 ether);\n        vm.prank(user1);\n        c.buyDrugs{value: 0.1 ether}();\n\n        uint256 user1Drugs = c.getMyDrugs();\n\n        \n        c = new EtherCartel();\n        vm.prank(user1);\n        c.seedMarket{value: 0}(1);\n\n        vm.prank(user1);\n        c.getFreeKilo();\n\n        vm.warp(block.timestamp + 1);\n\n        vm.prank(user1);\n        c.collectDrugs(user2);\n\n        assertTrue(c.marketDrugs() == 31, \"marketDrugs should be 31 in reference\");\n    }\n}\n"
+}

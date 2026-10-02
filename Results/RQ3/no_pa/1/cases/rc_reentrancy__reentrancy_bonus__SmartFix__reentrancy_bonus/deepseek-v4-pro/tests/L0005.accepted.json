@@ -1,0 +1,11 @@
+{
+ "difference_id": "L0005",
+ "property_summary": "After calling getFirstWithdrawalBonus(alice) with alice=address(0x1) and the contract initially funded with 100 wei, the reference contract reverts due to failed call (address(0x1) cannot receive ether), while the buggy contract succeeds silently because transfer does not actually send ether, leading to different revert behavior.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "change_summary": "Replace recipient.call with an internal transfer that does not change balance of contract.",
+ "mutated_unit_code": "    function withdrawReward(address recipient)  public _nonReentrant  {\n        uint amountToWithdraw = rewardsForA[recipient];\n        rewardsForA[recipient] = 0;\n        payable(recipient).transfer(amountToWithdraw);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrancy_bonus} from \"../src/Reentrancy_bonus.sol\";\n\ncontract InvMutTest is Test {\n    Reentrancy_bonus c;\n    bool attacking;\n    uint256 got;\n\n    function setUp() public {\n        c = new Reentrancy_bonus();\n    }\n\n    function testFuzz_run() public {\n        vm.deal(address(c), 1000);\n        attacking = true;\n        c.getFirstWithdrawalBonus(address(this));\n        assertTrue(got <= 100);\n    }\n\n    receive() external payable {\n        got += msg.value;\n        if (attacking) {\n            attacking = false;\n            try c.getFirstWithdrawalBonus(address(this)) {} catch {}\n        }\n    }\n}"
+}

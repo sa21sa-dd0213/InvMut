@@ -1,0 +1,49 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MultiplicatorX4 mutant kill test - overflow check removal", function () {   it("should kill mutant mb2e46d1d by triggering arithmetic overflow that original would revert", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("MultiplicatorX4");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Step 1: Fund the contract with some initial balance (e.g., 1 ether)     const initialFundTx = await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("1.0")     });     await initialFundTx.wait();      // Step 2: Get current contract balance     const balanceBefore = await ethers.provider.getBalance(await instance.getAddress());          // Step 3: Calculate msg.value that will cause overflow when added to balanceBefore     // We need msg.value such that balanceBefore + msg.value > max uint256     const maxUint256 = ethers.MaxUint256;     // To overflow: msg.value > maxUint256 - balanceBefore     const overflowValue = maxUint256 - balanceBefore + BigInt(1);          // Step 4: Call multiplicate with overflow amount - original reverts, mutant proceeds     // The call should be from owner since multiplicate has no access control     await expect(       instance.connect(owner).multiplicate(addr1.address, { value: overflowValue })     ).to.be.reverted; // This will pass for original, fail for mutant (killing it)   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract MultiplicatorX4 { address public Owner = msg.sender; receive() external payable {} function withdraw() payable public { require(msg.sender == Owner); payable(Owner).transfer(address(this).balance); } function Command(address adr,bytes memory data) payable public { require(msg.sender == Owner); adr.call{value: msg.value}(data); } function multiplicate(address adr) public payable { if(msg.value>=address(this).balance) { require(((address(this).balance + msg.value) >= address(this).balance)); payable(adr).transfer(address(this).balance+msg.value); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MultiplicatorX4 mutant kill test - overflow check removal", function () {
+  it("should kill mutant mb2e46d1d by triggering arithmetic overflow that original would revert", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("MultiplicatorX4");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Step 1: Fund the contract with some initial balance (e.g., 1 ether)
+    const initialFundTx = await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("1.0")
+    });
+    await initialFundTx.wait();
+
+    // Step 2: Get current contract balance
+    const balanceBefore = await ethers.provider.getBalance(await instance.getAddress());
+    
+    // Step 3: Calculate msg.value that will cause overflow when added to balanceBefore
+    // We need msg.value such that balanceBefore + msg.value > max uint256
+    const maxUint256 = ethers.MaxUint256;
+    // To overflow: msg.value > maxUint256 - balanceBefore
+    const overflowValue = maxUint256 - balanceBefore + BigInt(1);
+    
+    // Step 4: Call multiplicate with overflow amount - original reverts, mutant proceeds
+    // The call should be from owner since multiplicate has no access control
+    await expect(
+      instance.connect(owner).multiplicate(addr1.address, { value: overflowValue })
+    ).to.be.reverted; // This will pass for original, fail for mutant (killing it)
+  });
+});
+```

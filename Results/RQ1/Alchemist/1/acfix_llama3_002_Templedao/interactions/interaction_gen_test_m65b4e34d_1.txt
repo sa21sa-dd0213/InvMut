@@ -1,0 +1,66 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m65b4e34d of StaxLPStaking.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test StaxLPStaking.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for StaxLPStaking:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("StaxLPStaking reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy StaxLPStaking by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("StaxLPStaking"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("StaxLPStaking mutant kill test - RewardAdded event", function () {
+  it("should emit RewardAdded event when notifyRewardAmount is called by reward distributor", async function () {
+    const [owner, distributor, staker] = await ethers.getSigners();
+    
+    // Deploy a mock ERC20 token for staking
+    const MockTokenFactory = await ethers.getContractFactory("IERC20");
+    // Using a simple ERC20 implementation for testing
+    const SimpleERC20 = await ethers.getContractFactory("contracts/test/SimpleERC20.sol:SimpleERC20");
+    const stakingToken = await SimpleERC20.deploy("Staking Token", "STK", 18);
+    await stakingToken.waitForDeployment();
+    
+    // Deploy reward token
+    const rewardToken = await SimpleERC20.deploy("Reward Token", "RWD", 18);
+    await rewardToken.waitForDeployment();
+    
+    // Deploy StaxLPStaking with staking token and distributor
+    const StaxLPStakingFactory = await ethers.getContractFactory("StaxLPStaking");
+    const staking = await StaxLPStakingFactory.deploy(
+      await stakingToken.getAddress(),
+      await distributor.getAddress()
+    );
+    await staking.waitForDeployment();
+    
+    // Owner adds reward token
+    await staking.connect(owner).addReward(await rewardToken.getAddress());
+    
+    // Fund distributor with reward tokens
+    const rewardAmount = ethers.parseEther("1000");
+    await rewardToken.mint(await distributor.getAddress(), rewardAmount);
+    await rewardToken.connect(distributor).approve(await staking.getAddress(), rewardAmount);
+    
+    // Call notifyRewardAmount from distributor and check for event emission
+    const tx = await staking.connect(distributor).notifyRewardAmount(
+      await rewardToken.getAddress(),
+      rewardAmount
+    );
+    
+    // Verify the RewardAdded event was emitted with correct parameters
+    await expect(tx)
+      .to.emit(staking, "RewardAdded")
+      .withArgs(await rewardToken.getAddress(), rewardAmount);
+  });
+});
+```

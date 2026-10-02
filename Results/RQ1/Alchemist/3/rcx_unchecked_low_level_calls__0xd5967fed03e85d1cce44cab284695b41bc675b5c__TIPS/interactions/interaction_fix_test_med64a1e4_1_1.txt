@@ -1,0 +1,58 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("demo mutant detection - keccak256 vs sha256", function () {   it("should detect mutant that replaces keccak256 with sha256 for function selector", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy the demo contract (no constructor arguments)     const Factory = await ethers.getContractFactory("demo");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Deploy a simple contract that implements transferFrom to verify correct selector     const MockTokenFactory = await ethers.getContractFactory("contracts/MockToken.sol:MockToken");     const mockToken = await MockTokenFactory.deploy();     await mockToken.waitForDeployment();          // Setup: give addr1 some tokens to transfer     const transferAmount = ethers.parseEther("100");     await mockToken.connect(owner).transfer(addr1.address, transferAmount);          // Approve the demo contract to transfer on behalf of addr1     await mockToken.connect(addr1).approve(await instance.getAddress(), transferAmount);          // Create array with one recipient     const recipients = [addr2.address];          // This call should succeed on original (keccak256) but fail on mutant (sha256)     // because the selector computed will be different     await expect(       instance.connect(owner).transfer(         addr1.address,         await mockToken.getAddress(),         recipients,         transferAmount       )     ).to.not.be.reverted;          // Verify addr2 received the tokens (confirming correct selector was used)     expect(await mockToken.balanceOf(addr2.address)).to.equal(transferAmount);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract demo { function transfer(address from, address caddress, address[] memory _tos, uint v)  public returns (bool) { require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); _d; if (! _s) { revert();} } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("demo mutant detection - keccak256 vs sha256", function () {
+  it("should detect mutant that replaces keccak256 with sha256 for function selector", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy the demo contract (no constructor arguments)
+    const Factory = await ethers.getContractFactory("demo");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Deploy a simple contract that implements transferFrom to verify correct selector
+    const MockTokenFactory = await ethers.getContractFactory("MockToken");
+    const mockToken = await MockTokenFactory.deploy();
+    await mockToken.waitForDeployment();
+    
+    // Setup: give addr1 some tokens to transfer
+    const transferAmount = ethers.parseEther("100");
+    await mockToken.connect(owner).transfer(addr1.address, transferAmount);
+    
+    // Approve the demo contract to transfer on behalf of addr1
+    await mockToken.connect(addr1).approve(await instance.getAddress(), transferAmount);
+    
+    // Create array with one recipient
+    const recipients = [addr2.address];
+    
+    // This call should succeed on original (keccak256) but fail on mutant (sha256)
+    // because the selector computed will be different
+    await expect(
+      instance.connect(owner).transfer(
+        addr1.address,
+        await mockToken.getAddress(),
+        recipients,
+        transferAmount
+      )
+    ).to.not.be.reverted;
+    
+    // Verify addr2 received the tokens (confirming correct selector was used)
+    expect(await mockToken.balanceOf(addr2.address)).to.equal(transferAmount);
+  });
+});
+```

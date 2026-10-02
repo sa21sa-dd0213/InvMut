@@ -1,0 +1,12 @@
+{
+ "difference_id": "T87cacf6c",
+ "property_summary": "After a successful top-level initialize() call, the public getter of programOperators must return false for an address that was never set as an operator, because the initializer runs successfully; the bug causes initialize() to be callable multiple times without reverting, allowing an attacker to re-initialize and potentially overwrite state, but the core visible difference is that a second call to initialize() on the reference P reverts because _initialized is 1, whereas on the buggy M it does not revert because _initialized remains 0.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the assignment `_initialized = 1;` so the contract never marks itself as initialized, causing subsequent calls to not revert but also not changing the version.",
+ "mutated_unit_code": "modifier initializer() {\n        bool isTopLevelCall = !_initializing;\n        require(\n            (isTopLevelCall && _initialized < 1) || (!AddressUpgradeable.isContract(address(this)) && _initialized == 1),\n            \"Initializable: contract is already initialized\"\n        );\n        if (isTopLevelCall) {\n            _initializing = true;\n        }\n        _;\n        if (isTopLevelCall) {\n            _initializing = false;\n            emit Initialized(1);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.17;\nimport {Test} from \"forge-std/Test.sol\";\nimport {RoundFactory} from \"../src/RoundFactory.sol\";\n\ncontract InvMutTest is Test {\n    RoundFactory c;\n    function setUp() public { c = new RoundFactory(); }\n    function testFuzz_property(address actor) public {\n        vm.assume(actor != address(0));\n        c.initialize();\n        vm.prank(actor);\n        bool ok;\n        try c.initialize() { ok = true; } catch { ok = false; }\n        assertFalse(ok);\n    }\n}"
+}

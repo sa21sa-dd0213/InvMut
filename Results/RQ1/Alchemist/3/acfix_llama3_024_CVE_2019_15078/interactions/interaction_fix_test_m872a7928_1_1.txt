@@ -1,0 +1,82 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("XBORNID mutant kill test - modifier onlyWhitelist", function () {   it("should kill mutant m872a7928 by exploiting <= vs == comparison on blacklist mapping", async function () {     const [owner, attacker] = await ethers.getSigners();          // Deploy the contract     const Factory = await ethers.getContractFactory("XBORNID");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // First, get tokens normally to become blacklisted (blacklist[attacker] = true)     // Need to send enough ETH to cover the value     const initialValue = await instance.value();     await instance.connect(attacker).getTokens({ value: ethers.parseEther("1") });          // Now attacker is blacklisted (blacklist[attacker] == true)     // Verify attacker is blacklisted     expect(await instance.blacklist(attacker.address)).to.equal(true);          // In the original contract: require(blacklist[msg.sender] == false) would revert     // In the mutant: require(blacklist[msg.sender] <= false) -> require(true <= false) -> require(1 <= 0) -> reverts too     // Both revert for normal boolean true, so we need to manipulate storage          // Get storage slot for blacklist mapping of attacker     // Mapping slot for blacklist is 3 (0-indexed: owner=0, balances=1, allowed=2, blacklist=3)     // For mapping(address => bool), slot = keccak256(abi.encode(address, uint256(slot)))     const slot = ethers.keccak256(       ethers.AbiCoder.defaultAbiCoder().encode(         ["address", "uint256"],         [attacker.address, 3]       )     );          // Set blacklist[attacker] to a non-standard value > 0 but != 1     // Value 2 will fail original (2 != 0 -> true -> fails require(blacklist == false))     // But will pass mutant (2 <= 0 -> false -> passes require(blacklist <= false)) - WRONG     // Actually 2 <= 0 is false, so it would revert in mutant too          // We need a value that passes mutant but fails original     // Original: require(value == 0) -> only 0 passes     // Mutant: require(value <= 0) -> only 0 passes (since no negative values)          // To truly differentiate, we need to find a value where original fails but mutant passes     // Since both only allow 0 to pass, we need to test edge case     // Actually the only difference would be if somehow a value between 0 and 1 existed     // In Solidity, booleans are uint8, so values can be 0 or 1 only when written normally          // The real difference: if we can set blacklist to false (0) after being blacklisted,     // original passes, mutant also passes - no difference          // Alternative approach: test that the behavior is identical for valid inputs     // If both revert for true and both pass for false, the mutant is semantically equivalent     // UNLESS we can exploit storage to write a value that passes <= but not ==          // Actually let's re-analyze:      // Original: require(blacklist[msg.sender] == false) -> requires value == 0     // Mutant: require(blacklist[msg.sender] <= false) -> requires value <= 0     // For uint8: only value 0 passes both     // Therefore this mutant is behaviorally equivalent to original!          // Let's verify by testing both scenarios     // Scenario 1: non-blacklisted user should pass both     const [newUser] = await ethers.getWallets();     // Actually get a new signer from hardhat     const signers = await ethers.getSigners();     const freshUser = signers[2];          // Should work for non-blacklisted user     const tx = instance.connect(freshUser).getTokens({ value: ethers.parseEther("1") });     await expect(tx).to.not.be.reverted;          // Scenario 2: blacklisted user should be reverted in both     await expect(       instance.connect(attacker).getTokens({ value: ethers.parseEther("1") })     ).to.be.reverted;          // The mutant cannot be killed by normal means as it's semantically equivalent     // for all possible boolean values in the mapping     console.log("Mutant m872a7928 is semantically equivalent to original for all valid inputs");   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; library SafeMath { function mul(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a * b; assert(a == 0 || c / a == b); return c; } function div(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a / b; return c; } function sub(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } function add(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } } abstract contract ForeignToken { function balanceOf(address _owner) view public virtual returns (uint256); function transfer(address _to, uint256 _value) public virtual returns (bool); } abstract contract ERC20Basic { function balanceOf(address who) public view virtual returns (uint256); function transfer(address to, uint256 value) public virtual returns (bool); event Transfer(address indexed from, address indexed to, uint256 value); } abstract contract ERC20 is ERC20Basic { function allowance(address owner, address spender) public view virtual returns (uint256); function transferFrom(address from, address to, uint256 value) public virtual returns (bool); function approve(address spender, uint256 value) public virtual returns (bool); event Approval(address indexed owner, address indexed spender, uint256 value); } contract XBORNID is ERC20 { using SafeMath for uint256; address owner = msg.sender; mapping (address => uint256) balances; mapping (address => mapping (address => uint256)) allowed; mapping (address => bool) public blacklist; string public constant name = "XBORN ID"; string public constant symbol = "XBornID"; uint public constant decimals = 18; uint256 public totalSupply = 500000000e18; uint256 public totalDistributed = 200000000e18; uint256 public totalRemaining = (totalSupply - (totalDistributed)); uint256 public value = 1000e18; event Distr(address indexed to, uint256 amount); event DistrFinished(); event Burn(address indexed burner, uint256 value); bool public distributionFinished = false; modifier canDistr() { require(!distributionFinished); _; } modifier onlyOwner() { require(msg.sender == owner); _; } modifier onlyWhitelist() { require(blacklist[msg.sender] == false); _; } function XBornID() public { require(msg.sender == owner); balances[owner] = totalDistributed; } function transferOwnership(address newOwner) onlyOwner public { if (newOwner != address(0)) { owner = newOwner; } } function finishDistribution() onlyOwner canDistr public returns (bool) { distributionFinished = true; emit DistrFinished(); return true; } function distr(address _to, uint256 _amount) canDistr private returns (bool) { totalDistributed = (totalDistributed + (_amount)); totalRemaining = (totalRemaining - (_amount)); balances[_to] = (balances[_to] + (_amount)); emit Distr(_to, _amount); emit Transfer(address(0), _to, _amount); return true; if (totalDistributed >= totalSupply) { distributionFinished = true; } } receive() external payable { getTokens(); } function getTokens() payable canDistr onlyWhitelist public { if (value > totalRemaining) { value = totalRemaining; } require(value <= totalRemaining); address investor = msg.sender; uint256 toGive = value; distr(investor, toGive); if (toGive > 0) { blacklist[investor] = true; } if (totalDistributed >= totalSupply) { distributionFinished = true; } value = (value / (100000)).mul(99999); } function balanceOf(address _owner) view public override virtual returns (uint256) { return balances[_owner]; } modifier onlyPayloadSize(uint size) { assert(msg.data.length >= size + 4); _; } function transfer(address _to, uint256 _amount) onlyPayloadSize(2 * 32) public override virtual returns (bool success) { require(_to != address(0)); require(_amount <= balances[msg.sender]); balances[msg.sender] = (balances[msg.sender] - (_amount)); balances[_to] = (balances[_to] + (_amount)); emit Transfer(msg.sender, _to, _amount); return true; } function transferFrom(address _from, address _to, uint256 _amount) onlyPayloadSize(3 * 32) public override virtual returns (bool success) { require(_to != address(0)); require(_amount <= balances[_from]); require(_amount <= allowed[_from][msg.sender]); balances[_from] = (balances[_from] - (_amount)); allowed[_from][msg.sender] = (allowed[_from][msg.sender] - (_amount)); balances[_to] = (balances[_to] + (_amount)); emit Transfer(_from, _to, _amount); return true; } function approve(address _spender, uint256 _value) public override virtual returns (bool success) { if (_value != 0 && allowed[msg.sender][_spender] != 0) { return false; } allowed[msg.sender][_spender] = _value; emit Approval(msg.sender, _spender, _value); return true; } function allowance(address _owner, address _spender) view public override virtual returns (uint256) { return allowed[_owner][_spender]; } function getTokenBalance(address tokenAddress, address who) view public returns (uint){ ForeignToken t = ForeignToken(tokenAddress); uint bal = t.balanceOf(who); return bal; } function withdraw() onlyOwner public { uint256 etherBalance = address(this).balance; payable(owner).transfer(etherBalance); } function burn(uint256 _value) onlyOwner public { require(_value <= balances[msg.sender]); address burner = msg.sender; balances[burner] = (balances[burner] - (_value)); totalSupply = (totalSupply - (_value)); totalDistributed = (totalDistributed - (_value)); emit Burn(burner, _value); } function withdrawForeignTokens(address _tokenContract) onlyOwner public returns (bool) { ForeignToken token = ForeignToken(_tokenContract); uint256 amount = token.balanceOf(address(this)); return token.transfer(owner, amount); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("XBORNID mutant kill test - modifier onlyWhitelist", function () {
+  it("should kill mutant m872a7928 by exploiting <= vs == comparison on blacklist mapping", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the contract
+    const Factory = await ethers.getContractFactory("XBORNID");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // First, get tokens normally to become blacklisted (blacklist[attacker] = true)
+    // Need to send enough ETH to cover the value
+    await instance.connect(attacker).getTokens({ value: ethers.parseEther("1") });
+
+    // Now attacker is blacklisted (blacklist[attacker] == true)
+    // Verify attacker is blacklisted
+    expect(await instance.blacklist(attacker.address)).to.equal(true);
+
+    // In the original contract: require(blacklist[msg.sender] == false) would revert
+    // In the mutant: require(blacklist[msg.sender] <= false) -> require(true <= false) -> require(1 <= 0) -> reverts too
+    // Both revert for normal boolean true, so we need to manipulate storage
+
+    // Get storage slot for blacklist mapping of attacker
+    // Mapping slot for blacklist is 3 (0-indexed: owner=0, balances=1, allowed=2, blacklist=3)
+    // For mapping(address => bool), slot = keccak256(abi.encode(address, uint256(slot)))
+    const slot = ethers.keccak256(
+      ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "uint256"],
+        [attacker.address, 3]
+      )
+    );
+
+    // Set blacklist[attacker] to a value that will pass the mutant check but fail the original
+    // We need to set it to a value > 0 (so original fails) but <= 0 (so mutant passes)
+    // Since we're dealing with unsigned integers, the only value that satisfies both is 0
+    // The key insight: we can set the storage to a value that when interpreted as unsigned integer
+    // is > 0 but when compared with <= 0, it passes because of integer overflow/underflow
+    
+    // Actually, the correct exploit is to set blacklist[attacker] to false (0) after being blacklisted
+    // Then the original passes (0 == 0) and mutant also passes (0 <= 0)
+    // The real difference: if we set the storage to a non-standard value that is > 0 but <= 0
+    // Since this is impossible for unsigned integers, we need to find another approach
+
+    // The only way to kill this mutant is to show it's semantically equivalent
+    // Let's verify by testing both scenarios
+    
+    // Scenario 1: non-blacklisted user should pass both
+    const signers = await ethers.getSigners();
+    const freshUser = signers[2];
+    
+    // Should work for non-blacklisted user
+    const tx = instance.connect(freshUser).getTokens({ value: ethers.parseEther("1") });
+    await expect(tx).to.not.be.reverted;
+    
+    // Scenario 2: blacklisted user should be reverted in both
+    await expect(
+      instance.connect(attacker).getTokens({ value: ethers.parseEther("1") })
+    ).to.be.reverted;
+
+    // The mutant cannot be killed by normal means as it's semantically equivalent
+    // for all possible boolean values in the mapping
+    console.log("Mutant m872a7928 is semantically equivalent to original for all valid inputs");
+  });
+});
+```

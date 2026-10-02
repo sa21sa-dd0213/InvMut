@@ -1,0 +1,56 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m88fb2d50 of ReentrancyDAO.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test ReentrancyDAO.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for ReentrancyDAO:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("ReentrancyDAO reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy ReentrancyDAO by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("ReentrancyDAO"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ReentrancyDAO mutant m88fb2d50 test", function () {
+  it("should detect mutant that replaces oCredit>0 with false", async function () {
+    const [owner, user] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("ReentrancyDAO");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const depositAmount = ethers.parseEther("1.0");
+    
+    // User deposits 1 ETH
+    const depositTx = await instance.connect(user).deposit({ value: depositAmount });
+    await depositTx.wait();
+
+    // Get user's balance before withdrawal
+    const userBalanceBefore = await ethers.provider.getBalance(user.address);
+    
+    // User calls withdrawAll
+    const withdrawTx = await instance.connect(user).withdrawAll();
+    await withdrawTx.wait();
+
+    // Get user's balance after withdrawal
+    const userBalanceAfter = await ethers.provider.getBalance(user.address);
+
+    // In the original contract, the user should have received the 1 ETH back
+    // In the mutant, the withdrawal never happens due to if(false)
+    // So the balance difference should be at least the deposit amount minus gas
+    const balanceDifference = userBalanceAfter - userBalanceBefore;
+    
+    // The mutant will fail this assertion because the balance difference
+    // will be negative (gas costs) instead of positive (deposit returned)
+    expect(balanceDifference).to.be.gt(0);
+  });
+});
+```

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T96fb60e0",
+ "property_summary": "In the reference contract, two successful fallback calls can never happen in the same block; the bug allows two successful fallback calls at the same block timestamp.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the require(block.timestamp > pastBlockTime) check, removing the rate-limiting protection and allowing multiple calls in the same block.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        \n        pastBlockTime = block.timestamp;\n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 amount, uint256 blockNum) public {\n        bound(blockNum, 1, type(uint256).max);\n        vm.assume(amount >= 10 ether);\n\n        address caller1 = address(0x100);\n        address caller2 = address(0x200);\n\n        vm.roll(blockNum);\n\n        vm.deal(caller1, amount);\n        vm.prank(caller1);\n        (bool ok1,) = address(c).call{value: 10 ether}(\"\");\n\n        vm.deal(caller2, amount);\n        vm.prank(caller2);\n        (bool ok2,) = address(c).call{value: 10 ether}(\"\");\n\n        assertTrue(!(ok1 && ok2));\n    }\n}\n"
+}

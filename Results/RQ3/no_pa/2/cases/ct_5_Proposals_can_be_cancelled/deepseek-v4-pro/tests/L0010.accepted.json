@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0010",
+ "property_summary": "After cancelProposal(old, new) is called twice on the same oldProposalID, the reference resets mapPID_votes[old] to zero on the first cancel, so the second cancel's mapPID_votes[old] getter returns 0; the buggy version leaves votes unchanged, so the getter returns the original non-zero value.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Delete the line that resets old proposal votes to zero.",
+ "mutated_unit_code": "    function cancelProposal(uint oldProposalID, uint newProposalID) public {\n    require(mapPID_finalising[oldProposalID], \"Must be finalising\");\n    require(newProposalID != oldProposalID, \"New proposal ID must be different from old proposal ID\");\n    require(hasMinority(newProposalID), \"Must have minority\");\n    require(isEqual(bytes(mapPID_type[oldProposalID]), bytes(mapPID_type[newProposalID])), \"Must be same\");\n    emit CancelProposal(msg.sender, oldProposalID, mapPID_votes[oldProposalID], mapPID_votes[newProposalID], iVAULT(VAULT).totalWeight());\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {DAO} from \"../src/DAO.sol\";\n\ncontract InvMutTest is Test {\n    DAO c;\n    function setUp() public { c = new DAO(); }\n    function testRegression_property() public {\n        c.init(address(0x1), address(0x2), address(0x3));\n\n        c.newGrantProposal(address(0x4), 100);\n\n        c.newGrantProposal(address(0x5), 200);\n\n        c.voteProposal(1);\n\n        c.voteProposal(2);\n\n        c.cancelProposal(1, 2);\n\n        uint votesAfterFirstCancel = c.mapPID_votes(1);\n\n        c.newGrantProposal(address(0x6), 300);\n        c.voteProposal(3);\n        c.cancelProposal(1, 3);\n\n        uint votesAfterSecondCancel = c.mapPID_votes(1);\n\n        assertTrue(votesAfterSecondCancel == 0, \"mapPID_votes[old] should be 0 after two cancels\");\n    }\n}"
+}

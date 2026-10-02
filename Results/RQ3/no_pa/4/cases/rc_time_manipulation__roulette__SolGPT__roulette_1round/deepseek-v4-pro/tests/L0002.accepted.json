@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0002",
+ "property_summary": "After two calls to fallback with different timestamps and a third call at a block where block.number % 15 == 0 empties the balance, a fourth call with timestamp equal to the third's timestamp reverts on the reference (due to require(block.timestamp > pastBlockTime)) but succeeds on the bug (because pastBlockTime never updates), causing address(c).balance to differ.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Delete the assignment statement that updates pastBlockTime, so pastBlockTime never changes.",
+ "mutated_unit_code": "    fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        \n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testRegression_property() public {\n        address caller = address(0x1234);\n        vm.deal(caller, 100 ether);\n\n        vm.warp(1000);\n        vm.roll(1);\n        vm.prank(caller);\n        (bool success1,) = address(c).call{value: 10 ether}(\"\");\n        assertTrue(success1);\n\n        vm.warp(2000);\n        vm.roll(2);\n        vm.prank(caller);\n        (bool success2,) = address(c).call{value: 10 ether}(\"\");\n        assertTrue(success2);\n\n        vm.warp(3000);\n        vm.roll(15);\n        vm.prank(caller);\n        (bool success3,) = address(c).call{value: 10 ether}(\"\");\n        assertTrue(success3);\n\n        vm.warp(3000);\n        vm.roll(16);\n        vm.prank(caller);\n        bool ok4;\n        (bool success4,) = address(c).call{value: 10 ether}(\"\");\n        ok4 = success4;\n\n        assertFalse(ok4);\n    }\n}"
+}

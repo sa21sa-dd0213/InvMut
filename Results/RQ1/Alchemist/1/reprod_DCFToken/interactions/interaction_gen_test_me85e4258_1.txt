@@ -1,0 +1,67 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant me85e4258 of DCF.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test DCF.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for DCF:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("DCF reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy DCF by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("DCF"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DCF - kill mutant me85e4258 (distributeTokenPeriodic time interval)", function () {
+  let dcf: any;
+  let owner: any;
+  let addr1: any;
+  let liquidityReceiveAddress: any;
+
+  beforeEach(async function () {
+    [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy DCF with a valid liquidity receive address
+    liquidityReceiveAddress = owner.address;
+    const DCF = await ethers.getContractFactory("DCF");
+    dcf = await DCF.deploy(liquidityReceiveAddress);
+    await dcf.waitForDeployment();
+    
+    // Set the caller (cfo) to owner for testing
+    await dcf.setCaller(owner.address);
+  });
+
+  it("should revert on second call to distributeTokenPeriodic due to multiplied initTime", async function () {
+    // First call should succeed - sets initTime
+    await dcf.distributeTokenPeriodic();
+    
+    // Get the current block timestamp to calculate when the next call would be allowed
+    const block = await ethers.provider.getBlock("latest");
+    const currentTime = block!.timestamp;
+    
+    // In the original: initTime = nowTime + 64800 (18 hours)
+    // In the mutant: initTime = nowTime * 64800
+    // After the first call, initTime is set. We need to wait for the original's 64800 seconds to pass.
+    // But the mutant sets initTime to currentTime * 64800 which is astronomically large.
+    
+    // Fast forward 64800 seconds (18 hours) to simulate the original's waiting period
+    await ethers.provider.send("evm_increaseTime", [64800]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // Try to call distributeTokenPeriodic again
+    // Original: should succeed because enough time has passed (initTime = nowTime + 64800)
+    // Mutant: should revert because initTime = nowTime * 64800 is way in the future
+    await expect(
+      dcf.distributeTokenPeriodic()
+    ).to.be.revertedWith("Not within the execution time range");
+  });
+});
+```

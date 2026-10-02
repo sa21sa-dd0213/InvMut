@@ -1,0 +1,44 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Multicall mutant detection test", function () {
+  it("should kill mutant mcf1f346d by verifying loop execution in multicall", async function () {
+    const [owner] = await ethers.getSigners();
+
+    // Deploy the Multicall contract with required constructor arguments
+    // Based on the contract code, Multicall appears to be a library, so we need to deploy
+    // the actual contract that uses it. Let's deploy the main contract that contains Multicall.
+    // Since the contract code shows a struct-based State storage pattern, we need to find
+    // the actual deployable contract. Looking at the code, Multicall is a library used by
+    // the main contract. Let's deploy the main contract that has the multicall function.
+    
+    // The contract code shows a complex system with FeeConfig, RiskConfig, Oracle, Data structs
+    // We need to deploy with proper constructor arguments. Let's check what constructor expects.
+    // The contract seems to be a proxy/storage pattern. We'll deploy with minimal valid arguments.
+    
+    // For this test, we'll deploy a simple test contract that exposes the multicall function
+    // through a test harness, since the actual deployment requires complex initialization.
+    
+    // Deploy a test contract that inherits the Multicall library behavior
+    const TestMulticall = await ethers.getContractFactory("TestMulticall");
+    const testInstance = await TestMulticall.deploy();
+    await testInstance.waitForDeployment();
+
+    // Prepare test data - a simple function call that modifies state
+    // We'll use a test function that sets a value and emits an event
+    const testData = testInstance.interface.encodeFunctionData("testFunction");
+    
+    // Call multicall with a non-empty array
+    const tx = await testInstance.multicall([testData]);
+    const receipt = await tx.wait();
+
+    // Check that the state was modified (loop executed)
+    // If the mutant is present (i > data.length), the loop won't execute
+    // and the state won't change
+    const result = await testInstance.testValue();
+    
+    // The original should have executed the call and set the value
+    // The mutant would not execute the loop, leaving the value unchanged
+    expect(result).to.equal(1);
+  });
+});

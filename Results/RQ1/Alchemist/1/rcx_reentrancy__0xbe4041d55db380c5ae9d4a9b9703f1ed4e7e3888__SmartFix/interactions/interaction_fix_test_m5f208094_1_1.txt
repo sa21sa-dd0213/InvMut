@@ -1,0 +1,51 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MONEY_BOX mutant test - m5f208094 (division instead of subtraction)", function () {   it("should detect mutant by testing Collect with non-divisible amount", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("MONEY_BOX");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Setup: initialize the contract and set MinSum to 1 wei     await instance.SetMinSum(1);     await instance.SetLogFile(ethers.ZeroAddress);     await instance.Initialized();      // addr1 deposits 10 wei with lock time 0     await instance.connect(addr1).Put(0, { value: 10 });      // Advance time past unlockTime (block.timestamp + 0 is already past)     await ethers.provider.send("evm_mine");      // Try to collect 3 wei (10 - 3 = 7 in original; 10 / 3 = 3 in mutant)     const collectTx = instance.connect(addr1).Collect(3);          // In the original contract this should succeed and leave balance = 7     // In the mutant this would set balance to 10/3 = 3 (integer division)     // We can detect the mutant by checking the balance after Collect     await expect(collectTx).to.not.be.reverted;          const acc = await instance.Acc(addr1.address);     // Original: balance should be 7 (10 - 3)     // Mutant: balance would be 3 (10 / 3)     expect(acc.balance).to.equal(7);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract MONEY_BOX { struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; uint public MinSum; Log LogFile; bool intitalized; function SetMinSum(uint _val) public { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log) public { if(intitalized)revert(); LogFile = Log(_log); } function Initialized() public { intitalized = true; } function Put(uint _lockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; if(block.timestamp+_lockTime>acc.unlockTime)acc.unlockTime=block.timestamp+_lockTime; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MONEY_BOX mutant test - m5f208094 (division instead of subtraction)", function () {
+  it("should detect mutant by testing Collect with non-divisible amount", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("MONEY_BOX");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Setup: initialize the contract and set MinSum to 1 wei
+    await instance.SetMinSum(1);
+    await instance.SetLogFile(ethers.ZeroAddress);
+    await instance.Initialized();
+
+    // addr1 deposits 10 wei with lock time 0
+    await instance.connect(addr1).Put(0, { value: 10 });
+
+    // Advance time past unlockTime (block.timestamp + 0 is already past)
+    await ethers.provider.send("evm_mine");
+
+    // Try to collect 3 wei (10 - 3 = 7 in original; 10 / 3 = 3 in mutant)
+    const collectTx = instance.connect(addr1).Collect(3);
+    
+    // In the original contract this should succeed and leave balance = 7
+    // In the mutant this would set balance to 10/3 = 3 (integer division)
+    // We can detect the mutant by checking the balance after Collect
+    await expect(collectTx).to.not.be.reverted;
+    
+    const acc = await instance.Acc(addr1.address);
+    // Original: balance should be 7 (10 - 3)
+    // Mutant: balance would be 3 (10 / 3)
+    expect(acc.balance).to.equal(7);
+  });
+});
+```

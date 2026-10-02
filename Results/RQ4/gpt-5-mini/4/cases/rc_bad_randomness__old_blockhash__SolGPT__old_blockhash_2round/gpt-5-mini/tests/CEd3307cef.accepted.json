@@ -1,0 +1,12 @@
+{
+ "difference_id": "CEd3307cef",
+ "property_summary": "(property test)",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "replay_verdict": "kill_holds",
+ "replay_settings": "fuzz_runs=10000 seed=InvMut max_test_rejects=2560000 hardened",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {PredictTheBlockHashChallenge as C} from \"../src/PredictTheBlockHashChallenge.sol\";\n\ncontract InvMutTest is Test {\n    C c;\n\n    function setUp() public { c = new C{value: 1 ether}(); }\n\n    // fuzz the player address (actor) so fuzzer finds an address that can trigger the mutant\n    function testFuzz_property(address actor) public {\n        actor = address(uint160(bound(uint256(uint160(actor)), 0xffff + 1, type(uint160).max)));\n        vm.assume(actor.code.length == 0 && actor != address(this) && actor != 0x7109709ECfa91a80626fF3989D68f67F5b1DD12D && actor != 0x000000000000000000636F6e736F6c652e6c6f67 && actor != 0x4e59b44847b379578588920cA78FbF26c0B4956C && actor != 0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38);\n        vm.assume(actor != address(0));\n        // prepare actor with 1 ether to lock a guess\n        vm.deal(actor, 1 ether);\n\n        // actor calls lockInGuess in the same block we'll try to call settle\n        bytes32 dummy = keccak256(abi.encodePacked(\"guess\"));\n        vm.prank(actor);\n        c.lockInGuess{value: 1 ether}(dummy);\n\n        // Now attempt to call settle immediately in the same block.\n        // On the reference contract this must NOT allow a successful payout (settle should require block.number > recorded)\n        // We call settle and record whether it succeeded (did not revert).\n        bool ok;\n        try c.settle() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        // The property: for the correct contract, immediate settle (same block) must never succeed for any actor.\n        // This assertTrue reads c via its behavior (settle success boolean) and will PASS on the reference for all inputs,\n        // while the mutant that allows block.number >= recorded can allow ok == true for some actor (fuzzer will find one).\n        assertTrue(!ok);\n    }\n}\n"
+}

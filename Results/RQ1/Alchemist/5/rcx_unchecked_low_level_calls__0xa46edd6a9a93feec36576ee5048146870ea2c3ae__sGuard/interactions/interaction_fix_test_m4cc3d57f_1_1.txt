@@ -1,0 +1,57 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EBU mutant test - m4cc3d57f", function () {   it("should detect the mutant where loop condition is changed from < to >", async function () {     const [owner, from, recipient] = await ethers.getSigners();          // Deploy a simple ERC20 mock to use as the token contract     const ERC20Mock = await ethers.getContractFactory("ERC20Mock");     const token = await ERC20Mock.deploy("Test", "TST", 18);     await token.waitForDeployment();          // Mint tokens to the 'from' address and approve the EBU contract to spend them     const mintAmount = ethers.parseEther("100");     await token.mint(from.address, mintAmount);          // Deploy EBU contract     const Factory = await ethers.getContractFactory("EBU");     const ebu = await Factory.deploy();     await ebu.waitForDeployment();          // Setup: from approves EBU to spend tokens     await token.connect(from).approve(await ebu.getAddress(), mintAmount);          // Prepare transfer parameters     const recipients = [recipient.address];     const amounts = [ethers.parseEther("10")];          // Capture balances before transfer     const balanceBefore = await token.balanceOf(recipient.address);          // Call transfer function     await ebu.connect(owner).transfer(from.address, await token.getAddress(), recipients, amounts);          // Check recipient balance - should remain unchanged in the mutant (loop never executes)     const balanceAfter = await token.balanceOf(recipient.address);          // In the original, balance would increase; in the mutant, it stays the same     expect(balanceAfter).to.equal(balanceBefore);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EBU{ function transfer(address from,address caddress, address[] memory _tos, uint[] memory v)public returns (bool){ require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ caddress.call(abi.encodeWithSelector(id,from,_tos[i],v[i])); } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant test - m4cc3d57f", function () {
+  it("should detect the mutant where loop condition is changed from < to >", async function () {
+    const [owner, from, recipient] = await ethers.getSigners();
+
+    // Deploy a simple ERC20 mock to use as the token contract
+    const ERC20Mock = await ethers.getContractFactory("ERC20Mock");
+    const token = await ERC20Mock.deploy("Test", "TST", 18);
+    await token.waitForDeployment();
+
+    // Mint tokens to the 'from' address and approve the EBU contract to spend them
+    const mintAmount = ethers.parseEther("100");
+    await token.mint(from.address, mintAmount);
+
+    // Deploy EBU contract
+    const Factory = await ethers.getContractFactory("EBU");
+    const ebu = await Factory.deploy();
+    await ebu.waitForDeployment();
+
+    // Setup: from approves EBU to spend tokens
+    await token.connect(from).approve(await ebu.getAddress(), mintAmount);
+
+    // Prepare transfer parameters
+    const recipients = [recipient.address];
+    const amounts = [ethers.parseEther("10")];
+
+    // Capture balances before transfer
+    const balanceBefore = await token.balanceOf(recipient.address);
+
+    // Call transfer function
+    await ebu.connect(owner).transfer(from.address, await token.getAddress(), recipients, amounts);
+
+    // Check recipient balance - should remain unchanged in the mutant (loop never executes)
+    const balanceAfter = await token.balanceOf(recipient.address);
+
+    // In the original, balance would increase; in the mutant, it stays the same
+    expect(balanceAfter).to.equal(balanceBefore);
+  });
+});
+```

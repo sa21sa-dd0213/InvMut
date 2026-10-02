@@ -1,0 +1,59 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EBU mutant test - mf51ce9e7", function () {   it("should detect mutant by verifying loop execution when array has elements", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy the contract     const Factory = await ethers.getContractFactory("EBU");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Verify the from address matches the deployer (owner)     expect(await instance.from()).to.equal(owner.address);          // Create test addresses and values     const tos = [addr1.address, addr2.address];     const values = [1, 2];          // Call transfer function - it should succeed and make internal calls     const tx = await instance.connect(owner).transfer(tos, values);     const receipt = await tx.wait();          // The original contract should execute the loop and make internal calls     // The mutant with i > _tos.length would skip the loop entirely     // We verify this by checking that the transaction used gas (mutant would use less gas)     expect(receipt.gasUsed).to.be.gt(0);          // For the mutant, the loop condition i > _tos.length is false when i=0 and _tos.length=2     // So no internal calls happen - we can verify this by checking no events were emitted     // (the contract doesn't emit events, so we check that the from address still matches)     // A more direct test: call transfer again with empty array to compare gas usage patterns     const emptyTos = [];     const emptyValues = [];     const txEmpty = await instance.connect(owner).transfer(emptyTos, emptyValues);     const receiptEmpty = await txEmpty.wait();          // With the mutant, both calls would use similar gas (both skip loop)     // With original, the non-empty call uses more gas (loop executes)     // We can detect the mutant by checking that the non-empty call used more gas than empty call     expect(receipt.gasUsed).to.be.gt(receiptEmpty.gasUsed);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function mul_uint256(uint256 a, uint256 b) internal pure returns (uint256) { if (a == 0) { return 0; } uint256 c = a * b; assert(c / a == b); return c; } } contract EBU is sGuard { address public from = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9; address public caddress = 0x1f844685f7Bf86eFcc0e74D8642c54A257111923; function transfer( address[] memory _tos, uint[] memory v)public returns (bool){ require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9); require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ caddress.call(abi.encodeWithSelector(id,from,_tos[i],mul_uint256(v[i], 1000000000000000000))); } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant test - mf51ce9e7", function () {
+  it("should detect mutant by verifying loop execution when array has elements", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy the contract
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Verify the from address matches the deployer (owner)
+    expect(await instance.from()).to.equal(owner.address);
+    
+    // Create test addresses and values
+    const tos = [addr1.address, addr2.address];
+    const values = [1, 2];
+    
+    // Call transfer function - it should succeed and make internal calls
+    const tx = await instance.connect(owner).transfer(tos, values);
+    const receipt = await tx.wait();
+    
+    // The original contract should execute the loop and make internal calls
+    // The mutant with i > _tos.length would skip the loop entirely
+    // We verify this by checking that the transaction used gas (mutant would use less gas)
+    expect(receipt.gasUsed).to.be.gt(0);
+    
+    // For the mutant, the loop condition i > _tos.length is false when i=0 and _tos.length=2
+    // So no internal calls happen - we can verify this by checking no events were emitted
+    // (the contract doesn't emit events, so we check that the from address still matches)
+    // A more direct test: call transfer again with empty array to compare gas usage patterns
+    const emptyTos: string[] = [];
+    const emptyValues: number[] = [];
+    const txEmpty = await instance.connect(owner).transfer(emptyTos, emptyValues);
+    const receiptEmpty = await txEmpty.wait();
+    
+    // With the mutant, both calls would use similar gas (both skip loop)
+    // With original, the non-empty call uses more gas (loop executes)
+    // We can detect the mutant by checking that the non-empty call used more gas than empty call
+    expect(receipt.gasUsed).to.be.gt(receiptEmpty.gasUsed);
+  });
+});
+```

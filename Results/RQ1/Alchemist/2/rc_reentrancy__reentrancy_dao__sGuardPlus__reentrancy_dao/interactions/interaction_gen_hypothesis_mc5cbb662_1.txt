@@ -1,0 +1,25 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract ReentrancyDAO:
+        Contract Code: pragma solidity ^0.8.0; contract sGuardPlus { constructor() { __lock_modifier0_lock = false; } bool private __lock_modifier0_lock; modifier __lock_modifier0() { require(!__lock_modifier0_lock); __lock_modifier0_lock = true; _; __lock_modifier0_lock = false; } } contract ReentrancyDAO is sGuardPlus { mapping (address  => uint )    credit; uint     balance; function withdrawAll () public __lock_modifier0  { uint     oCredit = credit[msg.sender]; if (oCredit>0) { balance-=oCredit; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); credit[msg.sender]=0; } } function deposit () public payable { credit[msg.sender]+=msg.value; balance+=msg.value; } }
+
+    Consider the following mutant of ReentrancyDAO:
+        Mutant mc5cbb662 of function withdrawAll replaces > with >=
+        Mutant Diff: ---| if (oCredit>0) +++| if (oCredit>= 0)
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original condition `if (oCredit > 0)` ensures that only users with a positive credit balance can trigger the withdrawal logic. The mutant changes it to `if (oCredit >= 0)`, which means the condition will always be true because `oCredit` is an unsigned integer (always >= 0).  
+
+**Hypothesis:** The mutant makes the withdrawal logic execute even when the user’s credit balance is zero. Therefore, a test case where a user with zero credit calls `withdrawAll` should succeed on the mutant (sending zero value and setting their credit to zero again), but on the original contract the call would pass the condition check and then attempt to send zero wei, which would still succeed but waste gas unnecessarily. To properly kill the mutant, a test case should verify that the `balance` state variable is correctly updated: if a user with zero credit calls `withdrawAll`, the original contract leaves `balance` unchanged, while the mutant incorrectly reduces `balance` by zero (still unchanged), so the behavioral difference is subtle. A more effective test is to have a user with zero credit call `withdrawAll` and then assert that the contract’s `balance` remains the same as before the call — the mutant will also pass this. The key difference is that the mutant’s condition is always true, so a test case that checks the credit mapping after a zero-credit withdrawal will show that `credit[msg.sender]` is set to 0 (already 0), which is identical.  
+
+The actual kill comes from testing with a user who has a **zero** credit but the contract holds a non-zero balance from other deposits. In the original, the condition fails (0 > 0 is false), so nothing happens. In the mutant, the condition passes (0 >= 0 is true), so it executes `balance -= oCredit` (0) and then sends a zero-value call, which succeeds, and then sets `credit[msg.sender] = 0`. The external call with zero value is harmless, but the mutant introduces an unnecessary external call. A test that checks for the absence of an external call (e.g., by using a mock address that reverts on any call) would pass on the original but fail on the mutant because the mutant makes the call.  
+
+**Final Hypothesis:** A test case where a user with zero credit calls `withdrawAll` on a contract

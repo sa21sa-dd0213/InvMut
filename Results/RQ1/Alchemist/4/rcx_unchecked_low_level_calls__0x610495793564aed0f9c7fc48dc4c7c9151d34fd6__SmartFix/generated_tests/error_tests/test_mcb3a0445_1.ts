@@ -1,0 +1,39 @@
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("SimpleWallet mutant mcb3a0445 test", function () {
+  it("should detect the mutant by testing edge case overflow behavior", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("SimpleWallet");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Set depositsCount to maximum uint256 value by making that many deposits
+    // Since we cannot actually make 2^256-1 deposits, we directly set the storage slot
+    // Get the storage slot for depositsCount (slot 1 in Solidity, as owner is slot 0)
+    const storageSlot = ethers.zeroPadValue(ethers.toBeHex(1), 32);
+    const maxUint = ethers.MaxUint256;
+    await ethers.provider.send("hardhat_setStorageAt", [
+      await instance.getAddress(),
+      storageSlot,
+      ethers.zeroPadValue(ethers.toBeHex(maxUint), 32)
+    ]);
+
+    // Verify depositsCount is now max
+    expect(await instance.depositsCount()).to.equal(ethers.MaxUint256);
+
+    // Attempt a deposit - this should revert due to overflow when incrementing depositsCount
+    // The original contract would revert at overflow, the mutant would also revert
+    // but the key is the mutant's different require condition would be exposed
+    // We send ether to trigger receive() function
+    await expect(
+      owner.sendTransaction({
+        to: await instance.getAddress(),
+        value: ethers.parseEther("1")
+      })
+    ).to.be.reverted;
+
+    // Now verify depositsCount is still max (no change)
+    expect(await instance.depositsCount()).to.equal(ethers.MaxUint256);
+  });
+});

@@ -1,0 +1,167 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("XBORNID mutant m66549410 test", function () {   it("should revert on original but succeed on mutant when getTokens is called with value exceeding totalRemaining", async function () {     const [owner, investor] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("XBORNID");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Set up initial state: distribution not finished, investor not blacklisted     expect(await instance.distributionFinished()).to.be.false;     expect(await instance.blacklist(investor.address)).to.be.false;      // Get initial totalRemaining     let totalRemaining = await instance.totalRemaining();          // Calculate value that will be used in getTokens     let currentValue = await instance.value();          // We need to make value > totalRemaining to test the require statement     // First, let's drain totalRemaining by having investor call getTokens multiple times     // But investor gets blacklisted after first call, so we need multiple investors          const investors = [];     for (let i = 0; i < 5; i++) {       const signer = ethers.Wallet.createRandom().connect(ethers.provider);       investors.push(signer);     }          // Fund investors with ETH for gas     for (const inv of investors) {       await owner.sendTransaction({         to: inv.address,         value: ethers.parseEther("1")       });     }          // Call getTokens multiple times to reduce totalRemaining     for (let i = 0; i < investors.length; i++) {       const inv = investors[i];       const instanceAsInv = instance.connect(inv);              // Check if investor is not blacklisted       if (await instance.blacklist(inv.address)) {         continue;       }              // Check totalRemaining before call       totalRemaining = await instance.totalRemaining();       currentValue = await instance.value();              // If value > totalRemaining, this is where the require would fail on original       // but pass on mutant       if (currentValue > totalRemaining) {         // On original: should revert due to require(value <= totalRemaining)         // On mutant: should proceed (and potentially cause underflow)                  // We can't directly test both versions, but we can verify the behavior         // by checking if the call succeeds (mutant) vs reverts (original)         try {           const tx = await instanceAsInv.getTokens();           await tx.wait();                      // If we get here, the mutant is active (require removed)           // Check for potential issues: totalRemaining might underflow           const newTotalRemaining = await instance.totalRemaining();           const newTotalDistributed = await instance.totalDistributed();                      // Verify the contract state is corrupted           // totalRemaining should never be negative or extremely large           expect(newTotalRemaining).to.be.lt(totalRemaining);                      // If we reached here, the mutant allowed an invalid state           // This proves the mutant is killed (different behavior than original)           console.log("Mutant detected: transaction succeeded without require check");         } catch (error) {           // On original, this would revert - test passes for original           // But we're testing the mutant, so this would mean the mutant was NOT killed           expect.fail("Mutant not detected: transaction reverted");         }       } else {         // value <= totalRemaining, normal operation         const tx = await instanceAsInv.getTokens();         await tx.wait();       }     }          // If we haven't triggered the condition yet, try one more time     totalRemaining = await instance.totalRemaining();     currentValue = await instance.value();          if (currentValue > totalRemaining) {       // Need a fresh non-blacklisted investor       const freshInvestor = ethers.Wallet.createRandom().connect(ethers.provider);       await owner.sendTransaction({         to: freshInvestor.address,         value: ethers.parseEther("1")       });              const instanceAsFresh = instance.connect(freshInvestor);              try {         const tx = await instanceAsFresh.getTokens();         await tx.wait();                  // Mutant detected: transaction succeeded without require check         const corruptedRemaining = await instance.totalRemaining();         console.log(`Mutant detected: totalRemaining became ${corruptedRemaining}`);         expect(true).to.be.true; // Test passes - mutant killed       } catch (error) {         // This would mean the mutant was not killed         expect.fail("Mutant not detected: transaction reverted");       }     } else {       // If we can't trigger the condition, we need to manipulate state differently       // Let's check if we can call finishDistribution and then try       // But getTokens requires canDistr modifier, so distribution must not be finished              // Alternative: try to exploit the value calculation       // After each call, value = (value / 100000).mul(99999)       // This gradually decreases value, so eventually it will be <= totalRemaining              // To truly test the mutant, we need value > totalRemaining       // Let's try to make totalRemaining very small       await instance.connect(owner).burn(await instance.totalSupply());              totalRemaining = await instance.totalRemaining();       currentValue = await instance.value();              // Now totalRemaining should be very small or zero       // Try one more call       const lastInvestor = ethers.Wallet.createRandom().connect(ethers.provider);       await owner.sendTransaction({         to: lastInvestor.address,         value: ethers.parseEther("1")       });              const instanceAsLast = instance.connect(lastInvestor);              try {         const tx = await instanceAsLast.getTokens();         await tx.wait();         console.log("Mutant detected: transaction succeeded with value > totalRemaining");         expect(true).to.be.true;       } catch (error) {         expect.fail("Mutant not detected: transaction reverted");       }     }   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; library SafeMath { function mul(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a * b; assert(a == 0 || c / a == b); return c; } function div(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a / b; return c; } function sub(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } function add(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } } abstract contract ForeignToken { function balanceOf(address _owner) view public virtual returns (uint256); function transfer(address _to, uint256 _value) public virtual returns (bool); } abstract contract ERC20Basic { function balanceOf(address who) public view virtual returns (uint256); function transfer(address to, uint256 value) public virtual returns (bool); event Transfer(address indexed from, address indexed to, uint256 value); } abstract contract ERC20 is ERC20Basic { function allowance(address owner, address spender) public view virtual returns (uint256); function transferFrom(address from, address to, uint256 value) public virtual returns (bool); function approve(address spender, uint256 value) public virtual returns (bool); event Approval(address indexed owner, address indexed spender, uint256 value); } contract XBORNID is ERC20 { using SafeMath for uint256; address owner = msg.sender; mapping (address => uint256) balances; mapping (address => mapping (address => uint256)) allowed; mapping (address => bool) public blacklist; string public constant name = "XBORN ID"; string public constant symbol = "XBornID"; uint public constant decimals = 18; uint256 public totalSupply = 500000000e18; uint256 public totalDistributed = 200000000e18; uint256 public totalRemaining = (totalSupply - (totalDistributed)); uint256 public value = 1000e18; event Distr(address indexed to, uint256 amount); event DistrFinished(); event Burn(address indexed burner, uint256 value); bool public distributionFinished = false; modifier canDistr() { require(!distributionFinished); _; } modifier onlyOwner() { require(msg.sender == owner); _; } modifier onlyWhitelist() { require(blacklist[msg.sender] == false); _; } function XBornID() public { require(msg.sender == owner); balances[owner] = totalDistributed; } function transferOwnership(address newOwner) onlyOwner public { if (newOwner != address(0)) { owner = newOwner; } } function finishDistribution() onlyOwner canDistr public returns (bool) { distributionFinished = true; emit DistrFinished(); return true; } function distr(address _to, uint256 _amount) canDistr private returns (bool) { totalDistributed = (totalDistributed + (_amount)); totalRemaining = (totalRemaining - (_amount)); balances[_to] = (balances[_to] + (_amount)); emit Distr(_to, _amount); emit Transfer(address(0), _to, _amount); return true; if (totalDistributed >= totalSupply) { distributionFinished = true; } } receive() external payable { getTokens(); } function getTokens() payable canDistr onlyWhitelist public { if (value > totalRemaining) { value = totalRemaining; } require(value <= totalRemaining); address investor = msg.sender; uint256 toGive = value; distr(investor, toGive); if (toGive > 0) { blacklist[investor] = true; } if (totalDistributed >= totalSupply) { distributionFinished = true; } value = (value / (100000)).mul(99999); } function balanceOf(address _owner) view public override virtual returns (uint256) { return balances[_owner]; } modifier onlyPayloadSize(uint size) { assert(msg.data.length >= size + 4); _; } function transfer(address _to, uint256 _amount) onlyPayloadSize(2 * 32) public override virtual returns (bool success) { require(_to != address(0)); require(_amount <= balances[msg.sender]); balances[msg.sender] = (balances[msg.sender] - (_amount)); balances[_to] = (balances[_to] + (_amount)); emit Transfer(msg.sender, _to, _amount); return true; } function transferFrom(address _from, address _to, uint256 _amount) onlyPayloadSize(3 * 32) public override virtual returns (bool success) { require(_to != address(0)); require(_amount <= balances[_from]); require(_amount <= allowed[_from][msg.sender]); balances[_from] = (balances[_from] - (_amount)); allowed[_from][msg.sender] = (allowed[_from][msg.sender] - (_amount)); balances[_to] = (balances[_to] + (_amount)); emit Transfer(_from, _to, _amount); return true; } function approve(address _spender, uint256 _value) public override virtual returns (bool success) { if (_value != 0 && allowed[msg.sender][_spender] != 0) { return false; } allowed[msg.sender][_spender] = _value; emit Approval(msg.sender, _spender, _value); return true; } function allowance(address _owner, address _spender) view public override virtual returns (uint256) { return allowed[_owner][_spender]; } function getTokenBalance(address tokenAddress, address who) view public returns (uint){ ForeignToken t = ForeignToken(tokenAddress); uint bal = t.balanceOf(who); return bal; } function withdraw() onlyOwner public { uint256 etherBalance = address(this).balance; payable(owner).transfer(etherBalance); } function burn(uint256 _value) onlyOwner public { require(_value <= balances[msg.sender]); address burner = msg.sender; balances[burner] = (balances[burner] - (_value)); totalSupply = (totalSupply - (_value)); totalDistributed = (totalDistributed - (_value)); emit Burn(burner, _value); } function withdrawForeignTokens(address _tokenContract) onlyOwner public returns (bool) { ForeignToken token = ForeignToken(_tokenContract); uint256 amount = token.balanceOf(address(this)); return token.transfer(owner, amount); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("XBORNID mutant m66549410 test", function () {
+  it("should revert on original but succeed on mutant when getTokens is called with value exceeding totalRemaining", async function () {
+    const [owner, investor] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("XBORNID");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Set up initial state: distribution not finished, investor not blacklisted
+    expect(await instance.distributionFinished()).to.be.false;
+    expect(await instance.blacklist(investor.address)).to.be.false;
+
+    // Get initial totalRemaining
+    let totalRemaining = await instance.totalRemaining();
+    
+    // Calculate value that will be used in getTokens
+    let currentValue = await instance.value();
+    
+    // We need to make value > totalRemaining to test the require statement
+    // First, let's drain totalRemaining by having investor call getTokens multiple times
+    // But investor gets blacklisted after first call, so we need multiple investors
+    
+    const investors = [];
+    for (let i = 0; i < 5; i++) {
+      const signer = ethers.Wallet.createRandom().connect(ethers.provider);
+      investors.push(signer);
+    }
+    
+    // Fund investors with ETH for gas
+    for (const inv of investors) {
+      await owner.sendTransaction({
+        to: inv.address,
+        value: ethers.parseEther("1")
+      });
+    }
+    
+    // Call getTokens multiple times to reduce totalRemaining
+    for (let i = 0; i < investors.length; i++) {
+      const inv = investors[i];
+      const instanceAsInv = instance.connect(inv);
+      
+      // Check if investor is not blacklisted
+      if (await instance.blacklist(inv.address)) {
+        continue;
+      }
+      
+      // Check totalRemaining before call
+      totalRemaining = await instance.totalRemaining();
+      currentValue = await instance.value();
+      
+      // If value > totalRemaining, this is where the require would fail on original
+      // but pass on mutant
+      if (currentValue > totalRemaining) {
+        // On original: should revert due to require(value <= totalRemaining)
+        // On mutant: should proceed (and potentially cause underflow)
+        
+        // We can't directly test both versions, but we can verify the behavior
+        // by checking if the call succeeds (mutant) vs reverts (original)
+        try {
+          const tx = await instanceAsInv.getTokens();
+          await tx.wait();
+          
+          // If we get here, the mutant is active (require removed)
+          // Check for potential issues: totalRemaining might underflow
+          const newTotalRemaining = await instance.totalRemaining();
+          const newTotalDistributed = await instance.totalDistributed();
+          
+          // Verify the contract state is corrupted
+          // totalRemaining should never be negative or extremely large
+          expect(newTotalRemaining).to.be.lt(totalRemaining);
+          
+          // If we reached here, the mutant allowed an invalid state
+          // This proves the mutant is killed (different behavior than original)
+          console.log("Mutant detected: transaction succeeded without require check");
+        } catch (error) {
+          // On original, this would revert - test passes for original
+          // But we're testing the mutant, so this would mean the mutant was NOT killed
+          expect.fail("Mutant not detected: transaction reverted");
+        }
+      } else {
+        // value <= totalRemaining, normal operation
+        const tx = await instanceAsInv.getTokens();
+        await tx.wait();
+      }
+    }
+    
+    // If we haven't triggered the condition yet, try one more time
+    totalRemaining = await instance.totalRemaining();
+    currentValue = await instance.value();
+    
+    if (currentValue > totalRemaining) {
+      // Need a fresh non-blacklisted investor
+      const freshInvestor = ethers.Wallet.createRandom().connect(ethers.provider);
+      await owner.sendTransaction({
+        to: freshInvestor.address,
+        value: ethers.parseEther("1")
+      });
+      
+      const instanceAsFresh = instance.connect(freshInvestor);
+      
+      try {
+        const tx = await instanceAsFresh.getTokens();
+        await tx.wait();
+        
+        // Mutant detected: transaction succeeded without require check
+        const corruptedRemaining = await instance.totalRemaining();
+        console.log(`Mutant detected: totalRemaining became ${corruptedRemaining}`);
+        expect(true).to.be.true; // Test passes - mutant killed
+      } catch (error) {
+        // This would mean the mutant was not killed
+        expect.fail("Mutant not detected: transaction reverted");
+      }
+    } else {
+      // If we can't trigger the condition, we need to manipulate state differently
+      // Let's check if we can call finishDistribution and then try
+      // But getTokens requires canDistr modifier, so distribution must not be finished
+      
+      // Alternative: try to exploit the value calculation
+      // After each call, value = (value / 100000).mul(99999)
+      // This gradually decreases value, so eventually it will be <= totalRemaining
+      
+      // To truly test the mutant, we need value > totalRemaining
+      // Let's try to make totalRemaining very small
+      await instance.connect(owner).burn(await instance.totalSupply());
+      
+      totalRemaining = await instance.totalRemaining();
+      currentValue = await instance.value();
+      
+      // Now totalRemaining should be very small or zero
+      // Try one more call
+      const lastInvestor = ethers.Wallet.createRandom().connect(ethers.provider);
+      await owner.sendTransaction({
+        to: lastInvestor.address,
+        value: ethers.parseEther("1")
+      });
+      
+      const instanceAsLast = instance.connect(lastInvestor);
+      
+      try {
+        const tx = await instanceAsLast.getTokens();
+        await tx.wait();
+        console.log("Mutant detected: transaction succeeded with value > totalRemaining");
+        expect(true).to.be.true;
+      } catch (error) {
+        expect.fail("Mutant not detected: transaction reverted");
+      }
+    }
+  });
+});
+```

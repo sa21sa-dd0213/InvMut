@@ -1,0 +1,29 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EtherLotto:
+        Contract Code: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+
+    Consider the following mutant of EtherLotto:
+        Mutant m89187fec of function play replaces - with /
+        Mutant Diff: ---|             payable(msg.sender).transfer(pot - FEE_AMOUNT); +++|             payable(msg.sender).transfer(pot / FEE_AMOUNT);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+**Step-by-step analysis:**
+
+1. **Original behavior:** In the `play()` function, when `random == 0`, the winner receives `pot - FEE_AMOUNT`. This means the winner gets the entire pot minus 1 wei (the fee sent to the bank). The subtraction ensures the pot is correctly split between bank and winner.
+
+2. **Mutant behavior:** The subtraction (`-`) is replaced with division (`/`). So the winner receives `pot / FEE_AMOUNT`. Since `FEE_AMOUNT` is 1, division by 1 yields the same result as subtraction in this specific case (because `pot - 1` ≠ `pot / 1` when `pot > 1`).
+
+3. **Key difference:** Division by 1 always returns the original number unchanged, while subtraction reduces it by 1. So when the pot is, for example, 10 wei, the original sends 9 wei to the winner and 1 wei to the bank. The mutant sends 10 wei to the winner and 1 wei to the bank — but that's 11 wei total, which is impossible since only 10 wei was in the pot. This means the mutant either reverts (due to insufficient balance) or creates an accounting error.
+
+4. **Test hypothesis:** A test case where the pot accumulates to a value greater than 1 (e.g., after multiple plays), and then a player wins, should detect the mutant. In the original, the winner gets `pot - 1` and the bank gets 1, totaling exactly the pot. In the mutant, the winner gets the full pot (since division by 1 doesn't change it), leaving no funds for the bank's transfer, causing a revert due to insufficient balance.
+
+**Hypothesis:** "The mutant changes the subtraction operator to division. Therefore, a test case that first builds up the pot to more than 1 wei (by having multiple players lose), then has a player win, and verifies that the winner receives the pot minus the fee and the bank receives the fee (without any transaction reverting) should kill the mutant, because the mutant will either revert or send the wrong amounts."

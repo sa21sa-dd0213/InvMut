@@ -1,0 +1,36 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract MultiplicatorX3:
+        Contract Code: pragma solidity ^0.8.0; contract MultiplicatorX3 { address public Owner = msg.sender; receive() external payable {} function withdraw() payable public { require(msg.sender == Owner); payable(Owner).transfer(address(this).balance); } function Command(address adr,bytes memory data) payable public { require(msg.sender == Owner); adr.call{value: msg.value}(data); } function multiplicate(address adr) public payable { if(msg.value>=address(this).balance) { require(((address(this).balance + msg.value) >= address(this).balance)); payable(adr).transfer(address(this).balance+msg.value); } } }
+
+    Consider the following mutant of MultiplicatorX3:
+        Mutant m18139b06 of function withdraw replaces == with !=
+        Mutant Diff: ---|         require(msg.sender == Owner); +++|         require(msg.sender != Owner);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let’s walk through the logic:
+
+1. The original `withdraw` function has `require(msg.sender == Owner)`, meaning only the Owner can call it.
+2. The mutant changes `==` to `!=`, so now the function **reverts if the caller IS the Owner** and **allows anyone else to call it**.
+3. This completely inverts access control — the Owner is locked out, while any attacker can drain the contract’s balance.
+
+A test that would detect this mutant:
+- Call `withdraw` from the Owner’s address — in the original, it succeeds; in the mutant, it reverts.
+- Also call `withdraw` from a non-Owner address — in the original, it reverts; in the mutant, it succeeds and transfers the entire balance to the attacker.
+
+Therefore, a single test that both:
+- expects the Owner’s call to succeed (pass in original),
+- and expects a non-Owner’s call to revert (pass in original),
+
+would fail on the mutant because the behaviors are swapped.
+
+**Hypothesis:**  
+"A test case that calls `withdraw` from the Owner’s address and expects it to succeed, and then calls `withdraw` from a different address and expects it to revert, should kill the mutant because the mutant inverts the access control — the Owner’s call will revert and the non-Owner’s call will succeed."

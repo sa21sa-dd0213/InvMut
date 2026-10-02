@@ -1,0 +1,12 @@
+{
+ "difference_id": "T6bdf7764",
+ "property_summary": "For any depositor and withdraw amount, calling withdrawAll either succeeds and reduces address(c).balance by the depositor's credit while setting their credit to zero (reference guarantees reverting on failed external send preserves balance), whereas the mutant that ignores the send failure can reduce credit and balance without actually transferring Ether to a failing external recipient, breaking the invariant that address(c).balance >= sum of stored credits (in particular address(c).balance decreases even when the external send fails).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace require(callResult) with an unconditional ignore of call failure (removes revert on failed send, changing post-call state observable).",
+ "mutated_unit_code": "function withdrawAll() public {\n        uint oCredit = credit[msg.sender];\n        if (oCredit > 0) {\n            balance -= oCredit;\n            credit[msg.sender] = 0;\n            (bool callResult, ) = msg.sender.call{value: oCredit}(\"\");\n            // intentionally ignore callResult\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ReentrancyDAO} from \"../src/ReentrancyDAO.sol\";\n\ncontract InvMutTest is Test {\n    ReentrancyDAO c;\n\n    function setUp() public { c = new ReentrancyDAO(); }\n\n    function testFuzz_property(uint256 depositAmount, bool accept) public {\n        depositAmount = bound(depositAmount, 1, 1 ether);\n\n        Adversary adv = accept ? new Adversary(true) : new Adversary(false);\n\n        vm.deal(address(this), 2 ether);\n\n        vm.deal(address(adv), depositAmount);\n        vm.prank(address(adv));\n        c.deposit{value: depositAmount}();\n\n        uint256 beforeBal = address(c).balance;\n\n        bool ok;\n        vm.prank(address(adv));\n        try c.withdrawAll() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(\n            (ok && address(c).balance == beforeBal - depositAmount) || (!ok && address(c).balance == beforeBal)\n        );\n    }\n}\n\ncontract Adversary {\n    bool public willAccept;\n    constructor(bool _willAccept) payable { willAccept = _willAccept; }\n    receive() external payable {\n        if (!willAccept) revert(\"nope\");\n    }\n}"
+}

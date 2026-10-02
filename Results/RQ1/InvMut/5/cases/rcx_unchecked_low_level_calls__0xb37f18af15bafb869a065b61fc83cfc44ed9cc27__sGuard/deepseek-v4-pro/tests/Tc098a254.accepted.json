@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tc098a254",
+ "property_summary": "After owner calls sendMoney to a contract that consumes >2300 gas in receive, the call succeeds and the owner's balance decreases by the sent amount; the buggy transfer reverts, leaving the balance unchanged.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the low-level call with a transfer, which limits gas and reverts on failure, changing failure modes.",
+ "mutated_unit_code": "function sendMoney(address _target, uint _value) public onlyOwner {\n        payable(_target).transfer(_value);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n\n    function testFuzz_property(uint256 amount) public {\n        vm.assume(amount > 0 && amount <= 100 ether);\n\n        GasGuzzler guzzler = new GasGuzzler();\n\n        address owner = c.owner();\n        vm.deal(owner, amount);\n        vm.prank(owner);\n        (bool funded,) = address(c).call{value: amount}(\"\");\n        require(funded, \"funding failed\");\n\n        uint256 balanceBefore = address(c).balance;\n        uint256 ownerBalanceBefore = owner.balance;\n\n        vm.prank(owner);\n        bool ok = true;\n        try c.sendMoney(address(guzzler), amount) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        uint256 balanceAfter = address(c).balance;\n        uint256 ownerBalanceAfter = owner.balance;\n\n        assertTrue(ok && balanceAfter == balanceBefore - amount);\n    }\n}\n\ncontract GasGuzzler {\n    receive() external payable {\n        uint256 x;\n        for (uint256 i = 0; i < 50; i++) {\n            x = i * 2;\n        }\n    }\n}\n"
+}

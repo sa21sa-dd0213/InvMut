@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tcf5a6939",
+ "property_summary": "After a successful call to transfer(caddress) from a non-zero address, the external call to caddress should have been made with value v; the buggy version passes 0",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change the amount passed to the external call to a different value, e.g., 0, to alter the transfer semantics.",
+ "mutated_unit_code": "    function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0; i<_tos.length; i++){\n            { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], 0)); require(_s); }\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airPort} from \"../src/airPort.sol\";\n\ncontract InvMutTest is Test {\n    airPort c;\n    function setUp() public { c = new airPort(); }\n    function testFuzz_property(address from, address caddress, address[] memory _tos, uint256 v) public {\n        vm.assume(from != address(0));\n        vm.assume(caddress != address(0));\n        vm.assume(_tos.length > 0);\n        vm.assume(v > 0);\n        CallRecorder recorder = new CallRecorder();\n        vm.prank(from);\n        bool ok = c.transfer(from, address(recorder), _tos, v);\n        assertTrue(ok);\n        for (uint i = 0; i < _tos.length; i++) {\n            assertEq(recorder.lastAmount(i), v);\n        }\n    }\n}\n\ncontract CallRecorder {\n    uint256[] public lastAmount;\n    function transferFrom(address from, address to, uint256 amount) external returns (bool) {\n        lastAmount.push(amount);\n        return true;\n    }\n}\n"
+}

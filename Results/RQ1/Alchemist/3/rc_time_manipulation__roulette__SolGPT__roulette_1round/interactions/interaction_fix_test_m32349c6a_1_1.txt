@@ -1,0 +1,62 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Roulette mutant kill test - m32349c6a", function () {   it("should transfer balance when block.number % 15 == 0 (original behavior), but mutant will NOT transfer", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Roulette");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Fund the contract with 10 ether     await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10")     });      // Get current block number and find the next block divisible by 15     const currentBlock = await ethers.provider.getBlock("latest");     const currentBlockNumber = currentBlock.number;     const targetBlockNumber = currentBlockNumber + (15 - (currentBlockNumber % 15));      // Mine blocks to reach the target block     const blocksToMine = targetBlockNumber - currentBlockNumber - 1;     for (let i = 0; i < blocksToMine; i++) {       await ethers.provider.send("evm_mine", []);     }      // Get balance before call     const balanceBefore = await ethers.provider.getBalance(addr1.address);      // Call fallback from addr1 with 10 ether and wait for block to be divisible by 15     const tx = await addr1.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10"),       gasLimit: 100000     });     await tx.wait();      // Get balance after call     const balanceAfter = await ethers.provider.getBalance(addr1.address);      // On original: balanceAfter should be ~10 ether more (transfer happens)     // On mutant: balanceAfter should be ~10 ether less (no transfer, gas paid)     expect(balanceAfter).to.be.gt(balanceBefore);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant kill test - m32349c6a", function () {
+  it("should transfer balance when block.number % 15 == 0 (original behavior), but mutant will NOT transfer", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Fund the contract with 10 ether
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+
+    // Get current block number and find the next block divisible by 15
+    const currentBlock = await ethers.provider.getBlock("latest");
+    const currentBlockNumber = currentBlock.number;
+    const targetBlockNumber = currentBlockNumber + (15 - (currentBlockNumber % 15));
+
+    // Mine blocks to reach the target block
+    const blocksToMine = targetBlockNumber - currentBlockNumber - 1;
+    for (let i = 0; i < blocksToMine; i++) {
+      await ethers.provider.send("evm_mine", []);
+    }
+
+    // Get balance before call
+    const balanceBefore = await ethers.provider.getBalance(addr1.address);
+
+    // Call fallback from addr1 with 10 ether and wait for block to be divisible by 15
+    const tx = await addr1.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10"),
+      gasLimit: 100000
+    });
+    await tx.wait();
+
+    // Get balance after call
+    const balanceAfter = await ethers.provider.getBalance(addr1.address);
+
+    // On original: balanceAfter should be ~10 ether more (transfer happens)
+    // On mutant: balanceAfter should be ~10 ether less (no transfer, gas paid)
+    expect(balanceAfter).to.be.gt(balanceBefore);
+  });
+});
+```

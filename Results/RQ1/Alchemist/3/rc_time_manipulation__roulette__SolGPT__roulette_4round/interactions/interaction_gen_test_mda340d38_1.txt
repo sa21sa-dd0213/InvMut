@@ -1,0 +1,72 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mda340d38 of Roulette.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Roulette.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Roulette:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Roulette reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Roulette by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Roulette"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant mda340d38 test", function () {
+  it("should not payout when block number is not divisible by 15", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    const contractAddress = await instance.getAddress();
+
+    // Get current block number
+    const blockNumBefore = await ethers.provider.getBlockNumber();
+    
+    // Find a block number that is NOT divisible by 15
+    const targetBlock = blockNumBefore + 1;
+    // Mine to a block where block.number % 15 != 0
+    // If blockNumBefore % 15 == 0, we need to mine 1 block to get a non-divisible block
+    // Otherwise we can use the next block directly
+    const blocksToMine = (15 - (targetBlock % 15)) % 15 === 0 ? 1 : 1;
+    
+    // Send 10 ether to the contract on a block that is not divisible by 15
+    const initialBalance = await ethers.provider.getBalance(contractAddress);
+    const senderBalanceBefore = await ethers.provider.getBalance(addr1.address);
+    
+    // We need to ensure the transaction occurs on a block where block.number % 15 != 0
+    // Let's mine to a block that satisfies this condition
+    while (true) {
+      const currentBlock = await ethers.provider.getBlockNumber();
+      if (currentBlock % 15 !== 0) {
+        break;
+      }
+      await ethers.provider.send("evm_mine", []);
+    }
+    
+    // Send 10 ether to the contract
+    const tx = await addr1.sendTransaction({
+      to: contractAddress,
+      value: ethers.parseEther("10")
+    });
+    await tx.wait();
+    
+    // Check that the contract balance increased (no payout occurred)
+    const finalBalance = await ethers.provider.getBalance(contractAddress);
+    expect(finalBalance).to.equal(initialBalance + ethers.parseEther("10"));
+    
+    // Check that the sender's balance decreased by 10 ether (no refund)
+    const senderBalanceAfter = await ethers.provider.getBalance(addr1.address);
+    const gasCost = tx.gasPrice * tx.gasLimit; // approximate
+    expect(senderBalanceAfter).to.equal(senderBalanceBefore - ethers.parseEther("10") - gasCost);
+  });
+});
+```

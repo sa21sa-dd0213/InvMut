@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0004",
+ "property_summary": "After calling setOwner(someAddress) as admin, the public getter c.owner() returns the new address in reference but remains unchanged (initial msg.sender) in the buggy version.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Delete the assignment to owner, so owner remains unchanged",
+ "mutated_unit_code": "  function setOwner(address _owner)  public onlyAdmin returns (bool success) {\n    return true;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Owned} from \"../src/Owned.sol\";\n\ncontract InvMutTest is Test {\n    Owned c;\n\n    function setUp() public {\n        c = new Owned();\n    }\n\n    function _tryTakeOver(address attacker) internal returns (address before, address after_) {\n        before = c.owner();\n        vm.prank(attacker);\n        (bool ok, ) = address(c).call(abi.encodeWithSignature(\"setOwner(address)\", attacker));\n        ok;\n        after_ = c.owner();\n    }\n\n    function testRegression_attackerCannotSeizeOwnership() public {\n        (address before, address after_) = _tryTakeOver(address(0xBEEF));\n        assertEq(after_, before, \"non-admin must not be able to change owner\");\n    }\n\n    function testFuzz_attackerCannotSeizeOwnership(address attacker) public {\n        vm.assume(attacker != address(0));\n        vm.assume(attacker != address(this));\n        vm.assume(attacker != address(c));\n        vm.assume(uint160(attacker) > 9);\n        (address before, address after_) = _tryTakeOver(attacker);\n        assertEq(after_, before, \"non-admin must not be able to change owner\");\n    }\n}\n"
+}

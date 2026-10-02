@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tc53ffe04",
+ "property_summary": "For any caller and any locked-in guess/block, the correct contract never pays out when blockhash for the guess block is zero; the mutant inverts the check and may pay out when blockhash==0 (so its balance or payout behavior can differ).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replace the comparison that checks answer != 0 with equality check answer == 0, inverting the guard so payout happens only when blockhash is zero.",
+ "mutated_unit_code": "function settle() public {\n        require(guesses[msg.sender].block != 0);\n        require(block.number > guesses[msg.sender].block);\n\n        bytes32 answer = blockhash(guesses[msg.sender].block);\n\n        guesses[msg.sender].block = 0;\n        if (answer == 0 && guesses[msg.sender].guess == answer) {\n            payable(msg.sender).transfer(2 ether);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {PredictTheBlockHashChallenge} from \"../src/PredictTheBlockHashChallenge.sol\";\n\ncontract InvMutTest is Test {\n    PredictTheBlockHashChallenge c;\n\n    function setUp() public { c = new PredictTheBlockHashChallenge{value: 1 ether}(); }\n\n    function testFuzz_property(uint32 blockDelta, address player) public {\n        vm.assume(player != address(0));\n        blockDelta = uint32(bound(blockDelta, 1, 256));\n\n        vm.deal(player, 2 ether);\n\n        bytes32 guessHash = bytes32(uint256(0));\n\n        vm.prank(player);\n        c.lockInGuess{value: 1 ether}(guessHash);\n\n        vm.roll(block.number + blockDelta + 1);\n\n        vm.roll(block.number + 300);\n\n        uint256 balBefore = address(c).balance;\n\n        vm.prank(player);\n        try c.settle() {\n        } catch {\n        }\n\n        uint256 balAfter = address(c).balance;\n\n        assertTrue(balAfter == balBefore);\n    }\n}\n"
+}

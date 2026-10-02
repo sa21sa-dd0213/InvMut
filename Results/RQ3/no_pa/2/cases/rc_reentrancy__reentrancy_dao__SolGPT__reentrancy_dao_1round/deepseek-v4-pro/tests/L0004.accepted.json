@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0004",
+ "property_summary": "After depositing 1 ether and withdrawing, the buggy contract allows a second withdrawal due to uncleared credit, causing a denial-of-service revert on balance underflow, while the reference succeeds with no extra ether.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Delete the `credit[msg.sender] = 0;` statement so that credit is not reset, allowing repeated withdrawals.",
+ "mutated_unit_code": "function withdrawAll() public {\n        uint oCredit = credit[msg.sender];\n        if (oCredit > 0) {\n            balance -= oCredit;\n            (bool callResult, ) = msg.sender.call{value: oCredit}(\"\");\n            require(callResult);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ReentrancyDAO} from \"../src/ReentrancyDAO.sol\";\n\ncontract InvMutTest is Test {\n    ReentrancyDAO c;\n    function setUp() public { c = new ReentrancyDAO(); }\n    function testRegression_property() public {\n        address alice = address(0x1234);\n        vm.deal(alice, 1 ether);\n        vm.prank(alice);\n        c.deposit{value: 1 ether}();\n        vm.prank(alice);\n        c.withdrawAll();\n        vm.prank(alice);\n        bool ok;\n        try c.withdrawAll() { ok = true; } catch { ok = false; }\n        assertTrue(ok);\n    }\n}"
+}

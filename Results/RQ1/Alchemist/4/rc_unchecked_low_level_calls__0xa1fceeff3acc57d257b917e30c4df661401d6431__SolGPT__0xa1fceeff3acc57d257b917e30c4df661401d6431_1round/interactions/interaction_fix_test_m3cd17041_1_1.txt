@@ -1,0 +1,42 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("AirDropContract mutant detection", function () {   it("should revert when tos array is empty (kills mutant m3cd17041)", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("AirDropContract");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Deploy a simple ERC20-like token to use as the contract_address parameter     const TokenFactory = await ethers.getContractFactory("MockERC20");     const token = await TokenFactory.deploy();     await token.waitForDeployment();      // Mint tokens to owner so transferFrom can work     await token.mint(owner.address, ethers.parseEther("100"));     await token.approve(instance.target, ethers.parseEther("100"));      // Call transfer with empty tos array - should revert on original due to tos.length > 0     // On mutant, this condition passes (>= 0 always true) and will revert later or succeed unexpectedly     await expect(       instance.transfer(token.target, [], [])     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract AirDropContract{ constructor() public { } modifier validAddress( address addr ) { require(addr != address(0x0)); require(addr != address(this)); _; } function transfer(address contract_address, address[] memory tos, uint[] memory vs) public validAddress(contract_address) returns (bool) { require(tos.length > 0); require(vs.length > 0); require(tos.length == vs.length); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0 ; i < tos.length; i++){ { (bool _s,) = contract_address.call(abi.encodeWithSelector(id, msg.sender, tos[i], vs[i])); require(_s); } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("AirDropContract mutant detection", function () {
+  it("should revert when tos array is empty (kills mutant m3cd17041)", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("AirDropContract");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy a simple ERC20-like token to use as the contract_address parameter
+    const TokenFactory = await ethers.getContractFactory("MockERC20");
+    const token = await TokenFactory.deploy();
+    await token.waitForDeployment();
+
+    // Mint tokens to owner so transferFrom can work
+    await token.mint(owner.address, ethers.parseEther("100"));
+    await token.approve(instance.target, ethers.parseEther("100"));
+
+    // Call transfer with empty tos array - should revert on original due to tos.length > 0
+    // On mutant, this condition passes (>= 0 always true) and will revert later or succeed unexpectedly
+    await expect(
+      instance.transfer(token.target, [], [])
+    ).to.be.reverted;
+  });
+});
+```

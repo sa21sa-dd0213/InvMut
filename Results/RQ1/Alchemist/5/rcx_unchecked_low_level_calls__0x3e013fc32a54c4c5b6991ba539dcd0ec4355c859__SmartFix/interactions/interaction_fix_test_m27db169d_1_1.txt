@@ -1,0 +1,61 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MultiplicatorX4 mutant test - m27db169d", function () {   it("should detect that Command sends msg.value-1 instead of msg.value", async function () {     const [owner, attacker] = await ethers.getSigners();          // Deploy the contract (no constructor arguments needed)     const Factory = await ethers.getContractFactory("MultiplicatorX4");     const instance = await Factory.deploy();     await instance.waitForDeployment();     const contractAddress = await instance.getAddress();      // Fund the contract with some initial balance (optional, for context)     await owner.sendTransaction({       to: contractAddress,       value: ethers.parseEther("1.0")     });      // Deploy a simple receiver contract to track received ETH     const ReceiverFactory = await ethers.getContractFactory("contracts/test/Receiver.sol:Receiver");     const receiver = await ReceiverFactory.deploy();     await receiver.waitForDeployment();     const receiverAddress = await receiver.getAddress();      // Prepare the call data - we'll call a simple function on the receiver     const data = receiver.interface.encodeFunctionData("receiveFunds");      // Record receiver balance before     const balanceBefore = await ethers.provider.getBalance(receiverAddress);      // Execute Command with exactly 1 ether     const sentAmount = ethers.parseEther("1.0");     const tx = await instance.connect(owner).Command(receiverAddress, data, { value: sentAmount });     await tx.wait();      // Check receiver balance after - should have received msg.value, not msg.value-1     const balanceAfter = await ethers.provider.getBalance(receiverAddress);     const receivedAmount = balanceAfter - balanceBefore;      // In the original contract, receiver would get exactly sentAmount (1 ether)     // In the mutant, receiver would get sentAmount - 1 wei (1 ether - 1 wei)     expect(receivedAmount).to.equal(sentAmount);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract MultiplicatorX4 { address public Owner = msg.sender; receive() external payable {} function withdraw() payable public { require(msg.sender == Owner); payable(Owner).transfer(address(this).balance); } function Command(address adr,bytes memory data) payable public { require(msg.sender == Owner); adr.call{value: msg.value}(data); } function multiplicate(address adr) public payable { if(msg.value>=address(this).balance) { require(((address(this).balance + msg.value) >= address(this).balance)); payable(adr).transfer(address(this).balance+msg.value); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MultiplicatorX4 mutant test - m27db169d", function () {
+  it("should detect that Command sends msg.value-1 instead of msg.value", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("MultiplicatorX4");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    const contractAddress = await instance.getAddress();
+
+    // Fund the contract with some initial balance (optional, for context)
+    await owner.sendTransaction({
+      to: contractAddress,
+      value: ethers.parseEther("1.0")
+    });
+
+    // Deploy a simple receiver contract to track received ETH
+    const ReceiverFactory = await ethers.getContractFactory("contracts/test/Receiver.sol:Receiver");
+    const receiver = await ReceiverFactory.deploy();
+    await receiver.waitForDeployment();
+    const receiverAddress = await receiver.getAddress();
+
+    // Prepare the call data - we'll call a simple function on the receiver
+    const data = receiver.interface.encodeFunctionData("receiveFunds");
+
+    // Record receiver balance before
+    const balanceBefore = await ethers.provider.getBalance(receiverAddress);
+
+    // Execute Command with exactly 1 ether
+    const sentAmount = ethers.parseEther("1.0");
+    const tx = await instance.connect(owner).Command(receiverAddress, data, { value: sentAmount });
+    await tx.wait();
+
+    // Check receiver balance after - should have received msg.value, not msg.value-1
+    const balanceAfter = await ethers.provider.getBalance(receiverAddress);
+    const receivedAmount = balanceAfter - balanceBefore;
+
+    // In the original contract, receiver would get exactly sentAmount (1 ether)
+    // In the mutant, receiver would get sentAmount - 1 wei (1 ether - 1 wei)
+    expect(receivedAmount).to.equal(sentAmount);
+  });
+});
+```

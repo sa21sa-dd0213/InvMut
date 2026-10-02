@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0004",
+ "property_summary": "After a deposit, the contract's Ether balance must equal the sum of all users' balances (observable via public withdraws), but under M the deposit amount is lost to address(0) so the contract holds more Ether than the total withdrawable balances.",
+ "render_status": "rendered",
+ "validation_status": "skipped",
+ "validation_error": null,
+ "kill": "bug_no_kill:holds_on_modified",
+ "origin": "primary",
+ "change_summary": "Replace msg.sender with a constant address in balance increment so deposit credits wrong user.",
+ "mutated_unit_code": "function deposit() public payable {\n        assert(balances[msg.sender] + msg.value > balances[msg.sender]);\n        balances[address(0)] += msg.value;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {Wallet} from \"../src/Wallet.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    Wallet c;\n\n    function setUp() public {\n        c = new Wallet();\n    }\n\n    function _run(address user, uint256 amount) internal {\n        amount = bound(amount, 0, 1000000000000000000000000000000);\n        amount = bound(amount, 0, 1000000000000000000000000000000);\n        vm.deal(address(this), VALUE_CAP + VALUE_CAP);\n        vm.deal(address(c), VALUE_CAP);\n        vm.assume(amount > 0);\n        vm.assume(address(this).balance >= amount);\n        uint balBefore = address(c).balance;\n        try c.deposit{value: amount}() {} catch { return; }\n        uint balAfter = address(c).balance;\n        bool reverted = false;\n        try c.withdraw(amount) { reverted = false; } catch { reverted = true; }\n        uint balFinal = address(c).balance;\n        uint initBal = address(c).balance;\n        try c.deposit{value: amount}() {} catch { return; }\n        try c.refund() {} catch { return; }\n        uint finalBal = address(c).balance;\n        assertTrue(finalBal == initBal);\n    }\n\n    function testFuzz_run(address user, uint256 amount) public {\n        _run(user, amount);\n    }\n\n    receive() external payable {}\n}\n"
+}

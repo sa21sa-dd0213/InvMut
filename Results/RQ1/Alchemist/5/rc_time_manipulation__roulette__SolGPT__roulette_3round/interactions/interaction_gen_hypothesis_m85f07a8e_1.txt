@@ -1,0 +1,22 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Roulette:
+        Contract Code: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp + 1; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+
+    Consider the following mutant of Roulette:
+        Mutant m85f07a8e of function fallback replaces + with -
+        Mutant Diff: ---|         pastBlockTime = block.timestamp + 1; +++|         pastBlockTime = block.timestamp - 1;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract uses `pastBlockTime = block.timestamp + 1` to prevent reentrancy by requiring a one-second delay between calls. The mutant changes this to `pastBlockTime = block.timestamp - 1`, which effectively sets the timestamp to one second in the past.
+
+**Hypothesis:**  
+The mutant allows the `fallback` function to be called repeatedly within the same block, because setting `pastBlockTime` to a past timestamp means the next call's `require(block.timestamp > pastBlockTime)` condition will always pass (since the current timestamp is always greater than a past timestamp). Therefore, a test case that sends two consecutive transactions of exactly 10 ether within the same block (or with no time delay) and expects the second call to revert due to the time check should fail on the mutant (the second call succeeds), killing it.

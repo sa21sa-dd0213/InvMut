@@ -1,0 +1,29 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EtherLotto:
+        Contract Code: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+
+    Consider the following mutant of EtherLotto:
+        Mutant m58a63c87 of function play replaces block.difficulty with block.prevrandao
+        Mutant Diff: ---|         uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; +++|         uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.prevrandao))) % 2;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's break it down:
+
+- **Original**: `block.difficulty` is used. In Solidity pre-Merge, `block.difficulty` returned the PoW difficulty, a value that can vary between blocks.
+- **Mutant**: `block.prevrandao` is used. After the Ethereum Merge, `block.difficulty` was deprecated and replaced by `block.prevrandao`, which returns a pseudo-random value derived from the beacon chain. In a local development or test environment using a pre-Merge EVM, `block.prevrandao` may return `0` or be unavailable.
+
+The key difference is that the mutant changes the source of randomness. Under certain test environments (e.g., a local Hardhat or Ganache instance set to a pre-Merge EVM version), `block.prevrandao` might consistently return `0`. That would mean the random number always becomes `uint(keccak256(...)) % 2`, which, if `block.prevrandao` is `0`, still yields a random result but potentially different distribution than with `block.difficulty`. More importantly, if the test environment does not support `block.prevrandao`, the transaction might revert or behave unexpectedly.
+
+However, the most straightforward way to kill this mutant is to test in a **post-Merge environment** where `block.difficulty` is `0` (or deprecated) and `block.prevrandao` is the active field. In such an environment, the original code (using `block.difficulty`) would produce a different value than the mutant (using `block.prevrandao`), leading to a different `random` outcome.
+
+**Hypothesis**:  
+The mutant replaces `block.difficulty` with `block.prevrandao`. A test case that runs the `play` function in a post-Merge Ethereum environment (where `block.difficulty` is always `0` but `block.prevrandao` is non-zero) and checks that the winner selection logic behaves as expected under the original randomness source should kill the mutant. Specifically, the test should call `play()` multiple times and assert that the pot is distributed in a pattern consistent with `block.difficulty` (always `0` → `random == 0` always → bank always wins), whereas the mutant would produce different outcomes because `block.prevrandao` is non-zero. This difference in behavior will cause the test to fail on the mutant

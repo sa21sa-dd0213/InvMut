@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract SimpleWallet:
+        Contract Code: pragma solidity ^0.8.0; contract SimpleWallet { address public owner = payable(msg.sender); uint public depositsCount; modifier onlyOwner { require(msg.sender == owner); _; } fallback() external payable { depositsCount++; } function withdrawAll() public onlyOwner { withdraw(address(this).balance); } function withdraw(uint _value) public onlyOwner { payable(msg.sender).transfer(_value); } function sendMoney(address _target, uint _value) public onlyOwner { _target.call{value: _value}(""); } }
+
+    Consider the following mutant of SimpleWallet:
+        Mutant m507102b2 of function withdrawAll replaces function withdrawAll() public onlyOwner with function withdrawAll() public
+        Mutant Diff: ---|     function withdrawAll() public onlyOwner { +++|     function withdrawAll() public  {
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant removes the `onlyOwner` modifier from the `withdrawAll` function, meaning anyone can now call it and drain the contract's entire balance.  
+
+**Hypothesis:** A test case that calls `withdrawAll()` from a non-owner address (e.g., a different externally owned account) and then checks that the transaction does not revert, followed by verifying that the contract's balance becomes zero (or that the caller's balance increases by the contract's full balance), should kill the mutant. On the original contract, this call would revert due to the `onlyOwner` modifier, so the test would expect a revert and pass. On the mutant, the call succeeds and the balance is drained, causing the test to fail.

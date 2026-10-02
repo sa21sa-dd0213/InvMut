@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0003",
+ "property_summary": "No matter who calls sendMoney with what arguments, when the call succeeds, the contract's balance does not increase; the bug breaks this by allowing sendMoney to be called (through the always-failing modifier) by reverting instead of succeeding, making the balance-increase check vacuously true.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace `require(msg.sender == owner)` with `require(msg.sender == address(0))` making the onlyOwner modifier always fail, which makes `withdraw` callable by nobody and thus changes the withdrawal outcome.",
+ "mutated_unit_code": "modifier onlyOwner {\n        require(msg.sender == address(0));\n        _;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n    function testFuzz_property(address target, uint256 value, bytes calldata data) public {\n        vm.assume(target != address(this) && target != address(c));\n        vm.assume(value <= address(c).balance);\n        vm.deal(address(c), value + 1 ether);\n        uint256 balBefore = address(c).balance;\n        try c.sendMoney(target, value, data) {\n            assertTrue(address(c).balance <= balBefore);\n        } catch {\n            assertTrue(false);\n        }\n    }\n}"
+}

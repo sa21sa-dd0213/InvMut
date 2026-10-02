@@ -1,0 +1,42 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract PRIVATE_ETH_CELL:
+        Contract Code: pragma solidity ^0.8.0; contract PRIVATE_ETH_CELL { mapping (address=>uint256) public balances; uint public MinSum; LogFile Log; bool intitalized; function SetMinSum(uint _val) public { require(!intitalized); MinSum = _val; } function SetLogFile(address _log) public { require(!intitalized); Log = LogFile(_log); } function Initialized() public { intitalized = true; } function Deposit() public payable { require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); balances[msg.sender]+= msg.value; Log.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { if(balances[msg.sender]>=MinSum && balances[msg.sender]>=_am) { balances[msg.sender] = (balances[msg.sender] - _am); (bool _veri_ok,) = msg.sender.call{value: _am}(""); if(_veri_ok) { Log.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } receive() external payable { Deposit(); } } contract LogFile { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val,string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+
+    Consider the following mutant of PRIVATE_ETH_CELL:
+        Mutant mcf187911 of function Collect replaces >= with <=
+        Mutant Diff: ---|         if(balances[msg.sender]>=MinSum && balances[msg.sender]>=_am) +++|         if(balances[msg.sender]>=MinSum && balances[msg.sender]<=_am)
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's reason step by step.
+
+In the original `Collect` function, the condition is:
+```
+if(balances[msg.sender] >= MinSum && balances[msg.sender] >= _am)
+```
+This means the user can only withdraw an amount `_am` that is **less than or equal to** their balance.
+
+In the mutant, the second condition is changed to:
+```
+balances[msg.sender] <= _am
+```
+This means the user can only withdraw if the amount `_am` is **greater than or equal to** their balance.
+
+The critical difference:  
+- **Original**: Allows withdrawal when balance is sufficient (balance ≥ _am).  
+- **Mutant**: Allows withdrawal only when balance is insufficient or exactly equal (balance ≤ _am).  
+
+If a user has a balance strictly greater than the requested withdrawal amount (e.g., balance = 100, _am = 50), the original allows the withdrawal, but the mutant **reverts** because 100 ≤ 50 is false.
+
+Thus, to kill the mutant, we need a test where a user with a sufficient balance (≥ MinSum) tries to withdraw an amount strictly less than their balance.
+
+**Hypothesis**:  
+"A test case where a user has deposited funds, their balance is greater than both MinSum and the withdrawal amount, and they attempt to collect a value strictly less than their balance. The original contract allows this withdrawal and logs it; the mutant reverts because the condition `balances[msg.sender] <= _am` fails."

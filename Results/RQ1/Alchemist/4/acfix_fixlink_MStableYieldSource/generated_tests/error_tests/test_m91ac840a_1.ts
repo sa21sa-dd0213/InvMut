@@ -1,0 +1,166 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MStableYieldSource mutant kill test - reentrancy on supplyTokenTo", function () {
+  it("should revert on reentrant call to supplyTokenTo when nonReentrant modifier is present (original) but allow it when removed (mutant)", async function () {
+    // Deploy mock contracts to simulate the required interfaces
+    const [owner, attacker] = await ethers.getSigners();
+
+    // Deploy a mock ERC20 token
+    const MockERC20 = await ethers.getContractFactory("MockERC20");
+    const mockToken = await MockERC20.deploy("Mock MAsset", "mASSET", 18);
+    await mockToken.waitForDeployment();
+
+    // Deploy a mock SavingsContractV2 that returns the token address and handles deposits
+    const MockSavings = await ethers.getContractFactory("MockSavingsContractV2");
+    const mockSavings = await MockSavings.deploy(await mockToken.getAddress());
+    await mockSavings.waitForDeployment();
+
+    // Deploy MStableYieldSource with the mock savings contract
+    const Factory = await ethers.getContractFactory("MStableYieldSource");
+    const instance = await Factory.deploy(await mockSavings.getAddress());
+    await instance.waitForDeployment();
+
+    // Deploy a malicious reentrancy attacker contract
+    const ReentrancyAttacker = await ethers.getContractFactory("ReentrancyAttacker");
+    const attackerContract = await ReentrancyAttacker.deploy(await instance.getAddress());
+    await attackerContract.waitForDeployment();
+
+    // Fund attacker contract with mAsset tokens for the reentrancy attempt
+    const mintAmount = ethers.parseEther("100");
+    await mockToken.mint(await attackerContract.getAddress(), mintAmount);
+
+    // Approve the yield source to spend attacker contract's tokens
+    await mockToken.connect(attacker).approve(await instance.getAddress(), ethers.MaxUint256);
+    await attackerContract.setApproval(await mockToken.getAddress(), await instance.getAddress());
+
+    // Attempt reentrancy: the attacker contract will call supplyTokenTo from within supplyTokenTo
+    // The original contract with nonReentrant should revert; the mutant without it should succeed
+    // We expect a revert if nonReentrant is active (original), but no revert if removed (mutant)
+    await expect(
+      attackerContract.connect(attacker).attack(ethers.parseEther("10"), attacker.address)
+    ).to.be.revertedWith("ReentrancyGuard: reentrant call");
+  });
+});
+
+// Helper contracts to be deployed in the test (place in separate files or inline for simplicity)
+// MockERC20
+contract MockERC20 {
+  string public name;
+  string public symbol;
+  uint8 public decimals;
+  mapping(address => uint256) public balanceOf;
+  mapping(address => mapping(address => uint256)) public allowance;
+
+  constructor(string memory _name, string memory _symbol, uint8 _decimals) {
+    name = _name;
+    symbol = _symbol;
+    decimals = _decimals;
+  }
+
+  function mint(address to, uint256 amount) external {
+    balanceOf[to] += amount;
+  }
+
+  function approve(address spender, uint256 amount) external returns (bool) {
+    allowance[msg.sender][spender] = amount;
+    return true;
+  }
+
+  function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+    require(balanceOf[from] >= amount);
+    require(allowance[from][msg.sender] >= amount);
+    balanceOf[from] -= amount;
+    balanceOf[to] += amount;
+    allowance[from][msg.sender] -= amount;
+    return true;
+  }
+
+  function transfer(address to, uint256 amount) external returns (bool) {
+    require(balanceOf[msg.sender] >= amount);
+    balanceOf[msg.sender] -= amount;
+    balanceOf[to] += amount;
+    return true;
+  }
+}
+
+// MockSavingsContractV2
+contract MockSavingsContractV2 {
+  IERC20 public underlying;
+  mapping(address => uint256) public creditBalances;
+  uint256 public exchangeRate = 1e18;
+
+  constructor(address _underlying) {
+    underlying = IERC20(_underlying);
+  }
+
+  function depositSavings(uint256 amount) external returns (uint256 creditsIssued) {
+    underlying.transferFrom(msg.sender, address(this), amount);
+    creditsIssued = amount;
+    creditBalances[msg.sender] += creditsIssued;
+    return creditsIssued;
+  }
+
+  function redeemUnderlying(uint256 amount) external returns (uint256 creditsBurned) {
+    creditsBurned = amount;
+    creditBalances[msg.sender] -= creditsBurned;
+    underlying.transfer(msg.sender, amount);
+    return creditsBurned;
+  }
+
+  function underlyingToCredits(uint256 _underlying) external view returns (uint256) {
+    return _underlying;
+  }
+
+  function creditsToUnderlying(uint256 _credits) external view returns (uint256) {
+    return _credits;
+  }
+
+  function balanceOfUnderlying(address _user) external view returns (uint256) {
+    return creditBalances[_user];
+  }
+}
+
+// ReentrancyAttacker contract
+contract ReentrancyAttacker {
+  MStableYieldSource public target;
+  address public token;
+  address public spender;
+
+  constructor(address _target) {
+    target = MStableYieldSource(_target);
+  }
+
+  function setApproval(address _token, address _spender) external {
+    token = _token;
+    spender = _spender;
+    IERC20(_token).approve(_spender, type(uint256).max);
+  }
+
+  function attack(uint256 amount, address to) external {
+    // This call will trigger the reentrancy by calling supplyTokenTo again
+    target.supplyTokenTo(amount, to);
+  }
+
+  // Fallback to re-enter supplyTokenTo
+  receive() external payable {
+    if (address(target).balance > 0) {
+      target.supplyTokenTo(1, address(this));
+    }
+  }
+}
+
+interface IERC20 {
+  function transferFrom(address from, address to, uint256 amount) external returns (bool);
+  function transfer(address to, uint256 amount) external returns (bool);
+  function approve(address spender, uint256 amount) external returns (bool);
+  function balanceOf(address account) external view returns (uint256);
+  function allowance(address owner, address spender) external view returns (uint256);
+}
+
+interface MStableYieldSource {
+  function supplyTokenTo(uint256 mAssetAmount, address to) external;
+  function depositToken() external view returns (address);
+  function balanceOfToken(address addr) external view returns (uint256);
+  function redeemToken(uint256 mAssetAmount) external returns (uint256);
+}

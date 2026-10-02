@@ -1,0 +1,12 @@
+{
+ "difference_id": "Ta7bb2ef3",
+ "property_summary": "Rule: Only the designated DEPOSITOR_ACCOUNT can successfully call setL1BlockValues (so number changes only when msg.sender == DEPOSITOR_ACCOUNT); the mutant also allows address(this) (self-calls) so a self-call can change number — violating the rule for some inputs where the contract calls itself.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change the onlyDepositor check to allow either the depositor account or the current owner (msg.sender) — here allowing any sender equal to address(this) (self-call) as well, effectively weakening the check when calls originate from the contract itself.",
+ "mutated_unit_code": "modifier onlyDepositor() {\n    require(msg.sender == DEPOSITOR_ACCOUNT || msg.sender == address(this), \"L1Block: only the depositor account can set L1 block values\");\n    _;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {L1Block} from \"../src/L1Block.sol\";\n\ncontract InvMutTest is Test {\n    L1Block c;\n\n    function setUp() public { c = new L1Block(); }\n\n    function testFuzz_property(uint64 newNumber) public {\n\n        bytes memory data = abi.encodeWithSignature(\n            \"setL1BlockValues(uint64,uint64,uint256,bytes32,uint64,bytes32,uint256,uint256)\",\n            newNumber,\n            uint64(block.timestamp),\n            uint256(0),\n            bytes32(0),\n            uint64(0),\n            bytes32(0),\n            uint256(0),\n            uint256(0)\n        );\n\n        address depositor = 0xDeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001;\n        vm.prank(depositor);\n        (bool ok1, ) = address(c).call(data);\n        assertTrue(ok1);\n        assertTrue(c.number() == newNumber);\n\n        vm.prank(address(c));\n        (bool ok2, ) = address(c).call(data);\n\n        assertTrue(!ok2 && c.number() == newNumber);\n    }\n}\n"
+}

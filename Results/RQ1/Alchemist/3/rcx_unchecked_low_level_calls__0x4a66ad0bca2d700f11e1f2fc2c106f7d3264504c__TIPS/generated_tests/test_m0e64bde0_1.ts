@@ -1,0 +1,56 @@
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("EBU mutant m0e64bde0 - loop condition changed from < to >", function () {
+  it("should revert or fail to transfer when array has elements, detecting the mutant that never executes the loop", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // The contract has hardcoded addresses:
+    // from = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9
+    // caddress = 0x1f844685f7Bf86eFcc0e74D8642c54A257111923
+    // Only the hardcoded 'from' address can call transfer successfully.
+    // We'll use the hardhat account that corresponds to that address.
+    // Since we cannot control the signer for that specific address directly,
+    // we need to impersonate it or use the account that owns it.
+    // For simplicity, we use the owner signer but we must set the from address as msg.sender.
+    // In Hardhat we can use setBalance and impersonate, or we can directly use the address if it's one of the signers.
+    // The address 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9 is not one of the default signers.
+    // We'll impersonate it using hardhat_impersonateAccount.
+    await ethers.provider.send("hardhat_impersonateAccount", ["0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9"]);
+    const fromSigner = await ethers.getSigner("0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9");
+
+    // Fund the impersonated account with some ETH to pay gas
+    await owner.sendTransaction({
+      to: "0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9",
+      value: ethers.parseEther("1.0")
+    });
+
+    // Prepare test data: two recipients with values
+    const tos = [addr1.address, addr2.address];
+    const values = [1, 2]; // these will be multiplied by 1e18 inside the contract
+
+    // Call transfer from the authorized address
+    const tx = await instance.connect(fromSigner).transfer(tos, values);
+    const receipt = await tx.wait();
+
+    // In the original contract, the loop would execute twice and make two external calls.
+    // In the mutant, the loop condition i > _tos.length is false from the start, so no calls are made.
+    // To detect the mutant, we check that the transaction actually made external calls.
+    // Since we cannot directly inspect internal calls, we can check that the transaction consumed gas
+    // for the loop iterations (original would use more gas than mutant).
+    // Alternatively, we can check the behavior of the caddress contract if it exists.
+    // Since we don't control caddress, we rely on gas usage difference.
+    // The mutant will use significantly less gas because it skips the loop entirely.
+    // We can assert that gasUsed is above a threshold that the mutant would not reach.
+    // A safe approach: expect that the transaction does not revert (original would succeed)
+    // and then verify that at least some minimal loop-related gas was consumed.
+    // The mutant would still succeed (no revert) but with lower gas.
+    // Let's calculate a reasonable lower bound for the original: each iteration does an external call (at least 7000 gas each)
+    // plus loop overhead. For 2 iterations, at least 15000 gas. Mutant would be around 25000 base + loop setup.
+    // We'll use a conservative threshold of 30000 gas.
+    expect(receipt.gasUsed).to.be.greaterThan(30000);
+  });
+});

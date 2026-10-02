@@ -1,0 +1,66 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant md180d390 of BANK_SAFE.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test BANK_SAFE.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for BANK_SAFE:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("BANK_SAFE reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy BANK_SAFE by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("BANK_SAFE"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("BANK_SAFE mutant detection - overflow protection", function () {
+  it("should revert on deposit that would cause overflow in original, but mutant allows it", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("BANK_SAFE");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // First, initialize the contract so we can deposit
+    await instance.connect(owner).SetMinSum(0);
+    await instance.connect(owner).Initialized();
+
+    // Get the maximum uint256 value
+    const MAX_UINT = ethers.MaxUint256;
+    
+    // First deposit a large amount to addr1's balance to set up overflow condition
+    // We need to make addr1's balance large enough so that adding 1 would overflow
+    const largeAmount = MAX_UINT - BigInt(1);
+    
+    // Send ether to the contract to fund addr1's balance
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: largeAmount
+    });
+    
+    // Deposit the large amount as addr1
+    // We need to call deposit through receive() by sending ether
+    await addr1.sendTransaction({
+      to: await instance.getAddress(),
+      value: largeAmount
+    });
+
+    // Now try to deposit 1 wei - this should overflow in original (revert)
+    // but in mutant it will silently overflow and wrap around
+    const tx = addr1.sendTransaction({
+      to: await instance.getAddress(),
+      value: 1
+    });
+
+    // In the original contract, this should revert due to overflow check
+    // In the mutant, it will succeed (killing the mutant)
+    await expect(tx).to.be.reverted;
+  });
+});
+```

@@ -1,0 +1,29 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Roulette:
+        Contract Code: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+
+    Consider the following mutant of Roulette:
+        Mutant mc4c6acff of function fallback replaces block.number with block.number-1
+        Mutant Diff: ---|         if(block.number % 15 == 0) { +++|         if(block.number-1 % 15 == 0) {
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's analyze the difference:
+
+- **Original**: `if(block.number % 15 == 0)`  
+- **Mutant**: `if(block.number-1 % 15 == 0)`
+
+Due to operator precedence, `block.number-1 % 15` is parsed as `block.number - (1 % 15)`, which is `block.number - 1`. So the mutant effectively changes the condition from "block number divisible by 15" to "block number minus 1" (which is always truthy as long as `block.number > 1`).
+
+This means the mutant will send the contract balance on *every* fallback call, whereas the original only sends when `block.number % 15 == 0`.
+
+**Hypothesis**:  
+The mutant removes the modulo‑15 condition, causing the contract to transfer its balance on every call instead of only every 15th block. Therefore, a test case that calls the fallback function when `block.number % 15 != 0` and then asserts that the contract still holds its balance (i.e., no transfer occurred) should pass on the original but fail on the mutant.

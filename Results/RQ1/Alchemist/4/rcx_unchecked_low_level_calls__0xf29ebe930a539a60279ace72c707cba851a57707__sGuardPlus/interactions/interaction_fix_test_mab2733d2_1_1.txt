@@ -1,0 +1,46 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("B mutant test - mab2733d2", function () {   it("should revert when target call fails in original but not in mutant", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("B");     const instance = await Factory.deploy();     await instance.waitForDeployment();     const instanceAddress = await instance.getAddress();      // Send ETH to the contract first so it has a balance to transfer     await owner.sendTransaction({       to: instanceAddress,       value: ethers.parseEther("1.0")     });      // Check that contract has balance     const balanceBefore = await ethers.provider.getBalance(instanceAddress);     expect(balanceBefore).to.equal(ethers.parseEther("1.0"));      // Now call go() - the target address 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C is a precompile     // which will fail the call, causing require to revert in original     const tx = instance.connect(addr1).go({ value: ethers.parseEther("0.5") });          // In original: should revert because target call fails     // In mutant: no require check, so it will proceed to transfer all balance to owner     await expect(tx).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract B  { address  public   owner = payable(msg.sender); function go () public payable { address     target = 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C; (bool __sent_result100, ) = target.call{value: msg.value}(""); require(__sent_result100); payable(owner).transfer(address(this).balance); } fallback() external payable { } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("B mutant test - mab2733d2", function () {
+  it("should revert when target call fails in original but not in mutant", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("B");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    const instanceAddress = await instance.getAddress();
+
+    // Send ETH to the contract first so it has a balance to transfer
+    await owner.sendTransaction({
+      to: instanceAddress,
+      value: ethers.parseEther("1.0")
+    });
+
+    // Check that contract has balance
+    const balanceBefore = await ethers.provider.getBalance(instanceAddress);
+    expect(balanceBefore).to.equal(ethers.parseEther("1.0"));
+
+    // Now call go() - the target address 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C is a precompile
+    // which will fail the call, causing require to revert in original
+    const tx = instance.connect(addr1).go({ value: ethers.parseEther("0.5") });
+
+    // In original: should revert because target call fails
+    // In mutant: no require check, so it will proceed to transfer all balance to owner
+    await expect(tx).to.be.reverted;
+  });
+});
+```

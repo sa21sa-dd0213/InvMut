@@ -1,0 +1,42 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("X_WALLET mutant madf38510 - block.prevrandao vs block.timestamp", function () {
+  it("should revert Collect when block.prevrandao is used instead of block.timestamp", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy Log contract first (required by X_WALLET constructor)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+
+    // Deploy X_WALLET with Log address
+    const Factory = await ethers.getContractFactory("X_WALLET");
+    const instance = await Factory.deploy(await logInstance.getAddress());
+    await instance.waitForDeployment();
+
+    // Fund the wallet with 2 ether
+    const putTx = await instance.connect(addr1).Put(
+      Math.floor(Date.now() / 1000) + 3600, // unlock time 1 hour in the future
+      { value: ethers.parseEther("2.0") }
+    );
+    await putTx.wait();
+
+    // Wait for the unlock time to pass (in real test environment we can't wait)
+    // Instead, we set a past unlock time by calling Put with a past timestamp
+    const pastTimestamp = Math.floor(Date.now() / 1000) - 3600; // 1 hour ago
+    const putTx2 = await instance.connect(addr1).Put(
+      pastTimestamp,
+      { value: ethers.parseEther("0.1") }
+    );
+    await putTx2.wait();
+
+    // Now try to collect 1 ether - should succeed on original (block.timestamp > pastTimestamp)
+    // but may fail on mutant (block.prevrandao is unpredictable)
+    const collectTx = instance.connect(addr1).Collect(ethers.parseEther("1.0"));
+
+    // On the original contract this would succeed, but on the mutant it might revert
+    // because block.prevrandao is not guaranteed to be > pastTimestamp
+    await expect(collectTx).to.be.reverted;
+  });
+});

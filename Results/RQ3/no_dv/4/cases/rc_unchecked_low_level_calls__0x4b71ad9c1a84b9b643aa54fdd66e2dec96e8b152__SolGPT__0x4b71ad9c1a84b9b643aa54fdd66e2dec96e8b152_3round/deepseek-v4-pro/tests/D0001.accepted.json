@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "After a successful call to transfer, the total number of successful internal low-level calls should increase by _tos.length for the reference, but the buggy version performs no calls, leaving the count unchanged.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the entire for-loop body (the inner call and require) so that no transfers are performed, yet the function still returns true, changing state outcomes.",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airPort} from \"../src/airPort.sol\";\n\ncontract InvMutTest is Test {\n    airPort c;\n    function setUp() public { c = new airPort(); }\n    function testFuzz_property(address from, address caddress, address[] memory _tos, uint v) public {\n        vm.assume(_tos.length > 0);\n        for (uint i = 0; i < _tos.length; i++) {\n            vm.assume(_tos[i] != address(0));\n        }\n        vm.assume(caddress != address(0));\n        vm.assume(caddress != address(c));\n\n        MockToken mock = new MockToken();\n        caddress = address(mock);\n\n        bool success = c.transfer(from, caddress, _tos, v);\n        assertTrue(success);\n\n        uint expectedCalls = _tos.length;\n        uint actualCalls = mock.transferFromCallCount();\n        assertTrue(actualCalls == expectedCalls);\n    }\n}\n\ncontract MockToken {\n    uint public transferFromCallCount;\n\n    function transferFrom(address, address, uint256) external returns (bool) {\n        transferFromCallCount++;\n        return true;\n    }\n}"
+}

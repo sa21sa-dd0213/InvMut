@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "After a deposit and a successful collect, the internal book value removed from the sender's public balance equals the amount collected; the mutant zeroes the balance on deposit, so the balance after collect underflows from 0, making the balance after collect not equal to (deposit minus collect).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the balance increment with a direct assignment of a smaller value, changing the resulting balance.",
+ "mutated_unit_code": "function Deposit()\n    public\n    payable\n    {\n        require(((balances[msg.sender] + msg.value) >= balances[msg.sender]));\n        balances[msg.sender]= 0;\n        Log.AddMessage(msg.sender,msg.value,\"Put\");\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {DEP_BANK} from \"../src/DEP_BANK.sol\";\n\ncontract InvMutTest is Test {\n    DEP_BANK c;\n    function setUp() public { c = new DEP_BANK(); }\n    function testFuzz_property(address sender, uint256 depositAmt, uint256 collectAmt) public {\n        vm.assume(depositAmt > 0);\n        vm.assume(collectAmt > 0 && collectAmt <= depositAmt);\n        vm.assume(sender != address(0));\n\n        vm.prank(address(this));\n        c.SetMinSum(0);\n        c.SetLogFile(address(new LogSink()));\n        c.Initialized();\n\n        vm.deal(sender, depositAmt);\n        vm.prank(sender);\n        c.Deposit{value: depositAmt}();\n\n        uint256 balanceBefore = c.balances(sender);\n\n        vm.prank(sender);\n        c.Collect(collectAmt);\n\n        uint256 balanceAfter = c.balances(sender);\n        assertEq(balanceAfter, balanceBefore - collectAmt, \"balance delta must equal collect amount\");\n    }\n}\n\ncontract LogSink {\n    function AddMessage(address, uint256, string memory) external { }\n}\n"
+}

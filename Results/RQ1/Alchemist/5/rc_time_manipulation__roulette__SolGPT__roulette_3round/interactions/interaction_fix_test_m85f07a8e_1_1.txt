@@ -1,0 +1,54 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Roulette mutant m85f07a8e test", function () {   it("should detect the mutant by exploiting the time check bypass", async function () {     const [owner] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Roulette");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Fund the contract with initial balance (optional but realistic)     await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10")     });      // First call - should succeed (sets pastBlockTime = block.timestamp - 1 in mutant)     const tx1 = await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10"),       gasLimit: 100000     });     await tx1.wait();      // Second call - in original should revert due to time check     // In mutant, pastBlockTime is now block.timestamp - 1, so condition passes     const tx2 = await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10"),       gasLimit: 100000     });      // If mutant is present, second call succeeds (no revert)     // If original, second call reverts     // We expect the second call to NOT revert in the mutant     await expect(tx2.wait()).to.not.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp + 1; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant m85f07a8e test", function () {
+  it("should detect the mutant by exploiting the time check bypass", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Fund the contract with initial balance (optional but realistic)
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+
+    // First call - should succeed (sets pastBlockTime = block.timestamp - 1 in mutant)
+    const tx1 = await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10"),
+      gasLimit: 100000
+    });
+    await tx1.wait();
+
+    // Second call - in original should revert due to time check
+    // In mutant, pastBlockTime is now block.timestamp - 1, so condition passes
+    const tx2 = await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10"),
+      gasLimit: 100000
+    });
+
+    // If mutant is present, second call succeeds (no revert)
+    // If original, second call reverts
+    // We expect the second call to NOT revert in the mutant
+    await expect(tx2.wait()).to.not.be.reverted;
+  });
+});
+```

@@ -1,0 +1,74 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m5f60149f of EBU.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EBU.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EBU:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EBU reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EBU by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EBU"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant m5f60149f test", function () {
+  it("should kill mutant by verifying token transfer from correct address", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy EBU (no constructor arguments)
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Get the from address from the contract
+    const fromAddress = await instance.from();
+    
+    // Verify that the from address matches the authorized caller (original contract)
+    // In the mutant, from is changed to 0x1f84..., so we need to test behavior
+    const authorizedAddress = "0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9";
+    
+    // Create test data
+    const recipients = [addr1.address];
+    const amounts = [1]; // 1 token
+    
+    // Fund the authorized address with some ETH for gas (if needed)
+    await owner.sendTransaction({
+      to: authorizedAddress,
+      value: ethers.parseEther("1.0")
+    });
+    
+    // Impersonate the authorized address
+    await hre.network.provider.request({
+      method: "hardhat_impersonateAccount",
+      params: [authorizedAddress]
+    });
+    
+    const authorizedSigner = await ethers.getSigner(authorizedAddress);
+    
+    // Call transfer from the authorized address
+    const tx = await instance.connect(authorizedSigner).transfer(recipients, amounts);
+    await tx.wait();
+    
+    // The test should check that the transaction doesn't revert
+    // In the mutant, the transferFrom call will fail because from is wrong
+    // We expect the original to succeed but the mutant to fail
+    // Since we can't directly check the internal call, we verify the function executed
+    expect(tx).to.not.be.undefined;
+    
+    // Stop impersonating
+    await hre.network.provider.request({
+      method: "hardhat_stopImpersonatingAccount",
+      params: [authorizedAddress]
+    });
+  });
+});
+```

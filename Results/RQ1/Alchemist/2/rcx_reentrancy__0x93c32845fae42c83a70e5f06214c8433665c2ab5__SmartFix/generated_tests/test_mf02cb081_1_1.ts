@@ -1,0 +1,53 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("X_WALLET mutant mf02cb081 detection test", function () {
+  it("should detect mutant that replaces Collect condition with true", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy Log contract first (required constructor argument for X_WALLET)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+
+    // Deploy X_WALLET with Log contract address
+    const Factory = await ethers.getContractFactory("X_WALLET");
+    const instance = await Factory.deploy(await logInstance.getAddress());
+    await instance.waitForDeployment();
+
+    // Get initial balance of addr1
+    const initialBalance = await ethers.provider.getBalance(addr1.address);
+
+    // Deposit 2 ether with unlock time set to far in the future (block.timestamp + 1 year)
+    const depositAmount = ethers.parseEther("2");
+    const futureUnlockTime = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
+    await instance.connect(addr1).Put(futureUnlockTime, { value: depositAmount });
+
+    // Verify deposit was successful
+    const holder = await instance.Acc(addr1.address);
+    expect(holder.balance).to.equal(depositAmount);
+
+    // Attempt to withdraw 0.5 ether (below MinSum of 1 ether) before unlock time
+    const withdrawAmount = ethers.parseEther("0.5");
+
+    // On original contract this should revert (balance >= MinSum fails)
+    // On mutant (condition replaced with true) this should succeed
+    try {
+      const tx = await instance.connect(addr1).Collect(withdrawAmount);
+      await tx.wait();
+
+      // If we reach here, the transaction succeeded - this means the mutant is present
+      // Verify funds were actually transferred (mutant allowed withdrawal)
+      const finalBalance = await ethers.provider.getBalance(addr1.address);
+      expect(finalBalance).to.be.gt(initialBalance);
+
+      // The mutant is killed - test should fail on original but pass on mutant
+      // We assert true to indicate mutant detected
+      expect(true).to.be.true;
+    } catch (error: any) {
+      // If revert happens, this is the original behavior (mutant NOT present)
+      // Re-throw to fail the test as we're looking for mutant
+      throw new Error("Mutant not detected - original contract behavior observed");
+    }
+  });
+});

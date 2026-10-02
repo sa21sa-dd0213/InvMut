@@ -1,0 +1,49 @@
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("airdrop mutant test - keccak256 vs sha256", function () {
+  it("should detect mutant by verifying correct function selector is used in low-level call", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy a simple ERC20 token for testing
+    const TokenFactory = await ethers.getContractFactory("TestToken");
+    const token = await TokenFactory.deploy("Test", "TST", ethers.parseEther("1000"));
+    await token.waitForDeployment();
+    
+    // Fund addr1 with tokens
+    await token.transfer(addr1.address, ethers.parseEther("100"));
+    await token.connect(addr1).approve(owner.address, ethers.parseEther("50"));
+    
+    // Deploy the airdrop contract (no constructor args needed)
+    const AirdropFactory = await ethers.getContractFactory("airdrop");
+    const airdrop = await AirdropFactory.deploy();
+    await airdrop.waitForDeployment();
+    
+    // Get initial balances
+    const initialBalance1 = await token.balanceOf(addr1.address);
+    const initialBalance2 = await token.balanceOf(addr2.address);
+    
+    // Execute airdrop transfer
+    const recipients = [addr2.address];
+    const tx = await airdrop.transfer(addr1.address, token.target, recipients, ethers.parseEther("10"));
+    await tx.wait();
+    
+    // Verify balances - if sha256 was used, the call would revert or not execute
+    const finalBalance1 = await token.balanceOf(addr1.address);
+    const finalBalance2 = await token.balanceOf(addr2.address);
+    
+    // Original uses correct keccak256 selector, so transfer should succeed
+    expect(finalBalance1).to.equal(initialBalance1 - ethers.parseEther("10"));
+    expect(finalBalance2).to.equal(initialBalance2 + ethers.parseEther("10"));
+    
+    // The test will fail on mutant because sha256 produces wrong selector,
+    // causing the low-level call to either revert or do nothing
+  });
+});
+
+// Helper contract for testing - deploy alongside in real test
+// contract TestToken is ERC20 {
+//   constructor(string memory name, string memory symbol, uint256 initialSupply) ERC20(name, symbol) {
+//     _mint(msg.sender, initialSupply);
+//   }
+// }

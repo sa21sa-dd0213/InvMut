@@ -1,0 +1,95 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("GSPFunding mutant m2a04e43b test", function () {
+  it("should detect the * to + mutation in sellShares _BASE_TARGET_ calculation", async function () {
+    const [owner, user1, user2] = await ethers.getSigners();
+    
+    // Deploy mock ERC20 tokens
+    const MockERC20 = await ethers.getContractFactory("MockERC20");
+    const baseToken = await MockERC20.deploy("Base", "BASE", 18);
+    const quoteToken = await MockERC20.deploy("Quote", "QUOTE", 18);
+    await baseToken.waitForDeployment();
+    await quoteToken.waitForDeployment();
+
+    // Deploy GSPFunding
+    const GSPFunding = await ethers.getContractFactory("GSPFunding");
+    const gsp = await GSPFunding.deploy(
+      owner.address,                    // _MAINTAINER_
+      await baseToken.getAddress(),     // _BASE_TOKEN_
+      await quoteToken.getAddress(),    // _QUOTE_TOKEN_
+      0,                               // _LP_FEE_RATE_
+      0,                               // _MT_FEE_RATE_
+      ethers.parseEther("1"),          // _I_ (initial price)
+      ethers.parseEther("0.5"),        // _K_ (initial K)
+      0                                // _RState_ (initial RState = ONE)
+    );
+    await gsp.waitForDeployment();
+
+    // Fund the contract with initial liquidity
+    const initialBase = ethers.parseEther("1000");
+    const initialQuote = ethers.parseEther("1000");
+    
+    await baseToken.transfer(await gsp.getAddress(), initialBase);
+    await quoteToken.transfer(await gsp.getAddress(), initialQuote);
+    
+    // Initialize by buying shares (first deposit)
+    await gsp.connect(owner).buyShares(owner.address);
+    
+    // Get initial state
+    const initialBaseTarget = await gsp._BASE_TARGET_();
+    const initialTotalSupply = await gsp.totalSupply();
+    
+    // User1 buys some shares to have something to sell
+    await baseToken.transfer(user1.address, ethers.parseEther("100"));
+    await quoteToken.transfer(user1.address, ethers.parseEther("100"));
+    await baseToken.connect(user1).approve(await gsp.getAddress(), ethers.parseEther("100"));
+    await quoteToken.connect(user1).approve(await gsp.getAddress(), ethers.parseEther("100"));
+    await gsp.connect(user1).buyShares(user1.address);
+    
+    // Get user1's share balance
+    const userShares = await gsp.balanceOf(user1.address);
+    
+    // Calculate expected new base target after selling shares
+    // Original formula: _BASE_TARGET_ - ceil(_BASE_TARGET_ * shareAmount / totalShares)
+    const shareAmount = userShares;
+    const totalSupplyBeforeSell = await gsp.totalSupply();
+    const baseTargetBeforeSell = await gsp._BASE_TARGET_();
+    
+    // Expected value using multiplication (original)
+    const numerator = baseTargetBeforeSell * shareAmount;
+    const denominator = totalSupplyBeforeSell;
+    const expectedReduction = numerator % denominator === 0n 
+      ? numerator / denominator 
+      : numerator / denominator + 1n; // ceil division
+    const expectedNewBaseTarget = baseTargetBeforeSell - expectedReduction;
+    
+    // Sell shares
+    await gsp.connect(user1).sellShares(
+      shareAmount,
+      user2.address,
+      0,
+      0,
+      "0x",
+      Math.floor(Date.now() / 1000) + 3600
+    );
+    
+    // Get actual new base target
+    const actualNewBaseTarget = await gsp._BASE_TARGET_();
+    
+    // If mutant is present (addition instead of multiplication), the calculation would be:
+    // _BASE_TARGET_ - ceil((_BASE_TARGET_ + shareAmount) / totalShares)
+    const mutantReduction = (baseTargetBeforeSell + shareAmount) % denominator === 0n
+      ? (baseTargetBeforeSell + shareAmount) / denominator
+      : (baseTargetBeforeSell + shareAmount) / denominator + 1n;
+    const mutantNewBaseTarget = baseTargetBeforeSell - mutantReduction;
+    
+    // The mutant should produce a different value than the original
+    // The test expects the original behavior (multiplication)
+    expect(actualNewBaseTarget).to.equal(expectedNewBaseTarget);
+    
+    // Verify that the mutant would have given a different result
+    // This assertion should fail on the mutant, killing it
+    expect(actualNewBaseTarget).to.not.equal(mutantNewBaseTarget);
+  });
+});

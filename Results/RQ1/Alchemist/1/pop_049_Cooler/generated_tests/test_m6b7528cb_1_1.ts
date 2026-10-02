@@ -1,0 +1,91 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Cooler mutant m6b7528cb - rollLoan collateral transfer", function () {
+  it("should revert or fail when rolling a loan that requires additional collateral, detecting the mutant that changed > to <", async function () {
+    const [owner, lender, borrower] = await ethers.getSigners();
+
+    // Deploy a mock ERC20 token for collateral (using a simple ERC20 for testing)
+    const MockERC20 = await ethers.getContractFactory("ERC20");
+    const collateralToken = await MockERC20.deploy("Collateral", "COL", 18);
+    await collateralToken.waitForDeployment();
+
+    const debtToken = await MockERC20.deploy("Debt", "DEBT", 18);
+    await debtToken.waitForDeployment();
+
+    // Deploy CoolerFactory which will deploy Cooler clones
+    const CoolerFactory = await ethers.getContractFactory("CoolerFactory");
+    const factory = await CoolerFactory.deploy();
+    await factory.waitForDeployment();
+
+    // Generate a cooler for borrower with collateral and debt tokens
+    await factory.connect(borrower).generateCooler(await collateralToken.getAddress(), await debtToken.getAddress());
+
+    // Get the cooler address for this borrower
+    const coolerAddress = await factory.connect(borrower).coolersFor(
+      await collateralToken.getAddress(),
+      await debtToken.getAddress(),
+      0
+    );
+
+    const cooler = await ethers.getContractAt("Cooler", coolerAddress);
+
+    // Setup: borrower creates a loan request
+    const amount = ethers.parseEther("100");
+    const interest = ethers.parseEther("0.1"); // 10% interest rate
+    const loanToCollateral = ethers.parseEther("2"); // 2:1 ratio
+    const duration = 30 * 24 * 60 * 60; // 30 days
+
+    // Calculate collateral needed
+    const collateralNeeded = await cooler.collateralFor(amount, loanToCollateral);
+
+    // Mint tokens and approve
+    await collateralToken.mint(borrower.address, collateralNeeded * 2n);
+    await collateralToken.connect(borrower).approve(coolerAddress, collateralNeeded * 2n);
+    await debtToken.mint(lender.address, amount * 2n);
+    await debtToken.connect(lender).approve(coolerAddress, amount * 2n);
+
+    // Borrower creates loan request
+    await cooler.connect(borrower).requestLoan(amount, interest, loanToCollateral, duration);
+
+    // Lender clears the request
+    await cooler.connect(lender).clearRequest(0, true, false);
+
+    // Now borrower rolls the loan - this should require additional collateral
+    // since the original collateral is already used
+    const loanBeforeRoll = await cooler.loans(0);
+
+    // Borrower needs to provide new terms for roll first
+    const newInterest = ethers.parseEther("0.15");
+    const newLoanToCollateral = ethers.parseEther("1.5"); // Lower ratio means more collateral needed
+    const newDuration = 60 * 24 * 60 * 60;
+
+    await cooler.connect(lender).provideNewTermsForRoll(0, newInterest, newLoanToCollateral, newDuration);
+
+    // Check if new collateral is needed
+    const newCollateralNeeded = await cooler.newCollateralFor(0);
+    expect(newCollateralNeeded).to.be.gt(0); // Verify additional collateral is required
+
+    // Borrower approves additional collateral
+    await collateralToken.connect(borrower).approve(coolerAddress, newCollateralNeeded);
+
+    // Get borrower's collateral balance before roll
+    const borrowerBalanceBefore = await collateralToken.balanceOf(borrower.address);
+    const coolerBalanceBefore = await collateralToken.balanceOf(coolerAddress);
+
+    // Execute rollLoan
+    await cooler.connect(borrower).rollLoan(0);
+
+    // Check balances after roll
+    const borrowerBalanceAfter = await collateralToken.balanceOf(borrower.address);
+    const coolerBalanceAfter = await collateralToken.balanceOf(coolerAddress);
+
+    // In the original contract, collateral should be transferred from borrower to cooler
+    // In the mutant (newCollateral < 0), the transfer never happens
+    // So if the mutant is active, the balances won't change as expected
+
+    // Assert that the collateral was transferred (this will fail for the mutant)
+    expect(borrowerBalanceAfter).to.equal(borrowerBalanceBefore - newCollateralNeeded);
+    expect(coolerBalanceAfter).to.equal(coolerBalanceBefore + newCollateralNeeded);
+  });
+});

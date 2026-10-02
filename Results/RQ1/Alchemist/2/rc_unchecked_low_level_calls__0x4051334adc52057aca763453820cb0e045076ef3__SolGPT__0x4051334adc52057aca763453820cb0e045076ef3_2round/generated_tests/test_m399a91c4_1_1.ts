@@ -1,0 +1,68 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airdrop mutant m399a91c4 test", function () {
+  it("should return true when transfer is successful, detecting mutant that removes return true", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy a simple ERC20 token that the airdrop contract can call transferFrom on
+    const TokenFactory = await ethers.getContractFactory("TestERC20");
+    const token = await TokenFactory.deploy();
+    await token.waitForDeployment();
+
+    // Deploy the airdrop contract (no constructor arguments needed)
+    const AirdropFactory = await ethers.getContractFactory("airdrop");
+    const airdrop = await AirdropFactory.deploy();
+    await airdrop.waitForDeployment();
+
+    // Mint tokens to owner and approve airdrop contract to spend them
+    const amount = ethers.parseEther("10");
+    await token.mint(owner.address, amount);
+    await token.connect(owner).approve(await airdrop.getAddress(), amount);
+
+    // Transfer tokens from owner to addr1 via airdrop
+    const recipients = [addr1.address];
+    const tx = await airdrop.connect(owner).transfer(
+      owner.address,
+      await token.getAddress(),
+      recipients,
+      amount
+    );
+    const receipt = await tx.wait();
+
+    // The key assertion: the return value should be true
+    // In ethers v6, we need to decode the return value from the transaction
+    const iface = new ethers.Interface(["function transfer(address,address,address[],uint256) returns (bool)"]);
+    const decodedData = iface.decodeFunctionResult("transfer", receipt!.logs[0]?.data || "0x");
+
+    // If the mutant removed return true, the function will return false by default
+    // Original returns true, so this assertion should pass on original and fail on mutant
+    expect(decodedData[0]).to.equal(true);
+  });
+});
+
+// Helper ERC20 token for testing
+contract TestERC20 {
+    string public name = "TestToken";
+    string public symbol = "TST";
+    uint8 public decimals = 18;
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    function mint(address to, uint256 amount) public {
+        balanceOf[to] += amount;
+    }
+
+    function approve(address spender, uint256 amount) public returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) public returns (bool) {
+        require(allowance[from][msg.sender] >= amount);
+        allowance[from][msg.sender] -= amount;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+}

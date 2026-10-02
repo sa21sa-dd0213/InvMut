@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract SimpleWallet:
+        Contract Code: pragma solidity ^0.8.0; contract SimpleWallet { address public owner = payable(msg.sender); uint public depositsCount; modifier onlyOwner(){ require(msg.sender == owner); _;} fallback() external payable { depositsCount++; } function withdrawAll()  public onlyOwner { withdraw(address(this).balance); } function withdraw(uint _value)  public onlyOwner { payable(msg.sender).transfer(_value); } function sendMoney(address _target, uint _value)  public onlyOwner { { (bool _s, bytes memory _d) = _target.call{value: _value}(""); _d; if (! _s) { revert();} } } }
+
+    Consider the following mutant of SimpleWallet:
+        Mutant ma0e7560c of function sendMoney replaces ! _s with false
+        Mutant Diff: ---| 	{ (bool _s, bytes memory _d) = _target.call{value: _value}(""); _d; if (! _s) { +++| 	{ (bool _s, bytes memory _d) = _target.call{value: _value}(""); _d; if (false) {
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original `sendMoney` function checks whether the low-level `call` succeeded by evaluating `! _s` (i.e., reverting if the call failed). The mutant replaces `! _s` with `false`, meaning the revert will **never** happen even if the external call fails.  
+
+**Hypothesis:** A test case that calls `sendMoney` with a `_target` address that does not accept Ether (e.g., a contract without a `receive` or `fallback` function, or an externally owned account with insufficient gas) and then verifies that the transaction reverts should pass on the original contract (because `! _s` triggers the revert) but fail on the mutant (because `false` never triggers a revert, so the transaction succeeds silently).

@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0004",
+ "property_summary": "Call transfer with two addresses in _tos where the token call on the second address reverts; the reference reverts on that failure, while the buggy version with i-- loops infinitely and runs out of gas, causing a revert difference: reference reverts (catch returns false), buggy also reverts but due to OOG, so both revert \u2014 not a useful divergence. Actually, pick a scenario where the reference succeeds (returns true) and the buggy reverts due to out-of-bounds access on _tos[i] when i decrements below 0 (underflow) causing a revert: the reference returns true for a single-address call, the buggy reverts because i underflows and _tos[i] is out of bounds.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Replace the loop's increment statement with a decrement (i--) causing infinite loop or different iteration order.",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint[] memory v)  public returns (bool) {\n\trequire(_tos.length > 0);\n\tbytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n\tfor(uint i = 0;i < _tos.length;i--){\n\t{ (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v[i])); _d; if (! _s) {\n\trevert();} }\n\t}\n\treturn true;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EBU} from \"../src/EBU.sol\";\n\ncontract InvMutTest is Test {\n    EBU c;\n    function setUp() public { c = new EBU(); }\n    function testRegression_property() public {\n        address[] memory tos = new address[](1);\n        tos[0] = address(0x1);\n        uint[] memory amounts = new uint[](1);\n        amounts[0] = 100;\n        bool ok;\n        try c.transfer(address(this), address(0xdead), tos, amounts) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        assertTrue(ok);\n    }\n}"
+}

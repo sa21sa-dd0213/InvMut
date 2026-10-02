@@ -1,0 +1,53 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m03fced68 of TimelockController.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test TimelockController.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for TimelockController:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("TimelockController reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy TimelockController by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("TimelockController"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("TimelockController mutant detection - m03fced68", function () {
+  it("should detect EXECUTOR_ROLE hash function change from keccak256 to sha256", async function () {
+    const [owner, executor] = await ethers.getSigners();
+    
+    const minDelay = 3600; // 1 hour in seconds
+    const proposers: string[] = [owner.address];
+    const executors: string[] = [executor.address];
+    
+    const Factory = await ethers.getContractFactory("TimelockController");
+    const instance = await Factory.deploy(minDelay, proposers, executors);
+    await instance.waitForDeployment();
+    
+    // Compute the expected EXECUTOR_ROLE using keccak256 (original behavior)
+    const expectedExecutorRole = ethers.keccak256(ethers.toUtf8Bytes("EXECUTOR_ROLE"));
+    
+    // Check if the contract's EXECUTOR_ROLE constant matches keccak256
+    const actualExecutorRole = await instance.EXECUTOR_ROLE();
+    
+    // If the mutant is present, actualExecutorRole will be sha256 hash instead of keccak256
+    // This means the executor address granted the role in constructor won't have the correct role
+    const hasRole = await instance.hasRole(actualExecutorRole, executor.address);
+    
+    // In the original contract, the executor should have the role
+    // In the mutant, the executor won't have the role because the role identifier is different
+    expect(hasRole).to.equal(true);
+    
+    // Additionally, verify the role identifier matches keccak256 to confirm no mutation
+    expect(actualExecutorRole).to.equal(expectedExecutorRole);
+  });
+});
+```

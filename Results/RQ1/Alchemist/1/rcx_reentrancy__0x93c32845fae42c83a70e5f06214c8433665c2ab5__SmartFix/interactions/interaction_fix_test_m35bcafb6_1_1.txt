@@ -1,0 +1,57 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("X_WALLET mutant detection - timestamp equality", function () {   it("should revert when collecting at exactly unlockTime (original behavior) but succeed on mutant", async function () {     const [owner, user] = await ethers.getSigners();          // Deploy the Log contract first (required by X_WALLET constructor)     const LogFactory = await ethers.getContractFactory("Log");     const logInstance = await LogFactory.deploy();     await logInstance.waitForDeployment();          // Deploy X_WALLET with the Log contract address     const WalletFactory = await ethers.getContractFactory("X_WALLET");     const wallet = await WalletFactory.deploy(await logInstance.getAddress());     await wallet.waitForDeployment();          // Get current block timestamp     const blockNumBefore = await ethers.provider.getBlockNumber();     const blockBefore = await ethers.provider.getBlock(blockNumBefore);     const currentTimestamp = blockBefore.timestamp;          // Send ETH to the contract with unlockTime set to current timestamp     // This means unlockTime == block.timestamp (the exact moment of Put)     const putAmount = ethers.parseEther("2");     await wallet.connect(user).Put(currentTimestamp, { value: putAmount });          // Now try to collect exactly 1 ether     // The condition in original: block.timestamp > acc.unlockTime (strictly greater)     // In mutant: block.timestamp >= acc.unlockTime (greater or equal)     // Since we set unlockTime == currentTimestamp, and we're in the same block,     // block.timestamp should still equal unlockTime     const collectAmount = ethers.parseEther("1");          // This transaction should revert on the original (strict >)      // but succeed on the mutant (>=)     await expect(       wallet.connect(user).Collect(collectAmount)     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract X_WALLET { function Put(uint _unlockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("X_WALLET mutant detection - timestamp equality", function () {
+  it("should revert when collecting at exactly unlockTime (original behavior) but succeed on mutant", async function () {
+    const [owner, user] = await ethers.getSigners();
+
+    // Deploy the Log contract first (required by X_WALLET constructor)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+
+    // Deploy X_WALLET with the Log contract address
+    const WalletFactory = await ethers.getContractFactory("X_WALLET");
+    const wallet = await WalletFactory.deploy(await logInstance.getAddress());
+    await wallet.waitForDeployment();
+
+    // Get current block timestamp
+    const blockNumBefore = await ethers.provider.getBlockNumber();
+    const blockBefore = await ethers.provider.getBlock(blockNumBefore);
+    const currentTimestamp = blockBefore!.timestamp;
+
+    // Send ETH to the contract with unlockTime set to current timestamp
+    // This means unlockTime == block.timestamp (the exact moment of Put)
+    const putAmount = ethers.parseEther("2");
+    await wallet.connect(user).Put(currentTimestamp, { value: putAmount });
+
+    // Now try to collect exactly 1 ether
+    // The condition in original: block.timestamp > acc.unlockTime (strictly greater)
+    // In mutant: block.timestamp >= acc.unlockTime (greater or equal)
+    // Since we set unlockTime == currentTimestamp, and we're in the same block,
+    // block.timestamp should still equal unlockTime
+    const collectAmount = ethers.parseEther("1");
+
+    // This transaction should revert on the original (strict >) 
+    // but succeed on the mutant (>=)
+    await expect(
+      wallet.connect(user).Collect(collectAmount)
+    ).to.be.reverted;
+  });
+});
+```

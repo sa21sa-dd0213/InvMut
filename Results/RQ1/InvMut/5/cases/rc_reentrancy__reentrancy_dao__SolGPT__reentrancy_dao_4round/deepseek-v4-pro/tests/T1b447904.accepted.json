@@ -1,0 +1,12 @@
+{
+ "difference_id": "T1b447904",
+ "property_summary": "After any withdrawAll attempt by a caller that will fail because the external call reverts, the contract's balance must equal the total of all credits (enforced via public view returning balance minus total credit from a helper), which the mutant violates by reducing balance without clearing the caller's credit.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the require(callResult) statement so failed calls do not revert, but balance/credit already updated.",
+ "mutated_unit_code": "function withdrawAll() public {\n        uint oCredit = credit[msg.sender];\n        if (oCredit > 0) {\n            balance -= oCredit;\n            credit[msg.sender] = 0;\n            (bool callResult, ) = msg.sender.call{value: oCredit}(\"\");\n            \n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ReentrancyDAO} from \"../src/ReentrancyDAO.sol\";\n\ncontract InvMutTest is Test {\n    ReentrancyDAO c;\n    function setUp() public { c = new ReentrancyDAO(); }\n    function testFuzz_property(address caller, uint256 depositAmount) public {\n        vm.assume(caller != address(0) && caller != address(this) && caller != address(c));\n        depositAmount = bound(depositAmount, 1, type(uint128).max);\n        vm.deal(caller, depositAmount);\n        vm.prank(caller);\n        c.deposit{value: depositAmount}();\n        Reverter reverter = new Reverter();\n        vm.deal(address(c), 0);\n        vm.deal(address(reverter), depositAmount);\n        vm.prank(address(reverter));\n        c.deposit{value: depositAmount}();\n        uint256 preBalance = address(c).balance;\n        vm.prank(address(reverter));\n        (bool success, ) = address(c).call(abi.encodeWithSignature(\"withdrawAll()\"));\n        uint256 expectedTotalCredits = depositAmount * 2;\n        assertTrue(address(c).balance == expectedTotalCredits || !success);\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"intentional revert\");\n    }\n}"
+}

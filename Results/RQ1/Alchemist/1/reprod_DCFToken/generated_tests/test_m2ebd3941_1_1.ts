@@ -1,0 +1,65 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DCF mutant m2ebd3941 - AND to OR in _transfer", function () {
+  it("should revert on normal transfer when swapping is false but to is not pairAddress", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy DCF with a liquidity receive address
+    const Factory = await ethers.getContractFactory("DCF");
+    const instance = await Factory.deploy(addr1.address);
+    await instance.waitForDeployment();
+
+    // Get the deployed contract address
+    const dcfAddress = await instance.getAddress();
+
+    // Transfer some tokens to addr1 for testing
+    const transferAmount = ethers.parseEther("1000");
+    await instance.transfer(addr1.address, transferAmount);
+
+    // Verify addr1 has tokens
+    expect(await instance.balanceOf(addr1.address)).to.equal(transferAmount);
+
+    // Now try a normal transfer from addr1 to addr2 (non-pair, non-whitelisted addresses)
+    // In the original contract, this should succeed with no fee deduction
+    // In the mutant (OR condition), this will trigger the fee logic because swapping is false
+    // and will cause a revert due to "buy error" or other issues in the fee logic
+
+    const smallAmount = ethers.parseEther("100");
+
+    // Connect as addr1 and transfer to addr2
+    const instanceAsAddr1 = instance.connect(addr1);
+
+    // The mutant will try to execute the fee logic block which has:
+    // - require(false, "buy error") when from == pairAddress (not the case here)
+    // - But then it will try to transfer fees and do other operations
+    // The key is that the mutant will enter the block and attempt operations that may fail
+    // In the original, this transfer would succeed
+
+    await expect(
+      instanceAsAddr1.transfer(addr2.address, smallAmount)
+    ).to.be.reverted;
+  });
+
+  it("should allow normal transfer in original contract when swapping is false and to is not pairAddress", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    const Factory = await ethers.getContractFactory("DCF");
+    const instance = await Factory.deploy(addr1.address);
+    await instance.waitForDeployment();
+
+    const transferAmount = ethers.parseEther("1000");
+    await instance.transfer(addr1.address, transferAmount);
+
+    const smallAmount = ethers.parseEther("100");
+    const instanceAsAddr1 = instance.connect(addr1);
+    const addr1BalanceBefore = await instance.balanceOf(addr1.address);
+
+    // In the original contract (AND condition), this should succeed
+    await instanceAsAddr1.transfer(addr2.address, smallAmount);
+
+    const addr1BalanceAfter = await instance.balanceOf(addr1.address);
+    // addr1 should have lost exactly the transfer amount (no fees deducted)
+    expect(addr1BalanceAfter).to.equal(addr1BalanceBefore - smallAmount);
+  });
+});

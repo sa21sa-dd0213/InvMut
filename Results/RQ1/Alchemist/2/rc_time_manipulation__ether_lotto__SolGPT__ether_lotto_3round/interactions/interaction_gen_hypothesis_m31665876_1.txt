@@ -1,0 +1,34 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EtherLotto:
+        Contract Code: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+
+    Consider the following mutant of EtherLotto:
+        Mutant m31665876 of function play replaces keccak256 with sha256
+        Mutant Diff: ---|         uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; +++|         uint random = uint(sha256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let’s analyze the difference.  
+
+The original contract uses `keccak256` to generate pseudo-randomness. The mutant replaces `keccak256` with `sha256`. Both are hash functions, but they produce different outputs for the same input. Since the game outcome depends on `hash % 2`, the result will sometimes differ between the two hash functions for the same `block.timestamp` and `block.difficulty`.  
+
+A test that always passes on the original but fails on the mutant would need to exploit a scenario where the outcome flips due to the different hash function. However, we cannot control the block’s difficulty or timestamp in a predictable way inside a single transaction.  
+
+But we *can* rely on statistical probability: if we run the `play` function many times with different block data (by mining blocks between calls), the distribution of wins/losses will be identical *on average* for both functions, so a single test expecting a specific outcome won’t reliably kill the mutant.  
+
+What can reliably differentiate them?  
+- The mutant uses `sha256`, which returns `bytes32`. The original uses `keccak256`, which also returns `bytes32`.  
+- The critical difference: `sha256` is not an EVM-native precompile with the same gas cost as `keccak256`. Calling `sha256` costs more gas.  
+
+Therefore, **a test that measures gas consumption of the `play` function** will detect the mutant because the gas cost increases when `sha256` is used instead of `keccak256`.  
+
+**Hypothesis:**  
+The mutant replaces `keccak256` with `sha256`, which is a more expensive hash function. Therefore, a test case that measures the gas used by the `play` function and asserts that it matches the expected gas cost of the original implementation should kill the mutant, as the mutated version will consume significantly more gas.

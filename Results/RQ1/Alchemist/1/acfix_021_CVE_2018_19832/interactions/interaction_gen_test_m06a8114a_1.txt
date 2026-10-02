@@ -1,0 +1,55 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m06a8114a of NewIntelTechMedia.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test NewIntelTechMedia.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for NewIntelTechMedia:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("NewIntelTechMedia reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy NewIntelTechMedia by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("NewIntelTechMedia"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("NewIntelTechMedia mutant m06a8114a test", function () {
+  it("should detect mutant by setting blacklist to a negative value via storage manipulation", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("NewIntelTechMedia");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get the storage slot for blacklist[addr1.address]
+    // blacklist is mapping(address => bool) at slot 3 (0-indexed: owner=0, balances=1, allowed=2, blacklist=3)
+    const slot = ethers.keccak256(
+      ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "uint256"],
+        [addr1.address, 3]
+      )
+    );
+
+    // Set blacklist[addr1] to a negative value (as uint256, this is a very large number)
+    // In Solidity, bool false = 0, true = 1. Setting to 0xffff... would be negative when interpreted as int
+    await ethers.provider.send("hardhat_setStorageAt", [
+      await instance.getAddress(),
+      slot,
+      "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    ]);
+
+    // Now try to call getTokens() which uses the onlyWhitelist modifier
+    // Original contract would revert because blacklist[addr1] != false (0)
+    // Mutant would pass because blacklist[addr1] <= false (0) is true (negative <= 0)
+    await expect(
+      instance.connect(addr1).getTokens()
+    ).to.be.reverted;
+  });
+});
+```

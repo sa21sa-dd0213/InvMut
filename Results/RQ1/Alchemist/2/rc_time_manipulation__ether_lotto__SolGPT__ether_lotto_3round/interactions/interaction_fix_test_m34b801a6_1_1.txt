@@ -1,0 +1,57 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("EtherLotto mutant detection - block.prevrandao vs block.timestamp", function () {   it("should kill mutant m34b801a6 by showing same outcome for two plays in same block", async function () {     const [owner, player] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("EtherLotto");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const TICKET_AMOUNT = ethers.parseEther("10");     const FEE_AMOUNT = ethers.parseEther("1");      // Play twice in the same block     const tx1 = await instance.connect(player).play({ value: TICKET_AMOUNT });     const receipt1 = await tx1.wait();     const block1 = await ethers.provider.getBlock(receipt1.blockNumber);      const tx2 = await instance.connect(player).play({ value: TICKET_AMOUNT });     const receipt2 = await tx2.wait();     const block2 = await ethers.provider.getBlock(receipt2.blockNumber);      // If both transactions land in the same block, block.prevrandao is identical     // but block.timestamp is also identical, so original would also give same result?     // Actually, we need to force them into the same block to detect the mutant.     // The key insight: block.prevrandao is constant per block, block.timestamp is also constant per block.     // To differentiate, we need to observe that in the original, the randomness source changes      // if we can vary timestamp (by mining a new block), while prevrandao also changes per block.     // The real detection: in the original, the random outcome depends on block.timestamp;     // in the mutant it depends on block.prevrandao. Both are per-block values.     // However, the hypothesis said "two plays in the same block produce same outcome in mutant"     // but that's also true for original. Let's correct: we need to test that the outcome     // differs when we force a timestamp change while keeping prevrandao constant - impossible.     // Actually the correct detection: block.prevrandao is always non-zero post-Merge,     // block.timestamp is always positive. The key is that the mutant uses block.prevrandao     // which is a different source of entropy. To kill the mutant, we need to verify     // that the random value distribution changes. But we can't directly observe randomness.     // Let's use a different approach: the mutant changes the source of randomness.     // We can detect it by playing many times and checking that the pot is never reset     // when it should be? No. Let's use the actual difference:      // In the original, if we mine two blocks with the same timestamp (possible via hardhat_mine),     // the outcome could be identical. But with different timestamps, outcomes differ.     // In the mutant, outcomes depend on prevrandao which is always different per block.     // So to kill the mutant: play in two blocks with the SAME timestamp but different prevrandao.     // Hardhat allows setting timestamp via evm_setNextBlockTimestamp.     // We'll mine block 1 with timestamp T, then mine block 2 with the SAME timestamp T     // (hardhat allows this). In original, both blocks have same timestamp => same random => same outcome.     // In mutant, prevrandao is different per block => different outcomes.     // So we assert that in original, outcomes are the same; in mutant they differ.     // But we are testing the mutant, so we expect them to be DIFFERENT in mutant,     // and the test should FAIL (i.e., the assertion that they are same should fail).     // Actually we want to kill the mutant, meaning the test passes on original but fails on mutant.     // So we assert that two plays with same timestamp give same result (pot after first, pot after second).     // On original, both plays with same timestamp => same random => both win or both lose.     // If both win, first play resets pot to 0, second play starts fresh => pot becomes TICKET_AMOUNT.     // If both lose, pot accumulates: first adds 10, second adds 10 => pot = 20.     // So the final pot depends on outcome. But we can't predict which.     // Better: we can observe that after two plays with same timestamp,     // the pot must be either 10 (if both won) or 20 (if both lost).     // In mutant, with different prevrandao, one may win and one may lose,     // leading to pot = 9? Let's compute: first wins => pot becomes 0, second loses => pot = 10.     // First loses => pot = 10, second wins => pot = 0. So final pot = 10 or 0.     // Actually if first wins: pot was 10, then pot=0; second loses: pot becomes 10. So final=10.     // If first loses: pot=10; second wins: pot becomes 0. Final=0.     // So possible final pots: 10 or 0 for mixed outcomes.     // For same outcome: both win => final=10; both lose => final=20.     // So we can't easily distinguish without knowing the random outcome.     // Instead, we can force a specific scenario by using deterministic hardhat mining.     // Let's use a simpler approach: play once, record the outcome (whether player got paid).     // Then mine a new block with the same timestamp but different prevrandao,     // and play again. In original, the random value will be the same (same timestamp)     // so the outcome will be the same. In mutant, it will differ.     // We can check if the player's balance change after the second play is the same as after the first.     // If it's the same, original behavior; if different, mutant detected.     // Since we are testing the mutant, we expect the balance changes to be DIFFERENT,     // meaning the assertion that they are equal should FAIL. That kills the mutant.          // Implementation:      // Get player balance before     const balanceBefore = await ethers.provider.getBalance(player.address);          // Play once in block with timestamp T     const timestamp1 = 1000000;     await ethers.provider.send("evm_setNextBlockTimestamp", [timestamp1]);     const txA = await instance.connect(player).play({ value: TICKET_AMOUNT });     const receiptA = await txA.wait();     const balanceAfterFirst = await ethers.provider.getBalance(player.address);     const change1 = balanceAfterFirst - balanceBefore;          // Now mine another block with the SAME timestamp (hardhat allows this)     await ethers.provider.send("evm_setNextBlockTimestamp", [timestamp1]);     const txB = await instance.connect(player).play({ value: TICKET_AMOUNT });     const receiptB = await txB.wait();     const balanceAfterSecond = await ethers.provider.getBalance(player.address);     const change2 = balanceAfterSecond - balanceAfterFirst;          // In the original contract, both plays use same timestamp => same random => same outcome     // => same net change (either both win: +9 each time, or both lose: -10 each time)     // In the mutant, block.prevrandao will be different for the two blocks     // (even though timestamp is same, prevrandao changes each block)     // => outcomes may differ => changes differ     // So if we assert that change1 == change2, this assertion PASSES on original     // but FAILS on mutant (since changes may differ). That kills the mutant.     expect(change1).to.equal(change2);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant detection - block.prevrandao vs block.timestamp", function () {
+  it("should kill mutant m34b801a6 by showing same outcome for two plays in same block", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = ethers.parseEther("10");
+    const FEE_AMOUNT = ethers.parseEther("1");
+
+    // Get player balance before
+    const balanceBefore = await ethers.provider.getBalance(player.address);
+
+    // Play once in block with timestamp T
+    const timestamp1 = 1000000;
+    await ethers.provider.send("evm_setNextBlockTimestamp", [timestamp1]);
+    const txA = await instance.connect(player).play({ value: TICKET_AMOUNT });
+    const receiptA = await txA.wait();
+    const balanceAfterFirst = await ethers.provider.getBalance(player.address);
+    const change1 = balanceAfterFirst - balanceBefore;
+
+    // Now mine another block with the SAME timestamp (hardhat allows this)
+    await ethers.provider.send("evm_setNextBlockTimestamp", [timestamp1]);
+    const txB = await instance.connect(player).play({ value: TICKET_AMOUNT });
+    const receiptB = await txB.wait();
+    const balanceAfterSecond = await ethers.provider.getBalance(player.address);
+    const change2 = balanceAfterSecond - balanceAfterFirst;
+
+    // In the original contract, both plays use same timestamp => same random => same outcome
+    // => same net change (either both win: +9 each time, or both lose: -10 each time)
+    // In the mutant, block.prevrandao will be different for the two blocks
+    // (even though timestamp is same, prevrandao changes each block)
+    // => outcomes may differ => changes differ
+    // So if we assert that change1 == change2, this assertion PASSES on original
+    // but FAILS on mutant (since changes may differ). That kills the mutant.
+    expect(change1).to.equal(change2);
+  });
+});
+```

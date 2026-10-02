@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tcfdb87a8",
+ "property_summary": "After any successful payable fallback call that advances time (block.timestamp > pastBlockTime), the reference always sets pastBlockTime strictly greater than the timestamp of that call (pastBlockTime >= call_timestamp + 1), while the mutant can set pastBlockTime equal to the call timestamp; fuzzing caller and a warp timestamp will find inputs where mutant yields pastBlockTime == call_timestamp but reference never does.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Set pastBlockTime to block.timestamp (instead of block.timestamp + 1), changing the stored value after calls.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n\n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n\n    function setUp() public { c = new Roulette(); }\n\n    function testFuzz_property(address caller, uint256 ts) public {\n        vm.assume(caller != address(0));\n\n        uint256 targetTs = bound(ts, block.timestamp + 1, block.timestamp + 1 days);\n\n        vm.deal(caller, 100 ether);\n\n        vm.warp(targetTs);\n\n        vm.prank(caller);\n        (bool ok, ) = address(c).call{value: 10 ether}(\"\\x00\");\n\n        if (!ok) return;\n\n        assertTrue(c.pastBlockTime() != targetTs);\n    }\n}\n"
+}

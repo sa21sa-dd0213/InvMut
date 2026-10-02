@@ -1,0 +1,81 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m3b2c21d6 of MY_BANK.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test MY_BANK.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for MY_BANK:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("MY_BANK reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy MY_BANK by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("MY_BANK"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant m3b2c21d6 - reentrancy test", function () {
+  it("should detect missing nonReentrant_ modifier in Put by reentering the function", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy Log contract first (required constructor argument for MY_BANK)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy MY_BANK with Log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+    
+    // Deploy the reentrancy attacker contract
+    const AttackerFactory = await ethers.getContractFactory("ReentrancyAttacker");
+    const attackerContract = await AttackerFactory.deploy(await bank.getAddress());
+    await attackerContract.waitForDeployment();
+    
+    // Fund attacker contract with initial ETH to perform reentrancy
+    await owner.sendTransaction({
+      to: await attackerContract.getAddress(),
+      value: ethers.parseEther("2.0")
+    });
+    
+    // Trigger the attack - this should revert on original but pass on mutant
+    await expect(
+      attackerContract.attack({ value: ethers.parseEther("1.0") })
+    ).to.be.reverted;
+    
+    // On mutant, the attack would succeed, meaning balance would be incorrectly doubled
+    // Verify by checking that attacker's balance in bank is only the initial deposit (not doubled)
+    const attackerBalance = await bank.Acc(await attackerContract.getAddress());
+    expect(attackerBalance.balance).to.equal(ethers.parseEther("1.0"));
+  });
+});
+
+// Reentrancy attacker contract - must be deployed as a separate contract
+// This is the Solidity contract that will be compiled and deployed
+// The attacker's fallback re-enters Put()
+// Note: This contract definition would be in a separate .sol file in the contracts folder
+contract ReentrancyAttacker {
+    MY_BANK public target;
+    
+    constructor(address _target) {
+        target = MY_BANK(_target);
+    }
+    
+    function attack() external payable {
+        target.Put(0);
+    }
+    
+    fallback() external payable {
+        if (address(target).balance >= msg.value) {
+            target.Put(0);
+        }
+    }
+}
+```

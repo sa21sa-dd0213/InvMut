@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0010",
+ "property_summary": "After calling play() twice with 10 wei each time, the correct contract's pot reflects two ticket additions (20 wei), while the buggy contract's pot reflects two subtractions (negative result underflowing to a large number), causing the winner to receive the pot minus 1 fee.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "Change pot addition to subtraction (pot -= msg.value) to decrease pot on play.",
+ "mutated_unit_code": "    function play()  public payable {\n        require(msg.value == TICKET_AMOUNT);\n        pot -= msg.value;\n\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n\n        if (random == 0) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    function setUp() public { c = new EtherLotto(); }\n    function testRegression_property() public {\n        address player1 = address(0x1234);\n        address player2 = address(0x5678);\n        vm.deal(player1, 100 wei);\n        vm.deal(player2, 100 wei);\n\n        vm.prank(player1);\n        c.play{value: 10 wei}();\n\n        vm.prank(player2);\n        c.play{value: 10 wei}();\n\n        assertTrue(c.pot() <= 20 wei);\n    }\n}\n"
+}

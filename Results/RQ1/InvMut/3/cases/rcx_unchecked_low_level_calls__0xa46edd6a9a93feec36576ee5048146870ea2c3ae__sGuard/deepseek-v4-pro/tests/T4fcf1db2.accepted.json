@@ -1,0 +1,12 @@
+{
+ "difference_id": "T4fcf1db2",
+ "property_summary": "After transfer, the caddress contract must have received at least as many calls as _tos.length in the reference, but the mutant makes empty calls which can succeed while not performing the intended token transfers, violating the invariant that all calls must be sent with the transferFrom selector.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replace `caddress.call(abi.encodeWithSelector(id,from,_tos[i],v[i]));` with an external call that does nothing (empty call) so no transfers occur, changing the state of token balances.",
+ "mutated_unit_code": "function transfer(address from,address caddress, address[] memory _tos, uint[] memory v)public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0;i<_tos.length;i++){\n\n            caddress.call(\"\");\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EBU} from \"../src/EBU.sol\";\n\ncontract CallCounter {\n    uint256 public count;\n    function countCall() external { count++; }\n    function transferFrom(address, address, uint256) external returns (bool) { count++; return true; }\n}\n\ncontract InvMutTest is Test {\n    EBU c;\n    function setUp() public { c = new EBU(); }\n    function testFuzz_property(address[] memory _tos, uint[] memory v) public {\n        vm.assume(_tos.length > 0);\n        vm.assume(_tos.length == v.length);\n        CallCounter cc = new CallCounter();\n        address caddress = address(cc);\n        address from = address(this);\n        bool refSuccess = c.transfer(from, caddress, _tos, v);\n        assertTrue(cc.count() >= _tos.length);\n    }\n}"
+}

@@ -1,0 +1,89 @@
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("DAO mutant m476000df - hasMinority operator replacement", function () {
+    it("should detect the mutant by checking that cancelProposal reverts when hasMinority should return true", async function () {
+        const [owner, addr1, addr2] = await ethers.getSigners();
+        
+        // Deploy mock VADER, USDV, and VAULT contracts since DAO requires them
+        const MockERC20Factory = await ethers.getContractFactory("MockERC20");
+        const mockUSDV = await MockERC20Factory.deploy("USDV", "USDV", 18);
+        await mockUSDV.waitForDeployment();
+        
+        const MockVADERFactory = await ethers.getContractFactory("MockVADER");
+        const mockVADER = await MockVADERFactory.deploy();
+        await mockVADER.waitForDeployment();
+        
+        const MockVAULTFactory = await ethers.getContractFactory("MockVAULT");
+        const mockVAULT = await MockVAULTFactory.deploy();
+        await mockVAULT.waitForDeployment();
+        
+        // Deploy DAO
+        const DAOFactory = await ethers.getContractFactory("DAO");
+        const dao = await DAOFactory.deploy();
+        await dao.waitForDeployment();
+        
+        // Initialize DAO
+        await dao.init(await mockVADER.getAddress(), await mockUSDV.getAddress(), await mockVAULT.getAddress());
+        
+        // Set up mock VAULT to return a specific totalWeight
+        // We need totalWeight such that:
+        // - Original: totalWeight / 6 > 0 (so hasMinority can return true)
+        // - Mutant: totalWeight + 6 > any possible votes (so hasMinority always returns false)
+        // Let's use totalWeight = 100 for a clean test
+        await mockVAULT.setTotalWeight(100);
+        
+        // Create an old proposal that is in finalising state (required for cancelProposal)
+        await dao.newAddressProposal(addr1.address, "UTILS");
+        const oldProposalId = 1;
+        
+        // Manually set the old proposal to finalising state by calling _finalise via voteProposal
+        // First set up member weight for the caller
+        await mockVAULT.setMemberWeight(owner.address, 20); // 20 out of 100 total = 20% > 16.67% (1/6)
+        
+        // Vote on the old proposal to trigger finalising (since hasQuorum and hasMajority conditions)
+        // For UTILS type, we need hasMajority (votes > totalWeight/2) AND hasQuorum (votes > totalWeight/3)
+        // With 20 votes: hasQuorum = 20 > 33? NO. So we need more votes.
+        // Let's use a different approach - directly set mapPID_finalising via internal mechanism
+        // Actually, we can create a new proposal and vote on it to trigger the conditions
+        
+        // Create a new proposal for cancelProposal target
+        await dao.newAddressProposal(addr2.address, "UTILS");
+        const newProposalId = 2;
+        
+        // Set member weight so that hasMinority returns true for the new proposal
+        // Original: hasMinority = votes > totalWeight/6 = votes > 16.67
+        // With 20 votes: 20 > 16.67 => true
+        // Mutant: hasMinority = votes > totalWeight + 6 = votes > 106
+        // With 20 votes: 20 > 106 => false
+        await mockVAULT.setMemberWeight(owner.address, 20);
+        
+        // Vote on new proposal to record votes
+        await dao.voteProposal(newProposalId);
+        
+        // Now we need to make the old proposal finalising
+        // We can do this by calling voteProposal on the old proposal with enough votes
+        // But since we already voted, we need to ensure hasQuorum and hasMajority are met
+        // Set totalWeight low enough that 20 votes meets both conditions
+        await mockVAULT.setTotalWeight(30); // totalWeight/2 = 15, totalWeight/3 = 10
+        await dao.voteProposal(oldProposalId);
+        
+        // Now old proposal should be finalising, let's try to cancel it
+        // This should succeed in original (hasMinority returns true for new proposal)
+        // But should fail in mutant (hasMinority returns false)
+        
+        // Reset totalWeight for the cancelProposal call
+        await mockVAULT.setTotalWeight(100);
+        
+        // Try to cancel the old proposal using the new proposal
+        // In original: should succeed because hasMinority(newProposalId) = 20 > 16.67 = true
+        // In mutant: should revert because hasMinority(newProposalId) = 20 > 106 = false
+        await expect(
+            dao.cancelProposal(oldProposalId, newProposalId)
+        ).to.be.revertedWith("Must have minority");
+    });
+});
+
+// Mock contracts needed for the test
+// These would need to be deployed as separate Solidity contracts
+// For the purpose of this test, we assume they exist in the Hardhat environment

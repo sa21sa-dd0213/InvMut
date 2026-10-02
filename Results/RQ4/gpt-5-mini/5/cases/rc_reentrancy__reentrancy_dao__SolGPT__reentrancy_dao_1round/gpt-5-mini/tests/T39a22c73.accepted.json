@@ -1,0 +1,12 @@
+{
+ "difference_id": "T39a22c73",
+ "property_summary": "For any depositor and any positive deposit amount, after they call withdrawAll() the contract's recorded credit for that caller is always zero (the reference zeroes credit before the external call); the mutant that zeroes credit after the external call can be re-entered by a malicious receiver to withdraw twice and thereby violate that the credit is zero after withdrawAll returns for some adversarial caller and amount.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Move the zeroing of credit to after the external call (introduces reentrancy vulnerability altering observable state).",
+ "mutated_unit_code": "function withdrawAll() public {\n        uint oCredit = credit[msg.sender];\n        if (oCredit > 0) {\n            balance -= oCredit;\n            (bool callResult, ) = msg.sender.call{value: oCredit}(\"\");\n            require(callResult);\n            credit[msg.sender] = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ReentrancyDAO} from \"../src/ReentrancyDAO.sol\";\n\ncontract InvMutTest is Test {\n    ReentrancyDAO c;\n\n    function setUp() public { c = new ReentrancyDAO(); }\n\n    function testFuzz_property(uint96 depositAmount, address attackerEOA) public {\n        depositAmount = uint96(bound(depositAmount, 1, 1 ether));\n\n        Attacker attacker = new Attacker(c);\n\n        vm.deal(address(attacker), depositAmount);\n\n        vm.prank(address(attacker));\n        c.deposit{value: depositAmount}();\n\n        vm.prank(address(attacker));\n        c.withdrawAll();\n\n        uint balC_before = address(c).balance;\n        uint balAtt_before = address(attacker).balance;\n\n        vm.prank(address(attacker));\n        c.withdrawAll();\n\n        uint balC_after = address(c).balance;\n        uint balAtt_after = address(attacker).balance;\n\n        assertTrue(balC_before == balC_after && balAtt_before == balAtt_after, \"no funds should be withdrawable a second time\");\n    }\n}\n\ncontract Attacker {\n    ReentrancyDAO public target;\n    bool public entered;\n\n    constructor(ReentrancyDAO _target) payable {\n        target = _target;\n    }\n\n    receive() external payable {\n        if (!entered) {\n            entered = true;\n            target.withdrawAll();\n        }\n    }\n}\n"
+}

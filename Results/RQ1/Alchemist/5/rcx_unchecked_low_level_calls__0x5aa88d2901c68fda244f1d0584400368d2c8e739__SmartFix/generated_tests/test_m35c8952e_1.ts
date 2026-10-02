@@ -1,0 +1,49 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MultiplicatorX3 mutant m35c8952e", function () {
+  it("should kill mutant by verifying exact transfer amount when sending ether", async function () {
+    const [owner, recipient] = await ethers.getSigners();
+    
+    // Deploy contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("MultiplicatorX3");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Fund the contract with initial balance
+    const initialBalance = ethers.parseEther("10");
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: initialBalance
+    });
+    
+    // Send 1 ether via multiplicate - recipient should receive contract balance + msg.value
+    const sendAmount = ethers.parseEther("1");
+    const recipientBalanceBefore = await ethers.provider.getBalance(recipient.address);
+    
+    const tx = await instance.connect(owner).multiplicate(recipient.address, {
+      value: sendAmount
+    });
+    await tx.wait();
+    
+    const recipientBalanceAfter = await ethers.provider.getBalance(recipient.address);
+    const amountReceived = recipientBalanceAfter - recipientBalanceBefore;
+    
+    // Original: transfer(address(this).balance + msg.value)
+    // Mutant: transfer(address(this).balance + msg.value + 1)
+    // The contract balance before the transfer is initialBalance + sendAmount = 11 ether
+    // Original would send 11 ether, mutant would try to send 11 ether + 1 wei
+    // Since the contract only has 11 ether, the mutant will revert with insufficient balance
+    // So we expect the transaction to succeed (original) or revert (mutant)
+    // To kill the mutant, we assert the exact amount matches the original behavior
+    
+    // If the transaction succeeded, the recipient got the correct amount
+    // If the mutant attempted to send one extra wei, it would revert
+    // So checking that the transaction succeeded and amount is correct kills the mutant
+    expect(amountReceived).to.equal(ethers.parseEther("11"));
+    
+    // Also verify the contract balance is now zero (all sent out)
+    const contractBalance = await ethers.provider.getBalance(await instance.getAddress());
+    expect(contractBalance).to.equal(0n);
+  });
+});

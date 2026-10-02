@@ -1,0 +1,91 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m31665876 of EtherLotto.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EtherLotto.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EtherLotto:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EtherLotto reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EtherLotto by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EtherLotto"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant kill test - sha256 vs keccak256", function () {
+  it("should detect the mutation by comparing outcomes under identical block conditions", async function () {
+    const [owner, player] = await ethers.getSigners();
+    
+    // Deploy the contract
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Capture current block state to ensure reproducible conditions
+    const blockBefore = await ethers.provider.getBlock("latest");
+    
+    // Record the exact timestamp and difficulty that will be used
+    const targetTimestamp = blockBefore.timestamp;
+    const targetDifficulty = blockBefore.difficulty;
+    
+    // Calculate expected keccak256 hash outcome (original behavior)
+    const encodedData = ethers.solidityPacked(
+      ["uint256", "uint256"],
+      [targetTimestamp, targetDifficulty]
+    );
+    const keccakHash = ethers.keccak256(encodedData);
+    const keccakRandom = BigInt(keccakHash) % 2n;
+    
+    // Calculate expected sha256 hash outcome (mutant behavior)
+    const sha256Hash = ethers.sha256(encodedData);
+    const sha256Random = BigInt(sha256Hash) % 2n;
+    
+    // The test will pass for original but fail for mutant because:
+    // For the original contract, random == 0 means bank gets fee, player gets rest
+    // For the mutant, the hash is different so the outcome may differ
+    
+    // Play the game with exactly 10 wei (TICKET_AMOUNT = 10)
+    const ticketAmount = 10n;
+    const feeAmount = 1n;
+    
+    // Record balances before
+    const bankBefore = await ethers.provider.getBalance(owner.address);
+    const playerBefore = await ethers.provider.getBalance(player.address);
+    
+    // Execute play()
+    const tx = await instance.connect(player).play({ value: ticketAmount });
+    await tx.wait();
+    
+    // Get pot after
+    const potAfter = await instance.pot();
+    
+    // Determine expected outcome based on original keccak256 behavior
+    if (keccakRandom === 0n) {
+      // Player wins: bank gets fee, player gets pot - fee, pot resets to 0
+      expect(potAfter).to.equal(0n);
+      // Check player received pot - fee (but pot was 10 before, so 9)
+      const playerAfter = await ethers.provider.getBalance(player.address);
+      const playerDelta = playerAfter - playerBefore;
+      // Player spent 10, received 9 back = net -1
+      expect(playerDelta).to.equal(-1n * ticketAmount + (ticketAmount - feeAmount));
+    } else {
+      // Bank wins: pot stays accumulated (no transfer happens)
+      expect(potAfter).to.equal(ticketAmount);
+    }
+    
+    // Key assertion: the actual outcome must match the keccak256 prediction
+    // If the mutant is present, the sha256 outcome may differ, causing this assertion to fail
+    const actualRandom = keccakRandom; // We use the original prediction
+    // Verify the hash functions produce different results (ensuring test validity)
+    expect(keccakRandom).to.not.equal(sha256Random, "Test requires different hash outputs to be effective");
+  });
+});
+```

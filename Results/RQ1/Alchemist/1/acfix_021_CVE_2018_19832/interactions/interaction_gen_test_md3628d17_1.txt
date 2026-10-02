@@ -1,0 +1,62 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant md3628d17 of NewIntelTechMedia.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test NewIntelTechMedia.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for NewIntelTechMedia:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("NewIntelTechMedia reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy NewIntelTechMedia by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("NewIntelTechMedia"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("NewIntelTechMedia mutant test - kill md3628d17", function () {
+  it("should detect mutant that sets distributionFinished prematurely by setting condition to true", async function () {
+    const [owner, investor1] = await ethers.getSigners();
+    
+    // Deploy the contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("NewIntelTechMedia");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Initial state: distribution is not finished
+    expect(await instance.distributionFinished()).to.equal(false);
+
+    // First distribution: investor1 calls getTokens()
+    // This will trigger distr() with value = 2500e18 (default value)
+    await instance.connect(investor1).getTokens({ value: ethers.parseEther("1") });
+
+    // After first distribution, totalDistributed should be 250000000e18 + 2500e18
+    // totalSupply is 500000000e18, so distribution should NOT be finished
+    expect(await instance.distributionFinished()).to.equal(false);
+
+    // Attempt a second distribution - this should succeed on original contract
+    // because distribution is not finished, but will fail on mutant because
+    // distr() sets distributionFinished = true after first call (due to `if (true)`)
+    const secondInvestor = addr1; // use another signer that is not blacklisted
+    // Actually investor1 is blacklisted after first call, so use a fresh signer
+    const [owner2, investor2] = await ethers.getSigners();
+    
+    // Try to call getTokens from a non-blacklisted address
+    // On original: should succeed because distributionFinished is false
+    // On mutant: should revert because distributionFinished was set to true
+    await expect(
+      instance.connect(investor2).getTokens({ value: ethers.parseEther("1") })
+    ).to.be.revertedWith(""); // The canDistr modifier will revert with no message
+
+    // If we reached here without revert on original, the test would pass
+    // On mutant, the revert will cause the test to fail (or be caught by expect)
+    // This kills the mutant
+  });
+});
+```

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T9016ae19",
+ "property_summary": "After any call to settle that may succeed or fail for a caller, the reference contract always clears the stored guess.block for that caller (making guesses[msg].block == 0), whereas the mutant that omits clearing can leave guesses[msg].block nonzero for some input, so a second settle call may observe a nonzero stored block when the reference always has zero.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Omit clearing the stored block (remove 'guesses[msg.sender].block = 0;'), leaving the guess record intact after settle.",
+ "mutated_unit_code": "function settle() public {\n        require(guesses[msg.sender].block != 0);\n        require(block.number > guesses[msg.sender].block);\n\n        bytes32 answer = keccak256(abi.encodePacked(blockhash(guesses[msg.sender].block)));\n\n        if (guesses[msg.sender].guess == answer) {\n            payable(msg.sender).transfer(2 ether);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {PredictTheBlockHashChallenge} from \"../src/PredictTheBlockHashChallenge.sol\";\n\ncontract InvMutTest is Test {\n    PredictTheBlockHashChallenge c;\n    function setUp() public { c = new PredictTheBlockHashChallenge{value: 1 ether}(); }\n\n    function testFuzz_property(address player, uint256 blockOffset) public {\n        vm.assume(player != address(0));\n        blockOffset = bound(blockOffset, 1, 10);\n\n        vm.deal(player, 2 ether);\n\n        bytes32 guess = bytes32(uint256(0x1234));\n\n        vm.prank(player);\n        c.lockInGuess{value: 1 ether}(guess);\n\n        uint256 targetRoll = block.number + blockOffset + 1;\n        vm.roll(targetRoll);\n\n        vm.prank(player);\n        try c.settle() {\n        } catch {\n        }\n\n        vm.prank(player);\n        bool ok;\n        try c.lockInGuess{value: 1 ether}(guess) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok);\n    }\n}\n"
+}

@@ -1,0 +1,31 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract ModifierEntrancy:
+        Contract Code: pragma solidity ^0.8.0; contract SmartFix { bool public _locked = false; modifier _nonReentrant() { require(!_locked); _locked = true; _; _locked = false; } } contract ModifierEntrancy is SmartFix { mapping (address => uint) public tokenBalance; string constant name = "Nu Token"; function airDrop()  public _nonReentrant  hasNoBalance supportsToken { require(((tokenBalance[msg.sender] + 20) >= tokenBalance[msg.sender])); tokenBalance[msg.sender] += 20; } modifier supportsToken() { require(keccak256(abi.encodePacked("Nu Token")) == Bank(msg.sender).supportsToken()); _; } modifier hasNoBalance { require(tokenBalance[msg.sender] == 0); _; } } contract Bank{ function supportsToken() external pure returns (bytes32){ return(keccak256(abi.encodePacked("Nu Token"))); } }
+
+    Consider the following mutant of ModifierEntrancy:
+        Mutant m574c1c9d of function modifier:supportsToken replaces keccak256 with sha256
+        Mutant Diff: ---|     require(keccak256(abi.encodePacked("Nu Token")) == Bank(msg.sender).supportsToken()); +++|     require(sha256(abi.encodePacked("Nu Token")) == Bank(msg.sender).supportsToken());
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's reason through this step-by-step.
+
+1. **Original behavior**: The `supportsToken()` modifier in `ModifierEntrancy` compares the keccak256 hash of `"Nu Token"` with the hash returned by `Bank(msg.sender).supportsToken()`. Since `Bank.supportsToken()` returns `keccak256(abi.encodePacked("Nu Token"))`, the comparison will always be `true` for calls coming from the `Bank` contract.
+
+2. **Mutant change**: The mutant replaces `keccak256` with `sha256` in the modifier's `require` statement. Now the modifier compares `sha256(abi.encodePacked("Nu Token"))` with the value returned by `Bank(msg.sender).supportsToken()`.
+
+3. **Key insight**: `Bank.supportsToken()` still returns the **keccak256** hash. So the comparison becomes:  
+   `sha256("Nu Token") == keccak256("Nu Token")`  
+   These two hash functions produce completely different outputs for the same input. Therefore, this `require` will **always revert** when called through the `Bank` contract, making the `airDrop()` function permanently unusable.
+
+4. **Test hypothesis**: A test that successfully calls `airDrop()` via the `Bank` contract and verifies that the user's token balance increases by 20 should pass on the original (where the hashes match) but fail on the mutant (where the hashes never match, causing a revert).
+
+**Hypothesis**: "The mutant changes the hash function from keccak256 to sha256 in the supportsToken modifier, making the hash comparison always fail when called through the Bank contract. Therefore, a test case that calls airDrop() through the Bank contract and then asserts that the caller's tokenBalance increased by 20 should kill the mutant."

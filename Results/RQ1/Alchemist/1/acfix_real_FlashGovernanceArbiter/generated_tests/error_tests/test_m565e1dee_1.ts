@@ -1,0 +1,114 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("FlashGovernanceArbiter - kill mutant m565e1dee (enforceTolerance)", function () {
+  it("should revert when v1 > v2 and subtraction is replaced with addition", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy a minimal DAO-like contract that satisfies the interface
+    const DAOFactory = await ethers.getContractFactory("LimboDAOLike");
+    const dao = await DAOFactory.deploy();
+    await dao.waitForDeployment();
+    
+    // Deploy FlashGovernanceArbiter with the DAO address
+    const Factory = await ethers.getContractFactory("FlashGovernanceArbiter");
+    const instance = await Factory.deploy(await dao.getAddress());
+    await instance.waitForDeployment();
+    
+    // Set up: make addr1 a governed address so we can call enforceTolerance
+    // First, we need to bypass the onlySuccessfulProposal modifier on setGoverned
+    // We'll directly set the governed mapping via the DAO's successfulProposal mechanism
+    // For simplicity, we'll set configured to false first via the constructor default
+    // and call enforceTolerance directly which checks enforceLimitsActive and configured
+    
+    // Configure security parameters with changeTolerance = 10%
+    // We need to make a successful proposal first
+    // For testing purposes, we'll call the internal functions directly
+    
+    // Set the security changeTolerance to 10
+    // Since we can't easily bypass onlySuccessfulProposal in a test without mocking,
+    // we'll call enforceTolerance directly which only checks enforceLimitsActive and Configurable(msg.sender).configured()
+    
+    // Create a simple configurable contract to test
+    const ConfigurableFactory = await ethers.getContractFactory("Configurable");
+    const configurable = await ConfigurableFactory.deploy();
+    await configurable.waitForDeployment();
+    
+    // Set enforceLimitsActive for addr1
+    await instance.connect(addr1).setEnforcement(true);
+    
+    // Configure the configurable to return configured() = true
+    // Since Configurable is abstract, we need a concrete implementation
+    // Let's use a different approach - directly call enforceTolerance with the right conditions
+    
+    // First, we need to set security.changeTolerance to 10
+    // We'll do this by calling configureSecurityParameters through the owner
+    // Since owner is the DAO in this test, we can call it directly
+    
+    // Actually, let's use a simpler approach: call enforceToleranceInt which calls enforceTolerance
+    // with unsigned values converted from signed integers
+    
+    // The mutant changes (v1 - v2) to (v1 + v2) when v1 > v2
+    // Test case: v1 = 110, v2 = 100, changeTolerance = 10
+    // Original: (110 - 100) * 100 = 1000 < 10 * 110 = 1100 => PASS
+    // Mutant: (110 + 100) * 100 = 21000 < 10 * 110 = 1100 => REVERT
+    
+    // Set security parameters first
+    // We need to make the owner a successful proposal
+    // For testing, we can directly set the storage
+    
+    // Alternative: use ethers to set the storage slot directly
+    // The security struct is at slot 2 (after flashGovernanceConfig at slot 1)
+    // security.changeTolerance is the 4th element (uint8)
+    
+    // Actually, let's just call the function with the right preconditions
+    // First, set security.changeTolerance = 10 by calling configureSecurityParameters
+    // We need to bypass onlySuccessfulProposal - let's set DAO to owner and configured to false
+    
+    // Deploy a new instance where we can control everything
+    const instance2 = await ethers.deployContract("FlashGovernanceArbiter", [await dao.getAddress()]);
+    await instance2.waitForDeployment();
+    
+    // Set enforceLimitsActive for the configurable contract address
+    // We'll deploy a minimal contract that returns configured() = true
+    const MinimalConfigurable = await ethers.getContractFactory("MinimalConfigurable");
+    const minConfig = await MinimalConfigurable.deploy();
+    await minConfig.waitForDeployment();
+    
+    await instance2.connect(addr1).setEnforcement(true);
+    
+    // Now we need to set security.changeTolerance to 10
+    // We can do this by calling configureSecurityParameters with onlySuccessfulProposal
+    // Since we're the owner and DAO is set, we need to make owner a successful proposal
+    // Let's use a simpler approach: set the storage directly
+    
+    // Get the storage slot for security struct
+    // security is at slot 2 (0-indexed)
+    const securitySlot = 2;
+    const securityData = await ethers.provider.getStorage(await instance2.getAddress(), securitySlot);
+    
+    // Parse the security struct:
+    // uint256 epochSize (slot 0)
+    // uint256 lastFlashGovernanceAct (slot 1)
+    // uint8 maxGovernanceChangePerEpoch (slot 2, first byte)
+    // uint8 changeTolerance (slot 2, second byte)
+    
+    // Set changeTolerance = 10 (0x0a) at the second byte of slot 2
+    const currentValue = ethers.toBigInt(securityData);
+    const mask = ~(BigInt(0xff) << BigInt(8)); // mask to clear the second byte
+    const newValue = (currentValue & mask) | (BigInt(10) << BigInt(8));
+    
+    // We need to use the setStorage hardhat method
+    await ethers.provider.send("hardhat_setStorageAt", [
+      await instance2.getAddress(),
+      "0x" + securitySlot.toString(16).padStart(64, "0"),
+      "0x" + newValue.toString(16).padStart(64, "0")
+    ]);
+    
+    // Now call enforceTolerance with v1=110, v2=100
+    // This should pass on original but revert on mutant
+    await expect(
+      instance2.connect(addr1).enforceTolerance(110, 100)
+    ).to.be.revertedWith("FE1");
+  });
+});

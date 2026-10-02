@@ -1,0 +1,57 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant m32349c6a detection", function () {
+  it("should detect mutant that changes == to != in block.number % 15 condition", async function () {
+    const [owner, player] = await ethers.getSigners();
+    
+    // Deploy contract with initial funding (constructor is payable)
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy({ value: ethers.parseEther("100") });
+    await instance.waitForDeployment();
+    
+    // Record player's initial balance
+    const initialBalance = await ethers.provider.getBalance(player.address);
+    
+    // We need to call fallback on a block where block.number % 15 == 0
+    // First, find the current block number
+    let currentBlock = await ethers.provider.getBlockNumber();
+    
+    // Calculate how many blocks to wait until next block divisible by 15
+    const blocksToWait = 15 - (currentBlock % 15);
+    
+    // Mine blocks to reach a block where block.number % 15 == 0
+    for (let i = 0; i < blocksToWait; i++) {
+      await ethers.provider.send("evm_mine", []);
+    }
+    
+    // Verify we're on the right block
+    const targetBlock = await ethers.provider.getBlockNumber();
+    expect(targetBlock % 15).to.equal(0);
+    
+    // Player sends exactly 10 ether to trigger the fallback
+    const tx = await player.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    await tx.wait();
+    
+    // Check player's balance after the transaction
+    const finalBalance = await ethers.provider.getBalance(player.address);
+    
+    // In the ORIGINAL contract: condition (block.number % 15 == 0) is TRUE,
+    // so the contract sends its entire balance to the player.
+    // In the MUTANT: condition (block.number % 15 != 0) is FALSE,
+    // so NO transfer occurs.
+    
+    // Calculate expected balance for original contract:
+    // Player sent 10 ether, but received the contract's full balance (100 ether + 10 ether from this tx = 110 ether)
+    // Net change: -10 (sent) + 110 (received) = +100 ether
+    const contractBalanceBeforeTx = ethers.parseEther("100");
+    const expectedOriginalBalance = initialBalance - ethers.parseEther("10") + contractBalanceBeforeTx + ethers.parseEther("10");
+    
+    // If mutant is alive, player would only lose 10 ether (no transfer back)
+    // If mutant is killed (original behavior), player gains ~100 ether
+    expect(finalBalance).to.be.gt(initialBalance);
+  });
+});

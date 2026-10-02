@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract B:
+        Contract Code: pragma solidity ^0.8.0; contract B { address public owner = payable(msg.sender); function go() public payable { address target = 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C; target.call{value: msg.value}(""); payable(owner).transfer(address(this).balance); } fallback() external payable { } }
+
+    Consider the following mutant of B:
+        Mutant m74486e76 of function go replaces 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C with address(0)
+        Mutant Diff: ---|         address target = 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C; +++|         address target = address(0);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract sends the entire contract balance to the owner after making an external call to a specific hardcoded address (0xC8A60C...). The mutant changes that target address to address(0), which means the external call will be made to the zero address instead.
+
+**Hypothesis**: A test case that sends a non-zero amount of ether to the `go()` function and then checks that the owner's balance increased by exactly the amount sent (while the contract's balance becomes zero) should kill the mutant. In the original, the call to the specific address might fail or succeed, but the `payable(owner).transfer(...)` still executes regardless. However, when the target is `address(0)`, the low-level `.call{value: ...}("")` to the zero address will always succeed (as per EVM rules, calls to address(0) do not revert but consume gas and "send" the ether to a black hole). This means the ether sent to address(0) is burned, so the subsequent `transfer` to the owner will send only the remaining balance (which is less than the original `msg.value` if any ether was already in the contract, or zero if the contract was empty before). Therefore, a test that verifies the owner receives the exact full `msg.value` amount will fail on the mutant because the ether is lost to address(0) instead.

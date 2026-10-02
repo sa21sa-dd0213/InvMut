@@ -1,0 +1,61 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mdc8e1c39 of MultiplicatorX3.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test MultiplicatorX3.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for MultiplicatorX3:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("MultiplicatorX3 reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy MultiplicatorX3 by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("MultiplicatorX3"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MultiplicatorX3 mutant mdc8e1c39 test", function () {
+  it("should detect the mutant by sending msg.value equal to balance - 1 wei", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("MultiplicatorX3");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Fund the contract with some initial balance
+    const initialBalance = ethers.parseEther("10");
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: initialBalance
+    });
+
+    // Get the current contract balance
+    const contractBalance = await ethers.provider.getBalance(await instance.getAddress());
+    
+    // Send exactly balance - 1 wei to multiplicate
+    const sendAmount = contractBalance - 1n;
+    
+    // Record balances before
+    const recipientBalanceBefore = await ethers.provider.getBalance(addr1.address);
+    const contractBalanceBefore = await ethers.provider.getBalance(await instance.getAddress());
+
+    // Execute the multiplicate call
+    await instance.connect(owner).multiplicate(addr1.address, { value: sendAmount });
+
+    // Check balances after
+    const recipientBalanceAfter = await ethers.provider.getBalance(addr1.address);
+    const contractBalanceAfter = await ethers.provider.getBalance(await instance.getAddress());
+
+    // Original: condition is false (msg.value < balance), so no transfer should happen
+    // Mutant: condition is true (msg.value+1 >= balance), so transfer happens
+    // Assert that no transfer occurred (original behavior) - this will fail on mutant
+    expect(recipientBalanceAfter).to.equal(recipientBalanceBefore);
+    expect(contractBalanceAfter).to.equal(contractBalanceBefore);
+  });
+});
+```

@@ -1,0 +1,68 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant me2c18b9c of NewIntelTechMedia.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test NewIntelTechMedia.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for NewIntelTechMedia:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("NewIntelTechMedia reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy NewIntelTechMedia by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("NewIntelTechMedia"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Kill mutant me2c18b9c - remove onlyPayloadSize modifier from transfer", function () {
+  it("should revert when transfer is called with extra calldata on original, but succeed on mutant", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("NewIntelTechMedia");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Setup: give owner some tokens via NETM() function
+    await instance.NETM();
+
+    // Get the function selector for transfer(address,uint256)
+    const transferSelector = ethers.id("transfer(address,uint256)").slice(0, 10);
+
+    // Encode the normal parameters: _to = addr1, _amount = 1000 wei
+    const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+    const normalParams = abiCoder.encode(
+      ["address", "uint256"],
+      [addr1.address, ethers.parseEther("1000")]
+    );
+
+    // Create calldata with extra bytes appended (malicious payload)
+    const extraData = ethers.randomBytes(32); // 32 extra bytes
+    const maliciousCalldata = transferSelector + normalParams.slice(2) + ethers.hexlify(extraData).slice(2);
+
+    // Send the transaction with extra calldata
+    const tx = await owner.sendTransaction({
+      to: await instance.getAddress(),
+      data: maliciousCalldata,
+    });
+
+    // On the original contract, this should revert due to onlyPayloadSize check
+    // On the mutant, it will succeed (no check)
+    // We expect the mutant to NOT revert, so we check the receipt status
+    const receipt = await tx.wait();
+    
+    // The mutant will have a successful transaction (status 1)
+    // The original would revert (status 0) - but since we're testing the mutant,
+    // we expect success, which kills the mutant
+    expect(receipt.status).to.equal(1);
+    
+    // Verify that the transfer actually happened on the mutant
+    const addr1Balance = await instance.balanceOf(addr1.address);
+    expect(addr1Balance).to.equal(ethers.parseEther("1000"));
+  });
+});
+```

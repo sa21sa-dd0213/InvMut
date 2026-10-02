@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0008",
+ "property_summary": "A player sends exactly 10 wei (the TICKET_AMOUNT) to play(); the reference contract accepts it and updates pot, while the buggy contract requires msg.value >= TICKET_AMOUNT, so the call succeeds in both; however, after two identical calls with random=0, the reference contract correctly resets pot to 0 and bank receives the fee, whereas the buggy contract's pot accumulates extra value because the >= check allows overpayment, causing the final pot to be non-zero after the second win.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "-require(msg.value == TICKET_AMOUNT);; +require(msg.value >= TICKET_AMOUNT);",
+ "mutated_unit_code": "    function play()  public payable {\n        require(msg.value >= TICKET_AMOUNT);\n        pot += msg.value;\n\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n\n        if (random == 0) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    function setUp() public { c = new EtherLotto(); }\n    function testRegression_property() public {\n        vm.deal(address(0x1), 10);\n        vm.deal(address(0x2), 10);\n\n        vm.warp(2);\n        vm.roll(2);\n\n        vm.prank(address(0x1));\n        c.play{value: 10}();\n\n        \n        c = new EtherLotto();\n\n        vm.deal(address(0x3), 20);\n        vm.warp(2);\n        vm.roll(2);\n        vm.prank(address(0x3));\n        bool ok;\n        try c.play{value: 20}() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        assertTrue(!ok); \n    }\n}\n"
+}

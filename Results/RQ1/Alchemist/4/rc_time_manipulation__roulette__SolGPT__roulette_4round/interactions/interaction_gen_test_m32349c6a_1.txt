@@ -1,0 +1,75 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m32349c6a of Roulette.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Roulette.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Roulette:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Roulette reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Roulette by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Roulette"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("Roulette mutant kill test - m32349c6a", function () {
+  it("should kill mutant by checking no payout occurs when block.number % 15 == 0", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    const contractAddress = await instance.getAddress();
+
+    // Fund the contract with initial balance so we can detect transfers
+    const initialFundTx = await owner.sendTransaction({
+      to: contractAddress,
+      value: ethers.parseEther("1")
+    });
+    await initialFundTx.wait();
+
+    // Get current block number and calculate the next block where block.number % 15 == 0
+    const currentBlock = await ethers.provider.getBlock("latest");
+    const currentBlockNumber = currentBlock.number;
+    const blocksToAdd = 15 - (currentBlockNumber % 15);
+    const targetBlockNumber = currentBlockNumber + blocksToAdd;
+
+    // Mine blocks to reach the target block
+    for (let i = 0; i < blocksToAdd; i++) {
+      await ethers.provider.send("evm_mine");
+    }
+
+    // Record player's balance before the transaction
+    const playerBalanceBefore = await ethers.provider.getBalance(player.address);
+    const contractBalanceBefore = await ethers.provider.getBalance(contractAddress);
+
+    // Player sends exactly 10 ether to trigger the fallback
+    const tx = await player.sendTransaction({
+      to: contractAddress,
+      value: ethers.parseEther("10")
+    });
+    await tx.wait();
+
+    // Check contract balance - in original it should NOT decrease (no payout)
+    const contractBalanceAfter = await ethers.provider.getBalance(contractAddress);
+    const playerBalanceAfter = await ethers.provider.getBalance(player.address);
+
+    // Original behavior: no transfer occurs, so contract balance increases by 10 ether
+    expect(contractBalanceAfter).to.equal(contractBalanceBefore + ethers.parseEther("10"));
+    
+    // Player balance decreases by exactly 10 ether + gas costs
+    const gasCost = tx.gasPrice * tx.gasLimit; // simplified check
+    expect(playerBalanceAfter).to.be.lt(playerBalanceBefore - ethers.parseEther("10"));
+    
+    // The mutant would have transferred the whole contract balance, killing this test
+    // because the contract balance would be much lower than expected
+  });
+});
+```

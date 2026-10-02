@@ -1,0 +1,75 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant md3aae15f of Roulette.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Roulette.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Roulette:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Roulette reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Roulette by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Roulette"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant detection - timestamp comparison", function () {
+  it("should detect mutant where > is replaced with < in require(block.timestamp > pastBlockTime)", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // First call: set pastBlockTime to current block.timestamp
+    const tx1 = await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    await tx1.wait();
+
+    // Get the block where tx1 was mined to verify timestamps
+    const block1 = await ethers.provider.getBlock(tx1.blockNumber);
+    
+    // Second call: send in the same block (same timestamp) - should revert in original
+    // because require(block.timestamp > pastBlockTime) fails when equal
+    // But mutant's require(block.timestamp < pastBlockTime) also fails when equal
+    // To kill the mutant we need a scenario where original passes and mutant fails,
+    // OR original fails and mutant passes.
+    
+    // Actually, let's craft a scenario: send a third transaction in a LATER block
+    // Wait for next block
+    await ethers.provider.send("evm_mine", []);
+    
+    const tx2 = await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    await tx2.wait();
+    
+    const block2 = await ethers.provider.getBlock(tx2.blockNumber);
+    
+    // Now send a fourth transaction in a block with timestamp EARLIER than pastBlockTime
+    // This can be done by mining a block with a specific timestamp in the past
+    // In Hardhat we can use evm_setNextBlockTimestamp
+    const pastTime = block2.timestamp - 1000;
+    await ethers.provider.send("evm_setNextBlockTimestamp", [pastTime]);
+    
+    // This should succeed in the mutant (since block.timestamp < pastBlockTime)
+    // But fail in the original (since block.timestamp > pastBlockTime is false)
+    const tx3 = owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    
+    await expect(tx3).to.be.reverted; // Original would revert, mutant would pass
+    // If the test expects revert and it passes (mutant doesn't revert), test fails = mutant killed
+  });
+});
+```

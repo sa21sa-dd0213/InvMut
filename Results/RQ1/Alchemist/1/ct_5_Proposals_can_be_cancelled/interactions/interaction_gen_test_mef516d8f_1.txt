@@ -1,0 +1,58 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mef516d8f of DAO.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test DAO.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for DAO:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("DAO reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy DAO by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("DAO"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("DAO mutant mef516d8f - init guard inversion", function () {
+  it("should revert on second init call in original, but mutant allows it", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("DAO");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy mock VADER, USDV, VAULT addresses (any addresses work for init test)
+    const mockVader = await ethers.Wallet.createRandom().getAddress();
+    const mockUsdv = await ethers.Wallet.createRandom().getAddress();
+    const mockVault = await ethers.Wallet.createRandom().getAddress();
+
+    // First init call should succeed in original, but in mutant it reverts
+    // We expect it to succeed (original behavior) - if it reverts, mutant is killed
+    try {
+      const tx1 = await instance.init(mockVader, mockUsdv, mockVault);
+      await tx1.wait();
+    } catch (error) {
+      // If first call reverts, mutant is detected (original allows first call)
+      expect(error).to.exist;
+      return;
+    }
+
+    // Second init call should revert in original, but mutant might allow it
+    try {
+      const tx2 = await instance.init(mockVader, mockUsdv, mockVault);
+      await tx2.wait();
+      // If second call succeeds, mutant is detected (original would revert)
+      expect.fail("Second init should have reverted");
+    } catch (error) {
+      // If second call reverts, it matches original behavior (mutant not killed here)
+      expect(error).to.exist;
+    }
+  });
+});
+```

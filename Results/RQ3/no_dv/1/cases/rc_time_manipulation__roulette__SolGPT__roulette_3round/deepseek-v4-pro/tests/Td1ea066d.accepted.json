@@ -1,0 +1,12 @@
+{
+ "difference_id": "Td1ea066d",
+ "property_summary": "If the fallback receives exactly 10 ether, the entire balance gets transferred to the caller exactly when block.number is divisible by 15; the bug changes the divisor to 16 so a block divisible by 15 but not 16 can leave the balance non-zero.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Change the divisor in the modulo condition from 15 to 16.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp + 1;\n\n        if(block.number % 16 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 blockNum, uint48 warpedTime) public {\n        blockNum = bound(blockNum, 1, 1_000_000);\n        vm.assume(warpedTime > 0);\n        vm.warp(warpedTime);\n        vm.roll(blockNum);\n\n        address actor = makeAddr(\"actor\");\n        vm.deal(actor, 10 ether);\n        vm.prank(actor);\n        (bool ok, ) = address(c).call{value: 10 ether}(\"\");\n        require(ok, \"fallback reverted unexpectedly\");\n\n        bool divisibleBy15 = (blockNum % 15 == 0);\n        bool balanceIsZero = (address(c).balance == 0);\n        assertTrue(divisibleBy15 ? balanceIsZero : !balanceIsZero);\n    }\n}\n"
+}

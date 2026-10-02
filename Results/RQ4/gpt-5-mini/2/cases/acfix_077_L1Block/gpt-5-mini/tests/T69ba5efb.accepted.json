@@ -1,0 +1,12 @@
+{
+ "difference_id": "T69ba5efb",
+ "property_summary": "For any caller address, calling setL1BlockValues on the reference contract always reverts unless the caller is the mutable depositorAccount (so non-equal to the hardcoded DEPOSITOR_ACCOUNT when depositorAccount differs); the mutant which checks the constant DEPOSITOR_ACCOUNT instead allows the hardcoded address to succeed and thus violates the invariant that calls from arbitrary addresses (including the hardcoded one when depositorAccount is different) cannot set L1 values — the fuzzer can pick depositorAccount and caller to expose the difference.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replace the require guard to check against the declared constant DEPOSITOR_ACCOUNT instead of depositorAccount, enabling the hardcoded address to set values.",
+ "mutated_unit_code": "function setL1BlockValues(\n    uint64 _number,\n    uint64 _timestamp,\n    uint256 _basefee,\n    bytes32 _hash,\n    uint64 _sequenceNumber,\n    bytes32 _batcherHash,\n    uint256 _l1FeeOverhead,\n    uint256 _l1FeeScalar\n) external {\n    require(\n        msg.sender == DEPOSITOR_ACCOUNT,\n        \"L1Block: only the depositor account can set L1 block values\"\n    );\n\n}\n",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {L1Block} from \"../src/L1Block.sol\";\n\ncontract InvMutTest is Test {\n    L1Block c;\n\n    function setUp() public { c = new L1Block(); }\n\n    function testFuzz_property(address depositorAddr, address caller) public {\n        if (depositorAddr == address(0)) depositorAddr = address(1);\n        if (caller == address(0)) caller = address(2);\n\n        address stored = c.depositorAccount();\n\n        bool ok;\n        vm.prank(caller);\n        try c.setL1BlockValues(0, 0, 0, bytes32(0), 0, bytes32(0), 0, 0) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok == (caller == stored));\n    }\n}\n"
+}

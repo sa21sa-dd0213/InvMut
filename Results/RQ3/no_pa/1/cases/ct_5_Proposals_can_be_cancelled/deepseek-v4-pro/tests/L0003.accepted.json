@@ -1,0 +1,11 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "After init sets VADER to a non-zero address, the reference contract allows a cancelProposal call when conditions are met, while the buggy version (where VADER remains zero) causes a revert due to an external call to address(0), leading to different VADER state variable values.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "change_summary": "Delete the assignment to VADER so it remains address(0).",
+ "mutated_unit_code": "    function init(address _vader, address _usdv, address _vault) public {\n        require(inited == false);\n        inited = true;\n        USDV = _usdv;\n        VAULT = _vault;\n        coolOffPeriod = 1;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport \"forge-std/Test.sol\";\nimport {DAO} from \"../src/DAO.sol\";\n\ncontract MockVault {\n    function totalWeight() external pure returns (uint) { return 6; }\n    function getMemberWeight(address) external pure returns (uint) { return 6; }\n}\n\ncontract InvMutTest is Test {\n    DAO c;\n    MockVault vault;\n\n    function setUp() public {\n        c = new DAO();\n        vault = new MockVault();\n        c.init(address(0x1111), address(0x2222), address(vault));\n    }\n\n    function testFuzz_run() public {\n        c.newGrantProposal(address(0xBEEF), 100);\n        uint id = c.proposalCount();\n\n        c.voteProposal(id);\n        require(c.mapPID_finalising(id), \"setup: not finalising\");\n\n        bool reverted;\n        try c.cancelProposal(id, id) {\n            reverted = false;\n        } catch {\n            reverted = true;\n        }\n        assertTrue(reverted);\n    }\n}\n"
+}

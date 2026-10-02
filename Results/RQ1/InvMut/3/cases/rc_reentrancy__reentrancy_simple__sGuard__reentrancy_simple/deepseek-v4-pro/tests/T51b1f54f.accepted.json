@@ -1,0 +1,12 @@
+{
+ "difference_id": "T51b1f54f",
+ "property_summary": "For any caller with a non-zero balance who is a contract that does not revert on receiving Ether, after withdrawBalance the caller's recorded balance must be zero and the caller must have received exactly the prior recorded balance; the bug zeroes the balance before the call, sending zero Ether, so the caller receives zero.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the external call with `userBalance[msg.sender] = 0` moved before the call, so the call sends zero Ether and the balance becomes 0, observable as a different final balance than original when call succeeds.",
+ "mutated_unit_code": "function withdrawBalance()  public nonReentrant_ {\n         userBalance[msg.sender] = 0;\n         { (bool _s, bytes memory _d) = msg.sender.call{value: 0}(\"\"); _d; if (! _s) {\n             revert();\n         } }\n     }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n    function testFuzz_property(uint256 amount, uint8 callerSeed) public {\n        vm.assume(amount > 0);\n        vm.assume(callerSeed > 0);\n        Receiver receiver = new Receiver();\n        vm.deal(address(receiver), amount);\n        vm.prank(address(receiver));\n        c.addToBalance{value: amount}();\n        uint256 balanceBefore = address(receiver).balance;\n        vm.prank(address(receiver));\n        c.withdrawBalance();\n        uint256 received = address(receiver).balance - balanceBefore;\n        assertTrue(c.getBalance(address(receiver)) == 0 && received == amount);\n    }\n}\n\ncontract Receiver {\n    receive() external payable {}\n}\n"
+}

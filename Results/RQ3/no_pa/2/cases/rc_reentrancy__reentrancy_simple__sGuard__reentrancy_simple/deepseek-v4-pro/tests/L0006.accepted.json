@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0006",
+ "property_summary": "After user Alice sends 1 wei via addToBalance(), the reference contract stores it under Alice's address, while the buggy contract sends Ether to a new contract in withdrawBalance, leaving Alice's balance unchanged; the divergence is observed by calling withdrawBalance and then getBalance(Alice) returns 0 in reference but still 1 in buggy.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Change the external call target from msg.sender to a new contract that stores the value, altering which key's balance stays nonzero after withdrawal.",
+ "mutated_unit_code": "      function withdrawBalance()  public nonReentrant_ {\n         address target = address(new sGuard());\n         { (bool _s, bytes memory _d) = target.call{value: userBalance[msg.sender]}(\"\"); _d; if (! _s) {\n             revert();\n         } }\n         userBalance[msg.sender] = 0;\n     }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n    function testRegression_property() public {\n        address alice = address(0x1234);\n        vm.deal(alice, 1 wei);\n        vm.prank(alice);\n        c.addToBalance{value: 1 wei}();\n        vm.prank(alice);\n        c.withdrawBalance();\n        uint256 bal = c.getBalance(alice);\n        assertTrue(bal == 0, \"After withdrawal, balance should be zero\");\n    }\n}\n"
+}

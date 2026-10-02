@@ -1,0 +1,60 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PoCGame mutant detection - me10f6e80", function () {   it("should detect the betLimit / 2 vs betLimit + 2 mutation in play() function", async function () {     const [owner, whale, player] = await ethers.getSigners();     const betLimit = ethers.parseEther("1.0");     const Factory = await ethers.getContractFactory("PoCGame");     const instance = await Factory.deploy(whale.address, betLimit);     await instance.waitForDeployment();      // Open the contract to the public     await instance.connect(owner).OpenToThePublic();      // Set difficulty to ensure a deterministic loss (winningNumber != difficulty / 2)     // Use difficulty = 4, so difficulty / 2 = 2, and winningNumber will be 1, 2, 3, or 4     // We'll make the player lose by ensuring they don't hit exactly 2     await instance.connect(owner).AdjustDifficulty(4);      // Player places a wager     await instance.connect(player).wager({ value: betLimit });      // Mine a block to advance block.number so the play() condition passes     await ethers.provider.send("evm_mine", []);      // Get contract balance before playing (should be betLimit from wager)     const balanceBefore = await instance.ethBalance();      // Player calls play() - this will trigger loseWager since winningNumber won't be 2     await instance.connect(player).play();      // Get contract balance after playing     const balanceAfter = await instance.ethBalance();      // In the original: loseWager(betLimit / 2) = 0.5 ETH sent to whale     // In the mutant: loseWager(betLimit + 2) = 1 ETH + 2 wei sent to whale     // Expected original behavior: contract balance should decrease by betLimit / 2     const expectedLoss = betLimit / 2n;     const actualLoss = balanceBefore - balanceAfter;      // If the mutant is present, actualLoss will be betLimit + 2n instead of betLimit / 2n     expect(actualLoss).to.equal(expectedLoss);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PoCGame { modifier onlyOwner() { require(msg.sender == owner); _; } modifier isOpenToPublic() { require(openToPublic); _; } modifier onlyRealPeople() { require(msg.sender == tx.origin); _; } modifier onlyPlayers() { require(wagers[msg.sender] > 0); _; } event Wager(uint256 amount, address depositer); event Win(uint256 amount, address paidTo); event Lose(uint256 amount, address loser); event Donate(uint256 amount, address paidTo, address donator); event DifficultyChanged(uint256 currentDifficulty); event BetLimitChanged(uint256 currentBetLimit); address private whale; uint256 betLimit; uint difficulty; uint private randomSeed; address owner; mapping(address => uint256) timestamps; mapping(address => uint256) wagers; bool openToPublic; uint256 totalDonated; constructor(address whaleAddress, uint256 wagerLimit) public { openToPublic = false; owner = payable(msg.sender); whale = whaleAddress; totalDonated = 0; betLimit = wagerLimit; } function OpenToThePublic()  public onlyOwner() { openToPublic = true; } function AdjustBetAmounts(uint256 amount)  public onlyOwner() { betLimit = amount; emit BetLimitChanged(betLimit); } function AdjustDifficulty(uint256 amount)  public onlyOwner() { difficulty = amount; emit DifficultyChanged(difficulty); } fallback() external payable {} function wager()  public isOpenToPublic() onlyRealPeople() payable { require(msg.value == betLimit); require(wagers[msg.sender] == 0); timestamps[msg.sender] = block.number; wagers[msg.sender] = msg.value; emit Wager(msg.value, msg.sender); } function play()  public isOpenToPublic() onlyRealPeople() onlyPlayers() { uint256 blockNumber = timestamps[msg.sender]; if (blockNumber < block.number) { timestamps[msg.sender] = 0; wagers[msg.sender] = 0; uint256 winningNumber = uint256(keccak256(abi.encodePacked(blockhash(blockNumber), msg.sender, randomSeed))) % difficulty + 1; if (winningNumber == difficulty / 2) { payout(msg.sender); } else { loseWager(betLimit / 2); } } else { revert(); } } function donate()  public isOpenToPublic() payable { donateToWhale(msg.value); } function payout(address winner) internal { uint256 ethToTransfer = address(this).balance / 2; payable(winner).transfer(ethToTransfer); emit Win(ethToTransfer, winner); } function donateToWhale(uint256 amount) internal { { (bool _s,) = whale.call{value: amount}(""); require(_s); } totalDonated += amount; emit Donate(amount, whale, msg.sender); } function loseWager(uint256 amount) internal { { (bool _s,) = whale.call{value: amount}(""); require(_s); } totalDonated += amount; emit Lose(amount, msg.sender); } function ethBalance() public view returns (uint256) { return address(this).balance; } function currentDifficulty() public view returns (uint256) { return difficulty; } function currentBetLimit() public view returns (uint256) { return betLimit; } function hasPlayerWagered(address player) public view returns (bool) { return wagers[player] > 0; } function winnersPot() public view returns (uint256) { return address(this).balance / 2; } function transferAnyERC20Token(address tokenAddress, address tokenOwner, uint tokens) public onlyOwner() returns (bool success) { return ERC20Interface(tokenAddress).transfer(tokenOwner, tokens); } } abstract contract ERC20Interface { function transfer(address to, uint256 tokens) virtual public returns (bool success); }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PoCGame mutant detection - me10f6e80", function () {
+  it("should detect the betLimit / 2 vs betLimit + 2 mutation in play() function", async function () {
+    const [owner, whale, player] = await ethers.getSigners();
+    const betLimit = ethers.parseEther("1.0");
+    const Factory = await ethers.getContractFactory("PoCGame");
+    const instance = await Factory.deploy(whale.address, betLimit);
+    await instance.waitForDeployment();
+
+    // Open the contract to the public
+    await instance.connect(owner).OpenToThePublic();
+
+    // Set difficulty to ensure a deterministic loss (winningNumber != difficulty / 2)
+    // Use difficulty = 4, so difficulty / 2 = 2, and winningNumber will be 1, 2, 3, or 4
+    // We'll make the player lose by ensuring they don't hit exactly 2
+    await instance.connect(owner).AdjustDifficulty(4);
+
+    // Player places a wager
+    await instance.connect(player).wager({ value: betLimit });
+
+    // Mine a block to advance block.number so the play() condition passes
+    await ethers.provider.send("evm_mine", []);
+
+    // Get contract balance before playing (should be betLimit from wager)
+    const balanceBefore = await instance.ethBalance();
+
+    // Player calls play() - this will trigger loseWager since winningNumber won't be 2
+    await instance.connect(player).play();
+
+    // Get contract balance after playing
+    const balanceAfter = await instance.ethBalance();
+
+    // In the original: loseWager(betLimit / 2) = 0.5 ETH sent to whale
+    // In the mutant: loseWager(betLimit + 2) = 1 ETH + 2 wei sent to whale
+    // Expected original behavior: contract balance should decrease by betLimit / 2
+    const expectedLoss = betLimit / 2n;
+    const actualLoss = balanceBefore - balanceAfter;
+
+    // If the mutant is present, actualLoss will be betLimit + 2n instead of betLimit / 2n
+    expect(actualLoss).to.equal(expectedLoss);
+  });
+});
+```

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T5037013b",
+ "property_summary": "After any call to newGrantProposal, the state variable proposalCount must always equal the proposal ID used for the stored GrantDetails in mapPID_grant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Move the proposalCount increment to after storing the grant details, so mapPID_grant uses the old proposalCount while mapPID_type uses the new, causing stored mapping inconsistency and still differing proposalCount.",
+ "mutated_unit_code": "function newGrantProposal(address recipient, uint amount) public {\n        string memory typeStr = \"GRANT\";\n        mapPID_type[proposalCount] = typeStr;\n        GrantDetails memory grant;\n        grant.recipient = recipient;\n        grant.amount = amount;\n        mapPID_grant[proposalCount] = grant;\n        emit NewProposal(msg.sender, proposalCount, typeStr);\n        proposalCount += 1;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {DAO} from \"../src/DAO.sol\";\n\ncontract InvMutTest is Test {\n    DAO c;\n    function setUp() public { c = new DAO(); }\n    function testFuzz_property(address recipient, uint256 amount) public {\n        address vader = address(0x1);\n        address usdv = address(0x2);\n        address vault = address(0x3);\n        c.init(vader, usdv, vault);\n\n        vm.prank(address(0x4));\n        c.newGrantProposal(recipient, amount);\n\n        uint256 currentProposalCount = c.proposalCount();\n        bool match1 = currentProposalCount == 0;\n        bool match2;\n        if (currentProposalCount > 0) {\n            (address storedRecipient, uint256 storedAmount) = c.mapPID_grant(currentProposalCount);\n            match2 = (storedRecipient == recipient && storedAmount == amount);\n        } else {\n            match2 = true;\n        }\n        assertTrue(match1 || match2);\n    }\n}"
+}

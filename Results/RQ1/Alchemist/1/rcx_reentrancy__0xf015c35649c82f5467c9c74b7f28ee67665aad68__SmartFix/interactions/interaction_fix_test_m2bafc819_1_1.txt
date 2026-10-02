@@ -1,0 +1,76 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("MY_BANK mutant detection - m2bafc819", function () {   it("should revert Collect when external call fails, preventing balance deduction and event emission", async function () {     const [owner, attacker, recipient] = await ethers.getSigners();      // Deploy Log contract first     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();      // Deploy MY_BANK with Log address     const BankFactory = await ethers.getContractFactory("MY_BANK");     const bank = await BankFactory.deploy(await log.getAddress());     await bank.waitForDeployment();      // Deploy a contract that rejects Ether     const RejectorFactory = await ethers.getContractFactory("RejectEther");     const rejector = await RejectorFactory.deploy();     await rejector.waitForDeployment();      // Fund the bank from attacker (needs to put ether first)     const putAmount = ethers.parseEther("10");     await bank.connect(attacker).Put(0, { value: putAmount });      // Fund the rejector contract so it can receive the call (but will revert)     await owner.sendTransaction({       to: await rejector.getAddress(),       value: ethers.parseEther("1")     });      // Now try to collect from attacker's account, sending to rejector (which will fail)     // We need to make attacker the caller but the recipient will be rejector     // Since MY_BANK sends to msg.sender, we must call from rejector contract     // But rejector cannot call - so we use a different approach:      // Call Collect from a contract that will receive the ether and revert     const collectAmount = ethers.parseEther("1");          // First, fund the bank from the rejector contract address     await bank.connect(rejector).Put(0, { value: putAmount });      // Now try Collect from rejector - it will try to send ether to rejector which reverts     await expect(       bank.connect(rejector).Collect(collectAmount)     ).to.be.reverted;      // Verify balance was NOT deducted from rejector's account     const holderInfo = await bank.Acc(await rejector.getAddress());     expect(holderInfo.balance).to.equal(putAmount);   }); });  // Helper contract that reverts on receive contract RejectEther {   receive() external payable {     revert("I reject your ether");   } }
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract MY_BANK { function Put(uint _unlockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant detection - m2bafc819", function () {
+  it("should revert Collect when external call fails, preventing balance deduction and event emission", async function () {
+    const [owner, attacker, recipient] = await ethers.getSigners();
+
+    // Deploy Log contract first
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Deploy MY_BANK with Log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+
+    // Deploy a contract that rejects Ether
+    const RejectorFactory = await ethers.getContractFactory("RejectEther");
+    const rejector = await RejectorFactory.deploy();
+    await rejector.waitForDeployment();
+
+    // Fund the bank from attacker (needs to put ether first)
+    const putAmount = ethers.parseEther("10");
+    await bank.connect(attacker).Put(0, { value: putAmount });
+
+    // Fund the rejector contract so it can receive the call (but will revert)
+    await owner.sendTransaction({
+      to: await rejector.getAddress(),
+      value: ethers.parseEther("1")
+    });
+
+    // Now try to collect from attacker's account, sending to rejector (which will fail)
+    // We need to make attacker the caller but the recipient will be rejector
+    // Since MY_BANK sends to msg.sender, we must call from rejector contract
+    // But rejector cannot call - so we use a different approach:
+
+    // Call Collect from a contract that will receive the ether and revert
+    const collectAmount = ethers.parseEther("1");
+    
+    // First, fund the bank from the rejector contract address
+    await bank.connect(rejector).Put(0, { value: putAmount });
+
+    // Now try Collect from rejector - it will try to send ether to rejector which reverts
+    await expect(
+      bank.connect(rejector).Collect(collectAmount)
+    ).to.be.reverted;
+
+    // Verify balance was NOT deducted from rejector's account
+    const holderInfo = await bank.Acc(await rejector.getAddress());
+    expect(holderInfo.balance).to.equal(putAmount);
+  });
+});
+
+// Helper contract that reverts on receive
+contract RejectEther {
+  receive() external payable {
+    revert("I reject your ether");
+  }
+}
+```

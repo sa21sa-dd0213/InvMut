@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract SimpleWallet:
+        Contract Code: pragma solidity ^0.8.0; contract SimpleWallet { address public owner = msg.sender; uint public depositsCount; modifier onlyOwner { require(msg.sender == owner); _; } receive() external payable { require(((depositsCount + 1) >= depositsCount)); depositsCount++; } function withdrawAll() public onlyOwner { withdraw(address(this).balance); } function withdraw(uint _value) public onlyOwner { payable(msg.sender).transfer(_value); } function sendMoney(address _target, uint _value, bytes memory _data) public onlyOwner { _target.call{value: _value}(_data); } }
+
+    Consider the following mutant of SimpleWallet:
+        Mutant mcb3a0445 of function receive replaces >= with >
+        Mutant Diff: ---|         require(((depositsCount + 1) >= depositsCount)); +++|         require(((depositsCount + 1)  > depositsCount));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the condition from `>=` to `>` in the `require` statement of the `receive()` function. The original condition `(depositsCount + 1) >= depositsCount` is always true for any unsigned integer (since adding 1 always results in a number greater than or equal to the original, except in overflow scenarios, but Solidity 0.8+ automatically reverts on overflow). The mutant condition `(depositsCount + 1) > depositsCount` would be false only if `depositsCount` reaches its maximum value (type(uint).max), causing the addition to overflow, which Solidity 0.8+ prevents by reverting before the check. However, the mutant's check would still pass for all normal values.
+
+**Hypothesis**: A test case that attempts to make multiple deposits to the contract, verifying that each deposit succeeds (does not revert), should pass on the original but will fail on the mutant because the mutant's stricter condition (`>` instead of `>=`) will cause a revert when `depositsCount` reaches its maximum value after many deposits, whereas the original's `>=` would have allowed the deposit to proceed.

@@ -1,0 +1,36 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Reentrance:
+        Contract Code: pragma solidity ^0.8.0; contract Reentrance { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public payable { require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender])); userBalance[msg.sender] += msg.value; } function withdrawBalance() public{ uint256 tmp__1 = userBalance[msg.sender]; userBalance[msg.sender] = 0; { (bool _s, bytes memory _d) = msg.sender.call{value: tmp__1}(""); _d; if (! _s) { revert(); } } } }
+
+    Consider the following mutant of Reentrance:
+        Mutant maa9248af of function getBalance replaces return userBalance[u]; with 
+        Mutant Diff: ---|          return userBalance[u]; +++|
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's examine the mutant carefully.
+
+The original `getBalance` function is:
+```solidity
+function getBalance(address u) public view returns (uint) {
+    return userBalance[u];
+}
+```
+
+The mutant diff says:
+```
+---|          return userBalance[u]; +++|
+```
+
+This means the mutant **removes the return statement entirely**. The function body becomes empty (or just contains nothing meaningful), so it will either return a default value (0 in Solidity for an empty return) or cause a compilation error if it doesn't compile. Given the context, the most likely scenario is that the function now returns nothing useful, typically returning `0` by default in Solidity if the function still compiles (or it might not compile at all — but if it does, it returns 0).
+
+**Hypothesis:**  
+The mutant removes the return statement from `getBalance`. Therefore, a test case that deposits some ether into the contract via `addToBalance`, then calls `getBalance` on the depositor's address and asserts that the returned value equals the deposited amount, should pass on the original but fail on the mutant (which will return 0 instead of the actual balance).

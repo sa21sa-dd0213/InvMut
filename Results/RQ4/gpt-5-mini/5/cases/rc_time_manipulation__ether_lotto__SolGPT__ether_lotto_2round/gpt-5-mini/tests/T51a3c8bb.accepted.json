@@ -1,0 +1,12 @@
+{
+ "difference_id": "T51a3c8bb",
+ "property_summary": "For every call to play with any msg.value, the reference C never reverts (it only requires equality to TICKET_AMOUNT which the fuzzer will satisfy or else the call reverts) — tighten domain to only values NOT equal to TICKET_AMOUNT so reference and mutant differ in whether they accept those values: the reference reverts when msg.value != TICKET_AMOUNT, while the mutant accepts them; therefore for all admissible inputs (msg.value != TICKET_AMOUNT) the reference will revert (call fails) but the mutant will succeed, so asserting that play reverts for msg.value != TICKET_AMOUNT holds for the reference and is violated by the mutant for some input.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change the required ticket amount check from equality to inequality, allowing any value except the ticket amount and thus altering pot updates and payouts.",
+ "mutated_unit_code": "function play()  public payable {\n        require(msg.value != TICKET_AMOUNT);\n\n        pot += msg.value;\n\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 2;\n\n        if (random == 0) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    function setUp() public { c = new EtherLotto(); }\n\n    function testFuzz_property(address actor, uint256 amount) public {\n        vm.assume(amount != 10);\n        uint256 pay = bound(amount, 1, 1 ether);\n        vm.deal(actor, pay);\n\n        bool ok;\n        vm.prank(actor);\n        try c.play{value: pay}() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(!ok);\n    }\n}\n"
+}

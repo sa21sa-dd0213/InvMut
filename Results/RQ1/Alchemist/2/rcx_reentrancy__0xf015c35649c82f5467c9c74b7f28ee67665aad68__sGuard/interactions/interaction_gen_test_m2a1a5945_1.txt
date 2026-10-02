@@ -1,0 +1,62 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m2a1a5945 of MY_BANK.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test MY_BANK.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for MY_BANK:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("MY_BANK reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy MY_BANK by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("MY_BANK"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant m2a1a5945 detection test", function () {
+  it("should detect block.timestamp replaced by block.prevrandao in Collect", async function () {
+    const [owner, user] = await ethers.getSigners();
+    
+    // Deploy Log contract first (needed as constructor argument for MY_BANK)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+    
+    // Deploy MY_BANK with Log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bankInstance = await BankFactory.deploy(await logInstance.getAddress());
+    await bankInstance.waitForDeployment();
+    
+    const bankAddress = await bankInstance.getAddress();
+    
+    // Get current block timestamp
+    const blockNumBefore = await ethers.provider.getBlockNumber();
+    const blockBefore = await ethers.provider.getBlock(blockNumBefore);
+    const currentTime = blockBefore!.timestamp;
+    
+    // Set unlock time far in the future (e.g., 1 hour from now)
+    const futureUnlockTime = currentTime + 3600;
+    
+    // Deposit exactly MinSum (1 ether) with future unlock time
+    const minSum = ethers.parseEther("1");
+    await bankInstance.connect(user).Put(futureUnlockTime, { value: minSum });
+    
+    // Attempt to collect immediately (block.timestamp < unlockTime)
+    // In original contract, this should revert because time condition fails
+    // In mutant, it uses block.prevrandao which is unrelated to time and may succeed
+    
+    const collectTx = bankInstance.connect(user).Collect(minSum);
+    
+    // The test: expect revert in original, but mutant might not revert
+    // We detect the mutant if the transaction does NOT revert (i.e., it succeeds incorrectly)
+    await expect(collectTx).to.be.reverted;
+  });
+});
+```

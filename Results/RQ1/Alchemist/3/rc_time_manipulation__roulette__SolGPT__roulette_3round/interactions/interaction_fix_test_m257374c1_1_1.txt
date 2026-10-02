@@ -1,0 +1,56 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Roulette mutant kill test - m257374c1", function () {   it("should kill mutant by proving block.number+1 condition is off by one", async function () {     const [owner] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Roulette");     const instance = await Factory.deploy();     await instance.waitForDeployment();     const contractAddress = await instance.getAddress();      // Get current block number     const currentBlock = await ethers.provider.getBlock("latest");     let blockNumber = currentBlock.number;      // Find a block number that is NOT a multiple of 15, but block.number+1 IS a multiple of 15     // We need: block.number % 15 != 0 AND (block.number + 1) % 15 == 0     // This means block.number = 14, 29, 44, etc.     const targetBlock = blockNumber + ((14 - (blockNumber % 15) + 15) % 15);          // Mine blocks until we reach the target block number     const blocksToMine = targetBlock - blockNumber;     for (let i = 0; i < blocksToMine; i++) {       await ethers.provider.send("evm_mine", []);     }      // Now we are at block number where: block.number % 15 != 0 AND (block.number+1) % 15 == 0     // Send exactly 10 ether to trigger fallback     const tx = await owner.sendTransaction({       to: contractAddress,       value: ethers.parseEther("10")     });     await tx.wait();      // Check contract balance - should still have 10 ether since original condition should NOT trigger payout     const balanceAfter = await ethers.provider.getBalance(contractAddress);     // The mutant would incorrectly trigger payout here, so this assertion kills it     expect(balanceAfter).to.equal(ethers.parseEther("10"));   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp + 1; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant kill test - m257374c1", function () {
+  it("should kill mutant by proving block.number+1 condition is off by one", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    const contractAddress = await instance.getAddress();
+
+    // Get current block number
+    const currentBlock = await ethers.provider.getBlock("latest");
+    let blockNumber = currentBlock.number;
+
+    // Find a block number that is NOT a multiple of 15, but block.number+1 IS a multiple of 15
+    // We need: block.number % 15 != 0 AND (block.number + 1) % 15 == 0
+    // This means block.number = 14, 29, 44, etc.
+    const targetBlock = blockNumber + ((14 - (blockNumber % 15) + 15) % 15);
+
+    // Mine blocks until we reach the target block number
+    const blocksToMine = targetBlock - blockNumber;
+    for (let i = 0; i < blocksToMine; i++) {
+      await ethers.provider.send("evm_mine", []);
+    }
+
+    // Now we are at block number where: block.number % 15 != 0 AND (block.number+1) % 15 == 0
+    // Send exactly 10 ether to trigger fallback
+    const tx = await owner.sendTransaction({
+      to: contractAddress,
+      value: ethers.parseEther("10")
+    });
+    await tx.wait();
+
+    // Check contract balance - should still have 10 ether since original condition should NOT trigger payout
+    const balanceAfter = await ethers.provider.getBalance(contractAddress);
+    // The mutant would incorrectly trigger payout here, so this assertion kills it
+    expect(balanceAfter).to.equal(ethers.parseEther("10"));
+  });
+});
+```

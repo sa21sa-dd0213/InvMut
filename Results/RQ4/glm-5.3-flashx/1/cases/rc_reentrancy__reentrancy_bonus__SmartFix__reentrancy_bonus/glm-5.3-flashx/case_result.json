@@ -1,0 +1,75 @@
+{
+ "case_id": "rc_reentrancy__reentrancy_bonus__SmartFix__reentrancy_bonus",
+ "config_label": "glm-5.3-flashx",
+ "target_contract": "Reentrancy_bonus",
+ "modification_kind": "control_flow",
+ "feasible": true,
+ "reason": null,
+ "n_accepted": 4,
+ "n_validated": 4,
+ "n_killing": 0,
+ "success": false,
+ "kills": [
+  {
+   "difference_id": "D0004",
+   "property": "Each recipient's reward can only be withdrawn once: after a first-payout call sequence, a repeated withdrawReward for the same recipient must pay nothing extra, so the contract's total outflow is exactly the single reward amount.",
+   "render": "rendered",
+   "validation": "skipped",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Delete the zeroing of rewardsForA[recipient], so the balance is not reset before withdrawal.",
+   "mutated_unit_code": "function withdrawReward(address recipient)  public _nonReentrant  {\n        uint amountToWithdraw = rewardsForA[recipient];\n        (bool success, ) = recipient.call{value: amountToWithdraw}(\"\");\n        require(success);\n    }",
+   "kill": null,
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "T82070b27",
+   "property": "For any fresh recipient, getFirstWithdrawalBonus(recipient) succeeds because the reentrancy lock is released after each withdrawal; in the mutant the lock is never released, so a bonus claim for a second fresh recipient reverts inside withdrawReward.",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Delete `_locked = false;` so the lock is never released and any subsequent withdrawReward call reverts, changing the observable end state.",
+   "mutated_unit_code": "modifier _nonReentrant() {\n        require(!_locked);\n        _locked = true;\n        _;\n    }",
+   "kill": null,
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "Ta6af9c7c",
+   "property": "For every recipient and caller, once getFirstWithdrawalBonus(recipient) completes on a contract holding exactly the 100-wei reward, the 100 wei must have been transferred out so that address(c).balance becomes 0; the mutant sends 0 wei, leaving the contract still holding 100 wei, violating the rule.",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Replace the amount computation with `uint amountToWithdraw = 0;` so no value is ever sent.",
+   "mutated_unit_code": "function withdrawReward(address recipient)  public _nonReentrant  {\n        uint amountToWithdraw = 0;\n        rewardsForA[recipient] = 0;\n        (bool success, ) = recipient.call{value: amountToWithdraw}(\"\");\n        require(success);\n    }",
+   "kill": null,
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "Tdae43c74",
+   "property": "For any contract that claims the first-withdrawal bonus and re-enters at least twice, the reentrancy guard must make the outer getFirstWithdrawalBonus revert; deleting '_locked = true' lets the nested claims succeed and the outer call complete instead.",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Delete `_locked = true;` so the reentrancy guard no longer blocks reentrant calls, exposing different end-state values.",
+   "mutated_unit_code": "modifier _nonReentrant() {\n        require(!_locked);\n        _;\n        _locked = false;\n    }",
+   "kill": null,
+   "kill_via": null,
+   "counts_toward_success": false
+  }
+ ],
+ "tokens": {
+  "prompt": 49845,
+  "completion": 48626,
+  "reasoning": 33999,
+  "cached": 10112
+ },
+ "wallclock_s": 1229.287837266922,
+ "infra_error": null,
+ "code_rev": null
+}

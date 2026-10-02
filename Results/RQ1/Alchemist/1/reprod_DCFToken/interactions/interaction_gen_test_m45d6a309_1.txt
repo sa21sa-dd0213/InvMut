@@ -1,0 +1,74 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m45d6a309 of DCF.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test DCF.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for DCF:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("DCF reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy DCF by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("DCF"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DCF mutant m45d6a309 - withdrawHelperToken access control", function () {
+  let dcf: any;
+  let liquidityHelper: any;
+  let owner: any;
+  let addr1: any;
+  let addr2: any;
+  let liquidityReceiveAddress: string;
+
+  beforeEach(async function () {
+    [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy DCF with required constructor argument (liquidity receive address)
+    liquidityReceiveAddress = addr2.address;
+    const DCF = await ethers.getContractFactory("DCF");
+    dcf = await DCF.deploy(liquidityReceiveAddress);
+    await dcf.waitForDeployment();
+
+    // Get the helper contract address
+    const helperAddress = await dcf.helperAddress();
+    liquidityHelper = await ethers.getContractAt("LiquidityHelper", helperAddress);
+  });
+
+  it("should revert when calling withdrawHelperToken from unauthorized address (not cfo)", async function () {
+    // Ensure addr1 is not the cfo (cfo is not set initially, so only owner can set it)
+    // By default, cfo is address(0), so onlyCaller modifier will always revert for any caller
+    
+    // Get a token address to withdraw (use the DCF token itself for testing)
+    const tokenAddress = await dcf.getAddress();
+    
+    // Attempt to call withdrawHelperToken from addr1 (unauthorized)
+    await expect(
+      dcf.connect(addr1).withdrawHelperToken(tokenAddress, addr1.address)
+    ).to.be.revertedWith("onlyCaller");
+  });
+
+  it("should allow cfo to call withdrawHelperToken after setting caller", async function () {
+    // Set addr1 as the cfo (caller)
+    await dcf.connect(owner).setCaller(addr1.address);
+    
+    // Get token address
+    const tokenAddress = await dcf.getAddress();
+    
+    // This should succeed when called from addr1 (now the cfo)
+    // The contract has no tokens to withdraw initially, but it won't revert on access control
+    // It might revert due to balance check in withdrawToken, but not due to onlyCaller
+    const tx = dcf.connect(addr1).withdrawHelperToken(tokenAddress, addr1.address);
+    // We expect it to revert with a different reason (balance check) or succeed
+    // The important thing is it does NOT revert with "onlyCaller"
+    await expect(tx).to.not.be.revertedWith("onlyCaller");
+  });
+});
+```

@@ -1,0 +1,91 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("GSPFunding mutant m164b17b7 - buyShares with existing liquidity", function () {
+  it("should kill the mutant by proving that buyShares with existing reserves mints zero shares when it should mint positive shares", async function () {
+    const [owner, user1, user2] = await ethers.getSigners();
+    
+    // Deploy the contract - note: GSPFunding inherits from GSPStorage which has a constructor
+    // The contract doesn't have an explicit constructor, but ReentrancyGuard has one
+    const Factory = await ethers.getContractFactory("GSPFunding");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    const contractAddress = await instance.getAddress();
+
+    // Deploy mock ERC20 tokens for base and quote
+    const TokenFactory = await ethers.getContractFactory("MockERC20");
+    const baseToken = await TokenFactory.deploy("Base", "BASE", 18);
+    await baseToken.waitForDeployment();
+    const baseTokenAddress = await baseToken.getAddress();
+    
+    const quoteToken = await TokenFactory.deploy("Quote", "QUOTE", 18);
+    await quoteToken.waitForDeployment();
+    const quoteTokenAddress = await quoteToken.getAddress();
+
+    // Initialize the contract with base and quote tokens
+    // We need to set the tokens and initial parameters
+    // The contract doesn't have an explicit init function visible, but we can check what's available
+    
+    // First, we need to fund the contract with tokens to make it work
+    // Let's transfer tokens to the contract and set reserves directly
+    
+    // Mint tokens to owner
+    await baseToken.mint(owner.address, ethers.parseEther("10000"));
+    await quoteToken.mint(owner.address, ethers.parseEther("10000"));
+    
+    // Transfer tokens to the contract to create initial liquidity
+    await baseToken.transfer(contractAddress, ethers.parseEther("1000"));
+    await quoteToken.transfer(contractAddress, ethers.parseEther("1000"));
+    
+    // Since we cannot directly set internal state variables, we need to call buyShares
+    // to initialize the pool. But buyShares requires baseInput > 0
+    // Let's transfer more tokens to the contract and then call buyShares
+    
+    // Transfer additional tokens to user1
+    await baseToken.transfer(user1.address, ethers.parseEther("100"));
+    await quoteToken.transfer(user1.address, ethers.parseEther("100"));
+    
+    // User1 calls buyShares to create initial liquidity
+    await baseToken.connect(user1).approve(contractAddress, ethers.parseEther("100"));
+    await quoteToken.connect(user1).approve(contractAddress, ethers.parseEther("100"));
+    
+    // Transfer base and quote to contract first (since buyShares calculates from balance difference)
+    await baseToken.connect(user1).transfer(contractAddress, ethers.parseEther("50"));
+    await quoteToken.connect(user1).transfer(contractAddress, ethers.parseEther("50"));
+    
+    // Call buyShares - this should initialize the pool
+    await instance.connect(user1).buyShares(user1.address);
+    
+    // Now the pool should have totalSupply > 0, baseReserve > 0, quoteReserve > 0
+    // Let's verify by checking totalSupply
+    const totalSupplyAfterInit = await instance.totalSupply();
+    expect(totalSupplyAfterInit).to.be.gt(0);
+    
+    // Now user2 will add more liquidity
+    await baseToken.transfer(user2.address, ethers.parseEther("10"));
+    await quoteToken.transfer(user2.address, ethers.parseEther("10"));
+    
+    // User2 transfers tokens to contract to increase balance
+    await baseToken.connect(user2).transfer(contractAddress, ethers.parseEther("5"));
+    await quoteToken.connect(user2).transfer(contractAddress, ethers.parseEther("5"));
+    
+    // Get user2's share balance before
+    const sharesBefore = await instance.balanceOf(user2.address);
+    
+    // User2 calls buyShares
+    await instance.connect(user2).buyShares(user2.address);
+    
+    // Get user2's share balance after
+    const sharesAfter = await instance.balanceOf(user2.address);
+    
+    // In the original contract, user2 should receive positive shares
+    // In the mutant, the else if (false) branch is never entered, so shares remains 0
+    // and the function mints 0 shares (or reverts due to MINT_AMOUNT_NOT_ENOUGH check)
+    // The mutant should fail this test because it either:
+    // 1. Mints 0 shares (if no revert) - but sharesAfter should be > sharesBefore
+    // 2. Reverts because shares is 0 and _mint requires > 1000
+    
+    // The key assertion: user2 should have received shares
+    expect(sharesAfter).to.be.gt(sharesBefore);
+  });
+});

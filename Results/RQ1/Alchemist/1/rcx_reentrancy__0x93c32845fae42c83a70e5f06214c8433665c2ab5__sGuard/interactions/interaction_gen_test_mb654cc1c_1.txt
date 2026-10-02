@@ -1,0 +1,98 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mb654cc1c of X_WALLET.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test X_WALLET.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for X_WALLET:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("X_WALLET reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy X_WALLET by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("X_WALLET"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("X_WALLET mutant kill test - mb654cc1c", function () {
+  it("should detect missing nonReentrant_ modifier on Put by performing a reentrant attack via fallback during Collect", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy Log contract first (required constructor argument for X_WALLET)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy X_WALLET with Log address
+    const WalletFactory = await ethers.getContractFactory("X_WALLET");
+    const wallet = await WalletFactory.deploy(await log.getAddress());
+    await wallet.waitForDeployment();
+    
+    // Fund the attacker with some ETH
+    await owner.sendTransaction({
+      to: await attacker.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    
+    // Attacker puts 5 ETH into the wallet with unlock time = current timestamp (immediately available)
+    await wallet.connect(attacker).Put(
+      (await ethers.provider.getBlock("latest")).timestamp,
+      { value: ethers.parseEther("5") }
+    );
+    
+    // Deploy a malicious contract that will re-enter Put during Collect
+    const MaliciousFactory = await ethers.getContractFactory(
+      "contract Malicious { " +
+      "  X_WALLET target; " +
+      "  constructor(address _target) { target = X_WALLET(_target); } " +
+      "  receive() external payable { " +
+      "    if (address(target).balance > 0) { " +
+      "      target.Put(block.timestamp); " +
+      "    } " +
+      "  } " +
+      "  function attack() external payable { " +
+      "    target.Collect{value: 0}(address(this).balance); " +
+      "  } " +
+      "} " +
+      "interface X_WALLET { " +
+      "  function Put(uint _unlockTime) external payable; " +
+      "  function Collect(uint _am) external payable; " +
+      "}"
+    );
+    const malicious = await MaliciousFactory.deploy(await wallet.getAddress());
+    await malicious.waitForDeployment();
+    
+    // Fund malicious contract with 1 ETH
+    await owner.sendTransaction({
+      to: await malicious.getAddress(),
+      value: ethers.parseEther("1")
+    });
+    
+    // Malicious contract puts 1 ETH into wallet (to have balance to collect)
+    await malicious.connect(attacker).Put(
+      (await ethers.provider.getBlock("latest")).timestamp,
+      { value: ethers.parseEther("1") }
+    );
+    
+    // Now attempt the reentrancy attack - this should revert on original (nonReentrant)
+    // but succeed on the mutant (missing nonReentrant)
+    await expect(
+      malicious.connect(attacker).attack()
+    ).to.be.reverted; // If it does NOT revert, the mutant is alive (vulnerable)
+    
+    // Additional assertion: In original, attacker's balance should remain unchanged
+    // In mutant, attacker could have drained more funds
+    const attackerBalance = await ethers.provider.getBalance(await attacker.getAddress());
+    expect(attackerBalance).to.be.closeTo(
+      ethers.parseEther("4"), // initial 10 - 5 (put) - 1 (fund malicious) = 4 ETH
+      ethers.parseEther("0.1")
+    );
+  });
+});
+```

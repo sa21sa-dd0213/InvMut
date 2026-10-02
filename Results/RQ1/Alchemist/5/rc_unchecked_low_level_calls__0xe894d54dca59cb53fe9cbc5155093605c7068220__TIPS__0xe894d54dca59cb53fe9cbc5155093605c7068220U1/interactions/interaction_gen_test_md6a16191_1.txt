@@ -1,0 +1,79 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant md6a16191 of airDrop.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test airDrop.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for airDrop:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("airDrop reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy airDrop by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("airDrop"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airDrop mutant md6a16191 - empty _tos array", function () {
+  it("should revert when _tos array is empty", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("airDrop");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy a simple ERC20-like token for testing the transferFrom call
+    const TokenFactory = await ethers.getContractFactory("SimpleERC20");
+    const token = await TokenFactory.deploy();
+    await token.waitForDeployment();
+
+    // Fund addr1 with some tokens and approve the airDrop contract
+    await token.mint(addr1.address, ethers.parseEther("100"));
+    await token.connect(addr1).approve(await instance.getAddress(), ethers.parseEther("100"));
+
+    // Attempt to call transfer with an empty _tos array - should revert
+    await expect(
+      instance.transfer(
+        addr1.address,
+        await token.getAddress(),
+        [], // empty _tos array
+        ethers.parseEther("1"),
+        18
+      )
+    ).to.be.reverted;
+  });
+});
+
+// Helper contract for testing (deploy as a simple ERC20)
+// Note: In practice you would deploy an actual ERC20, but this shows the structure
+contract SimpleERC20 {
+  string public name = "Test";
+  string public symbol = "TST";
+  uint8 public decimals = 18;
+  mapping(address => uint256) public balanceOf;
+  mapping(address => mapping(address => uint256)) public allowance;
+
+  function mint(address to, uint256 amount) external {
+    balanceOf[to] += amount;
+  }
+
+  function approve(address spender, uint256 amount) external returns (bool) {
+    allowance[msg.sender][spender] = amount;
+    return true;
+  }
+
+  function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+    require(allowance[from][msg.sender] >= amount, "allowance too low");
+    require(balanceOf[from] >= amount, "balance too low");
+    balanceOf[from] -= amount;
+    balanceOf[to] += amount;
+    allowance[from][msg.sender] -= amount;
+    return true;
+  }
+}
+```

@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0007",
+ "property_summary": "After calling NETM() which initializes the owner's balance, two users approve the owner to spend their tokens, then the owner calls transferFrom to transfer tokens from user1 to user2, but due to the bug where allowed[user1][owner] is decremented by 0 instead of _amount, the allowance remains unchanged, allowing the owner to transfer more than allowed in a second call, which should revert in the reference but succeeds in the buggy version.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "In transferFrom, change the decrement of allowed[_from][msg.sender] to subtract 0 instead of _amount",
+ "mutated_unit_code": "    function transferFrom(address _from, address _to, uint256 _amount) onlyPayloadSize(3 * 32) public override virtual returns (bool success) {\n        require(_to != address(0));\n        require(_amount <= balances[_from]);\n        require(_amount <= allowed[_from][msg.sender]);\n\n        balances[_from] = (balances[_from] - (_amount));\n        allowed[_from][msg.sender] = (allowed[_from][msg.sender] - (0));\n        balances[_to] = (balances[_to] + (_amount));\n        emit Transfer(_from, _to, _amount);\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {NewIntelTechMedia} from \"../src/NewIntelTechMedia.sol\";\n\ncontract InvMutTest is Test {\n    NewIntelTechMedia c;\n    function setUp() public { c = new NewIntelTechMedia(); }\n    function testRegression_property() public {\n        c.NETM();\n        address owner = address(this);\n\n        address user1 = address(0x123);\n        address user2 = address(0x456);\n\n        vm.prank(owner);\n        c.transfer(user1, 100);\n\n        vm.prank(owner);\n        c.transfer(user2, 100);\n\n        vm.prank(user1);\n        c.approve(owner, 50);\n\n        vm.prank(owner);\n        c.transferFrom(user1, user2, 30);\n\n        bool success;\n        try c.transferFrom(user1, user2, 30) {\n            success = true;\n        } catch {\n            success = false;\n        }\n        assertTrue(success == false, \"Buggy contract incorrectly allowed 30 more tokens\");\n    }\n}\n"
+}

@@ -1,0 +1,86 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MONEY_BOX mutant detection - Put unlockTime calculation", function () {   it("should detect mutant where block.timestamp+_lockTime is replaced with block.timestamp*_lockTime", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy MONEY_BOX (no constructor arguments)     const Factory = await ethers.getContractFactory("MONEY_BOX");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Deploy Log contract (needed for Put to work)     const LogFactory = await ethers.getContractFactory("Log");     const logInstance = await LogFactory.deploy();     await logInstance.waitForDeployment();          // Set LogFile address (required for Put to not revert)     await instance.connect(owner).SetLogFile(await logInstance.getAddress());          // Initialize the contract     await instance.connect(owner).Initialized();          // Get current block timestamp     const blockNumBefore = await ethers.provider.getBlockNumber();     const blockBefore = await ethers.provider.getBlock(blockNumBefore);     const currentTimestamp = blockBefore.timestamp;          // Call Put with a small lock time (e.g., 100 seconds)     const lockTime = 100;     const depositAmount = ethers.parseEther("1.0");          await instance.connect(addr1).Put(lockTime, { value: depositAmount });          // Read the unlockTime from the account storage     const holder = await instance.Acc(addr1.address);     const unlockTime = holder.unlockTime;          // In the original contract: unlockTime should be currentTimestamp + lockTime     // In the mutant: unlockTime would be currentTimestamp * lockTime (huge number)     const expectedUnlockTime = BigInt(currentTimestamp) + BigInt(lockTime);          // The mutant would set unlockTime to currentTimestamp * 100     // This would be an astronomically large number (e.g., ~170000000000)     // The original sets it to currentTimestamp + 100 (e.g., ~1700000100)     // So the mutant value would be ~100x larger, easily detectable     expect(unlockTime).to.equal(expectedUnlockTime);          // Additional check: verify that Collect would work with original calculation     // but fail with mutant calculation (since unlockTime would be too large)     const minSum = ethers.parseEther("0.1");     await instance.connect(owner).SetMinSum(minSum);          // Wait until after unlock time     await ethers.provider.send("evm_increaseTime", [lockTime + 1]);     await ethers.provider.send("evm_mine", []);          // This should succeed with original but fail with mutant     const collectAmount = ethers.parseEther("0.5");          // With original: collect should succeed (unlockTime passed)     // With mutant: collect would revert because unlockTime is huge     const tx = instance.connect(addr1).Collect(collectAmount);          // If the contract has the original logic, this should succeed     // If the contract has the mutant logic, this should revert     // We expect it to succeed (original behavior)     await expect(tx).to.not.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract MONEY_BOX { struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; uint public MinSum; Log LogFile; bool intitalized; function SetMinSum(uint _val) public { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log) public { if(intitalized)revert(); LogFile = Log(_log); } function Initialized() public { intitalized = true; } function Put(uint _lockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; if(block.timestamp+_lockTime>acc.unlockTime)acc.unlockTime=block.timestamp+_lockTime; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MONEY_BOX mutant detection - Put unlockTime calculation", function () {
+  it("should detect mutant where block.timestamp+_lockTime is replaced with block.timestamp*_lockTime", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy MONEY_BOX (no constructor arguments)
+    const Factory = await ethers.getContractFactory("MONEY_BOX");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy Log contract (needed for Put to work)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+
+    // Set LogFile address (required for Put to not revert)
+    await instance.connect(owner).SetLogFile(await logInstance.getAddress());
+
+    // Initialize the contract
+    await instance.connect(owner).Initialized();
+
+    // Get current block timestamp
+    const blockNumBefore = await ethers.provider.getBlockNumber();
+    const blockBefore = await ethers.provider.getBlock(blockNumBefore);
+    const currentTimestamp = blockBefore!.timestamp;
+
+    // Call Put with a small lock time (e.g., 100 seconds)
+    const lockTime = 100;
+    const depositAmount = ethers.parseEther("1.0");
+
+    await instance.connect(addr1).Put(lockTime, { value: depositAmount });
+
+    // Read the unlockTime from the account storage
+    const holder = await instance.Acc(addr1.address);
+    const unlockTime = holder.unlockTime;
+
+    // In the original contract: unlockTime should be currentTimestamp + lockTime
+    // In the mutant: unlockTime would be currentTimestamp * lockTime (huge number)
+    const expectedUnlockTime = BigInt(currentTimestamp) + BigInt(lockTime);
+
+    // The mutant would set unlockTime to currentTimestamp * 100
+    // This would be an astronomically large number (e.g., ~170000000000)
+    // The original sets it to currentTimestamp + 100 (e.g., ~1700000100)
+    // So the mutant value would be ~100x larger, easily detectable
+    expect(unlockTime).to.equal(expectedUnlockTime);
+
+    // Additional check: verify that Collect would work with original calculation
+    // but fail with mutant calculation (since unlockTime would be too large)
+    const minSum = ethers.parseEther("0.1");
+    await instance.connect(owner).SetMinSum(minSum);
+
+    // Wait until after unlock time
+    await ethers.provider.send("evm_increaseTime", [lockTime + 1]);
+    await ethers.provider.send("evm_mine", []);
+
+    // This should succeed with original but fail with mutant
+    const collectAmount = ethers.parseEther("0.5");
+
+    // With original: collect should succeed (unlockTime passed)
+    // With mutant: collect would revert because unlockTime is huge
+    const tx = instance.connect(addr1).Collect(collectAmount);
+
+    // If the contract has the original logic, this should succeed
+    // If the contract has the mutant logic, this should revert
+    // We expect it to succeed (original behavior)
+    await expect(tx).to.not.be.reverted;
+  });
+});
+```

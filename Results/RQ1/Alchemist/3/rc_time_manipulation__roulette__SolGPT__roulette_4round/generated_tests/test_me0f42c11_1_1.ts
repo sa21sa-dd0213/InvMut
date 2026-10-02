@@ -1,0 +1,52 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant kill test", function () {
+  it("should detect the % to / mutation by checking payout at block number 15", async function () {
+    const [owner, player] = await ethers.getSigners();
+
+    // Deploy contract with initial funding (constructor is payable)
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy({ value: ethers.parseEther("0") });
+    await instance.waitForDeployment();
+
+    // Get the current block number and mine to block 15
+    const currentBlock = await ethers.provider.getBlockNumber();
+    const targetBlock = 15;
+
+    // Mine blocks to reach exactly block number 15
+    const blocksToMine = targetBlock - currentBlock;
+    for (let i = 0; i < blocksToMine; i++) {
+      await ethers.provider.send("evm_mine", []);
+    }
+
+    // Verify we are at block 15
+    const blockBefore = await ethers.provider.getBlock("latest");
+    expect(blockBefore.number).to.equal(15);
+
+    // Get player's balance before
+    const playerBalanceBefore = await ethers.provider.getBalance(player.address);
+
+    // Send exactly 10 ether to trigger the fallback
+    const tx = await player.sendTransaction({
+      to: instance.target,
+      value: ethers.parseEther("10")
+    });
+    await tx.wait();
+
+    // Get player's balance after
+    const playerBalanceAfter = await ethers.provider.getBalance(player.address);
+
+    // On the original contract, at block 15: 15 % 15 == 0, so payout occurs
+    // On the mutant, at block 15: 15 / 15 == 1 != 0, so no payout
+    // Player's balance should increase by the full contract balance (minus gas)
+    const txReceipt = await ethers.provider.getTransactionReceipt(tx.hash);
+    const txDetails = await ethers.provider.getTransaction(tx.hash);
+    const gasCost = txDetails.gasPrice * txReceipt.gasUsed;
+
+    // Original: player receives ~10 ether back + contract balance
+    // Mutant: player only loses gas (no payout)
+    // If mutant is present, player's balance won't show the payout
+    expect(playerBalanceAfter).to.be.gt(playerBalanceBefore - gasCost);
+  });
+});

@@ -1,0 +1,64 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant me10f6e80 of PoCGame.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PoCGame.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PoCGame:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PoCGame reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PoCGame by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PoCGame"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PoCGame mutant detection - me10f6e80", function () {
+  it("should detect the betLimit / 2 vs betLimit + 2 mutation in play() function", async function () {
+    const [owner, whale, player] = await ethers.getSigners();
+    const betLimit = ethers.parseEther("1.0");
+    const Factory = await ethers.getContractFactory("PoCGame");
+    const instance = await Factory.deploy(whale.address, betLimit);
+    await instance.waitForDeployment();
+
+    // Open the contract to the public
+    await instance.connect(owner).OpenToThePublic();
+
+    // Set difficulty to ensure a deterministic loss (winningNumber != difficulty / 2)
+    // Use difficulty = 4, so difficulty / 2 = 2, and winningNumber will be 1, 2, 3, or 4
+    // We'll make the player lose by ensuring they don't hit exactly 2
+    await instance.connect(owner).AdjustDifficulty(4);
+
+    // Player places a wager
+    await instance.connect(player).wager({ value: betLimit });
+
+    // Mine a block to advance block.number so the play() condition passes
+    await ethers.provider.send("evm_mine", []);
+
+    // Get contract balance before playing (should be betLimit from wager)
+    const balanceBefore = await instance.ethBalance();
+
+    // Player calls play() - this will trigger loseWager since winningNumber won't be 2
+    await instance.connect(player).play();
+
+    // Get contract balance after playing
+    const balanceAfter = await instance.ethBalance();
+
+    // In the original: loseWager(betLimit / 2) = 0.5 ETH sent to whale
+    // In the mutant: loseWager(betLimit + 2) = 1 ETH + 2 wei sent to whale
+    // Expected original behavior: contract balance should decrease by betLimit / 2
+    const expectedLoss = betLimit / 2n;
+    const actualLoss = balanceBefore - balanceAfter;
+
+    // If the mutant is present, actualLoss will be betLimit + 2n instead of betLimit / 2n
+    expect(actualLoss).to.equal(expectedLoss);
+  });
+});
+```

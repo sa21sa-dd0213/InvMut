@@ -1,0 +1,55 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("airdrop mutant m61dcc4f5 test", function () {   it("should kill the mutant by proving sha256 produces wrong function selector", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy a simple ERC20 token that implements transferFrom     const TokenFactory = await ethers.getContractFactory("ERC20Mock");     const token = await TokenFactory.deploy("Test", "TST", ethers.parseEther("1000"));     await token.waitForDeployment();          // Fund owner with tokens and approve airdrop contract to spend them     await token.transfer(addr1.address, ethers.parseEther("100"));     await token.connect(addr1).approve(owner.address, ethers.parseEther("100"));          // Deploy the airdrop contract (no constructor arguments needed)     const AirdropFactory = await ethers.getContractFactory("airdrop");     const airdrop = await AirdropFactory.deploy();     await airdrop.waitForDeployment();          // Get initial balance of addr2     const initialBalance = await token.balanceOf(addr2.address);          // Call transfer on the airdrop contract - should use transferFrom to send tokens     const recipients = [addr2.address];     const tx = await airdrop.transfer(       addr1.address,       token.target,       recipients,       ethers.parseEther("10")     );     await tx.wait();          // Check that tokens were transferred (this will fail on mutant because sha256 gives wrong selector)     const finalBalance = await token.balanceOf(addr2.address);     expect(finalBalance).to.equal(initialBalance + ethers.parseEther("10"));   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract airdrop{ function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){ require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ { (bool _s,) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v)); require(_s); } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airdrop mutant m61dcc4f5 test", function () {
+  it("should kill the mutant by proving sha256 produces wrong function selector", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy a simple ERC20 token that implements transferFrom
+    const TokenFactory = await ethers.getContractFactory("ERC20Mock");
+    const token = await TokenFactory.deploy("Test", "TST", ethers.parseEther("1000"));
+    await token.waitForDeployment();
+
+    // Fund owner with tokens and approve airdrop contract to spend them
+    await token.transfer(addr1.address, ethers.parseEther("100"));
+    await token.connect(addr1).approve(owner.address, ethers.parseEther("100"));
+
+    // Deploy the airdrop contract (no constructor arguments needed)
+    const AirdropFactory = await ethers.getContractFactory("airdrop");
+    const airdrop = await AirdropFactory.deploy();
+    await airdrop.waitForDeployment();
+
+    // Get initial balance of addr2
+    const initialBalance = await token.balanceOf(addr2.address);
+
+    // Call transfer on the airdrop contract - should use transferFrom to send tokens
+    const recipients = [addr2.address];
+    const tx = await airdrop.transfer(
+      addr1.address,
+      token.target,
+      recipients,
+      ethers.parseEther("10")
+    );
+    await tx.wait();
+
+    // Check that tokens were transferred (this will fail on mutant because sha256 gives wrong selector)
+    const finalBalance = await token.balanceOf(addr2.address);
+    expect(finalBalance).to.equal(initialBalance + ethers.parseEther("10"));
+  });
+});
+```

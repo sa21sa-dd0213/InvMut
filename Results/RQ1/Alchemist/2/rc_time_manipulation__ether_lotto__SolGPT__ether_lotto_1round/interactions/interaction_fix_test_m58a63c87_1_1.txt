@@ -1,0 +1,58 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EtherLotto mutant m58a63c87 detection", function () {   it("should detect mutant by verifying behavior difference when block.difficulty is 0 vs block.prevrandao is non-zero", async function () {     const [owner, player] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("EtherLotto");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const TICKET_AMOUNT = ethers.parseEther("10");     const FEE_AMOUNT = ethers.parseEther("1");      // Get initial balances     const initialBankBalance = await ethers.provider.getBalance(owner.address);     const initialPlayerBalance = await ethers.provider.getBalance(player.address);      // Play the lottery     const tx = await instance.connect(player).play({ value: TICKET_AMOUNT });     const receipt = await tx.wait();      // Get final balances     const finalBankBalance = await ethers.provider.getBalance(owner.address);     const finalPlayerBalance = await ethers.provider.getBalance(player.address);      // In a post-Merge environment, block.difficulty is always 0     // This means original code always sets random = 0 (bank wins)     // Expected: bank gets FEE + (pot - FEE) = pot = TICKET_AMOUNT     // Player gets nothing back (except gas)     const expectedBankGain = TICKET_AMOUNT;     expect(finalBankBalance - initialBankBalance).to.equal(expectedBankGain);          // Player should have lost the full ticket amount (minus gas)     // Player's balance change should be negative TICKET_AMOUNT (plus gas costs)     const playerLoss = initialPlayerBalance - finalPlayerBalance;     expect(playerLoss).to.be.gte(TICKET_AMOUNT);          // Verify pot is reset to 0 after the play     const potAfter = await instance.pot();     expect(potAfter).to.equal(0);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant m58a63c87 detection", function () {
+  it("should detect mutant by verifying behavior difference when block.difficulty is 0 vs block.prevrandao is non-zero", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = ethers.parseEther("10");
+    const FEE_AMOUNT = ethers.parseEther("1");
+
+    // Get initial balances
+    const initialBankBalance = await ethers.provider.getBalance(owner.address);
+    const initialPlayerBalance = await ethers.provider.getBalance(player.address);
+
+    // Play the lottery
+    const tx = await instance.connect(player).play({ value: TICKET_AMOUNT });
+    const receipt = await tx.wait();
+
+    // Get final balances
+    const finalBankBalance = await ethers.provider.getBalance(owner.address);
+    const finalPlayerBalance = await ethers.provider.getBalance(player.address);
+
+    // In a post-Merge environment, block.difficulty is always 0
+    // This means original code always sets random = 0 (bank wins)
+    // Expected: bank gets FEE + (pot - FEE) = pot = TICKET_AMOUNT
+    // Player gets nothing back (except gas)
+    const expectedBankGain = TICKET_AMOUNT;
+    expect(finalBankBalance - initialBankBalance).to.equal(expectedBankGain);
+
+    // Player should have lost the full ticket amount (minus gas)
+    // Player's balance change should be negative TICKET_AMOUNT (plus gas costs)
+    const playerLoss = initialPlayerBalance - finalPlayerBalance;
+    expect(playerLoss).to.be.gte(TICKET_AMOUNT);
+
+    // Verify pot is reset to 0 after the play
+    const potAfter = await instance.pot();
+    expect(potAfter).to.equal(0);
+  });
+});
+```

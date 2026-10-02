@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Reentrance:
+        Contract Code: pragma solidity ^0.8.0; contract Reentrance { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public payable { require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender])); userBalance[msg.sender] += msg.value; } function withdrawBalance() public{ uint256 tmp__1 = userBalance[msg.sender]; userBalance[msg.sender] = 0; { (bool _s, bytes memory _d) = msg.sender.call{value: tmp__1}(""); _d; if (! _s) { revert(); } } } }
+
+    Consider the following mutant of Reentrance:
+        Mutant mcc648c58 of function addToBalance replaces msg.value with msg.value+1
+        Mutant Diff: ---|          userBalance[msg.sender] += msg.value; +++|          userBalance[msg.sender] += msg.value+1;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant adds an extra 1 wei to the user's balance on each deposit (`msg.value + 1` instead of `msg.value`). Therefore, a test case that deposits a specific amount (e.g., 1 wei) and then withdraws the full balance should pass on the original contract (withdrawing exactly the deposited amount), but fail on the mutant because the mutant will have recorded a balance 1 wei higher than what was actually sent, causing the withdrawal to attempt to send more ether than the contract holds (or than the user deposited).  
+
+**Hypothesis**: "The mutant increases the credited balance by one extra wei per deposit. Therefore, a test case that deposits 1 wei, then withdraws the entire balance, and checks that the withdrawal amount equals exactly 1 wei (and that the contract's balance ends at zero) should kill the mutant, because the mutant will incorrectly credit 2 wei and the withdrawal will either revert due to insufficient contract balance or return an unexpected amount."

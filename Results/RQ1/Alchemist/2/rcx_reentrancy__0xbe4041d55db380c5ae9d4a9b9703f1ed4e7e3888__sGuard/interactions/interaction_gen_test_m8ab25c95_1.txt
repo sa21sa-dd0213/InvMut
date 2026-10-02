@@ -1,0 +1,68 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m8ab25c95 of MONEY_BOX.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test MONEY_BOX.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for MONEY_BOX:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("MONEY_BOX reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy MONEY_BOX by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("MONEY_BOX"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MONEY_BOX mutant m8ab25c95 - reentrancy guard removed from Put", function () {
+  it("should detect missing nonReentrant_ modifier on Put via reentrancy attack", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy MONEY_BOX (no constructor arguments)
+    const MoneyBoxFactory = await ethers.getContractFactory("MONEY_BOX");
+    const moneyBox = await MoneyBoxFactory.deploy();
+    await moneyBox.waitForDeployment();
+    
+    // Deploy Log contract (no constructor arguments)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Initialize the contract and set up LogFile
+    await (await moneyBox.SetLogFile(await log.getAddress())).wait();
+    await (await moneyBox.Initialized()).wait();
+    
+    // Deploy attacker contract that will attempt reentrancy
+    const AttackerFactory = await ethers.getContractFactory("ReentrancyAttacker");
+    const attackerContract = await AttackerFactory.deploy(await moneyBox.getAddress());
+    await attackerContract.waitForDeployment();
+    
+    // Fund the attacker contract with ETH
+    await owner.sendTransaction({
+      to: await attackerContract.getAddress(),
+      value: ethers.parseEther("1.0")
+    });
+    
+    // Set MinSum to a small value so collect is possible
+    await (await moneyBox.SetMinSum(1)).wait();
+    
+    // Attempt reentrancy: attacker contract calls Put, which triggers fallback -> Put again
+    // In original contract this would revert due to nonReentrant_, in mutant it succeeds
+    const tx = attackerContract.attack({ value: ethers.parseEther("1.0") });
+    
+    // The test should fail on the mutant because the attack succeeds (balance inflated)
+    // On original it reverts, so we expect revert
+    await expect(tx).to.be.reverted;
+    
+    // Verify balance integrity - if attack succeeded, balance would be > 1 ETH
+    const attackerBalance = (await moneyBox.Acc(await attackerContract.getAddress())).balance;
+    expect(attackerBalance).to.equal(ethers.parseEther("1.0"));
+  });
+});
+```

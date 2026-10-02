@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0006",
+ "property_summary": "A non-program-operator calls create(bytes,address) after setting alloSettings; in the reference the call reverts because onlyOwner protects updateAlloSettings, but in the bug updateAlloSettings is public, so alloSettings gets set and create emits RoundCreated but then reverts due to missing programOperator; the assertion checks that alloSettings remains the original zero address in reference but changes in bug.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Remove the onlyOwner modifier from modifier declaration (turns function public without access control)",
+ "mutated_unit_code": "  modifier onlyOwner() {\n    _;\n  }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.17;\nimport {Test} from \"forge-std/Test.sol\";\nimport {RoundFactory} from \"../src/RoundFactory.sol\";\n\ncontract InvMutTest is Test {\n    RoundFactory c;\n    function setUp() public { c = new RoundFactory(); }\n    function testRegression_property() public {\n        vm.deal(address(this), 1 ether);\n\n        c.initialize();\n\n        vm.prank(address(0xdead));\n        bool updateSucceeded = false;\n        try c.updateAlloSettings(address(0x1234)) {\n            updateSucceeded = true;\n        } catch {\n            updateSucceeded = false;\n        }\n\n        \n        c = new RoundFactory();\n        c.initialize();\n\n        vm.prank(address(0xdead));\n        try c.updateAlloSettings(address(0x1234)) {} catch {}\n\n        vm.prank(address(0xdead));\n        bytes memory emptyParams = abi.encode(\"\");\n        try c.create(emptyParams, address(0xdead)) {} catch {}\n\n        address expectedReference = address(0);\n        address actual = c.alloSettings();\n        assertTrue(actual == expectedReference, \"alloSettings should be zero in reference\");\n    }\n}"
+}

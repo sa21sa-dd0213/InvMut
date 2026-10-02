@@ -1,0 +1,49 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("airPort mutant test - keccak256 replaced with sha256", function () {   it("should revert when calling transfer with a valid ERC20 token that implements transferFrom", async function () {     // Deploy a minimal ERC20-like contract that implements transferFrom     const [owner, from, to] = await ethers.getSigners();          // Deploy a simple token contract with transferFrom for testing     const TokenFactory = await ethers.getContractFactory("contracts/TestERC20.sol:TestERC20");     const token = await TokenFactory.deploy();     await token.waitForDeployment();          // Deploy the airPort contract (no constructor args)     const AirPortFactory = await ethers.getContractFactory("airPort");     const airPort = await AirPortFactory.deploy();     await airPort.waitForDeployment();          // Mint some tokens to 'from' address and approve airPort to spend them     const amount = ethers.parseEther("10");     await token.mint(from.address, amount);     await token.connect(from).approve(airPort.target, amount);          // Prepare transfer parameters     const recipients = [to.address];          // The original uses keccak256 for the function selector, the mutant uses sha256     // This will produce a different 4-byte selector, causing the call to fail     await expect(       airPort.connect(from).transfer(from.address, token.target, recipients, amount)     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract airPort{ function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){ require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0; i<_tos.length; i++){ { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); require(_s); } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airPort mutant test - keccak256 replaced with sha256", function () {
+  it("should revert when calling transfer with a valid ERC20 token that implements transferFrom", async function () {
+    // Deploy a minimal ERC20-like contract that implements transferFrom
+    const [owner, from, to] = await ethers.getSigners();
+    
+    // Deploy a simple token contract with transferFrom for testing
+    const TokenFactory = await ethers.getContractFactory("contracts/TestERC20.sol:TestERC20");
+    const token = await TokenFactory.deploy();
+    await token.waitForDeployment();
+    
+    // Deploy the airPort contract (no constructor args)
+    const AirPortFactory = await ethers.getContractFactory("airPort");
+    const airPort = await AirPortFactory.deploy();
+    await airPort.waitForDeployment();
+    
+    // Mint some tokens to 'from' address and approve airPort to spend them
+    const amount = ethers.parseEther("10");
+    await token.mint(from.address, amount);
+    await token.connect(from).approve(airPort.target, amount);
+    
+    // Prepare transfer parameters
+    const recipients = [to.address];
+    
+    // The original uses keccak256 for the function selector, the mutant uses sha256
+    // This will produce a different 4-byte selector, causing the call to fail
+    await expect(
+      airPort.connect(from).transfer(from.address, token.target, recipients, amount)
+    ).to.be.reverted;
+  });
+});
+```

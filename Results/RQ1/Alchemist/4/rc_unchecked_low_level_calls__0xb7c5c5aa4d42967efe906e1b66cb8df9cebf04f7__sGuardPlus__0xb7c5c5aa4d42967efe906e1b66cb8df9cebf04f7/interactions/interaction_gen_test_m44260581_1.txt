@@ -1,0 +1,93 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m44260581 of keepMyEther.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test keepMyEther.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for keepMyEther:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("keepMyEther reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy keepMyEther by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("keepMyEther"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("keepMyEther mutant m44260581 - reentrancy test", function () {
+  it("should detect missing reentrancy guard by performing reentrancy attack", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the vulnerable contract
+    const Factory = await ethers.getContractFactory("keepMyEther");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Deploy attacker contract that will perform reentrancy
+    const AttackerFactory = await ethers.getContractFactory("ReentrancyAttacker");
+    const attackerContract = await AttackerFactory.deploy(await instance.getAddress());
+    await attackerContract.waitForDeployment();
+    
+    // Fund the target contract with 1 ETH from owner
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("1.0")
+    });
+    
+    // Fund the attacker contract with 0.5 ETH to trigger withdrawal
+    await attacker.sendTransaction({
+      to: await attackerContract.getAddress(),
+      value: ethers.parseEther("0.5")
+    });
+    
+    // Record balances before attack
+    const initialContractBalance = await ethers.provider.getBalance(await instance.getAddress());
+    const initialAttackerBalance = await ethers.provider.getBalance(await attackerContract.getAddress());
+    
+    // Execute attack - this should succeed on mutant (missing reentrancy guard)
+    await attackerContract.connect(attacker).attack();
+    
+    // Check that contract was drained more than allowed (reentrancy succeeded)
+    const finalContractBalance = await ethers.provider.getBalance(await instance.getAddress());
+    const finalAttackerBalance = await ethers.provider.getBalance(await attackerContract.getAddress());
+    
+    // Original contract would prevent reentrancy, so contract should retain some balance
+    // Mutant allows reentrancy, so contract should be drained
+    expect(finalContractBalance).to.be.lessThan(initialContractBalance);
+    expect(finalAttackerBalance).to.be.gt(initialAttackerBalance);
+    expect(finalContractBalance).to.equal(0); // All funds drained due to reentrancy
+  });
+});
+
+// Helper attacker contract (deployed as separate contract)
+contract ReentrancyAttacker {
+    address public target;
+    uint256 public attackCount;
+    
+    constructor(address _target) {
+        target = _target;
+    }
+    
+    function attack() external payable {
+        attackCount = 0;
+        // Call withdraw on the target
+        (bool success, ) = target.call(abi.encodeWithSignature("withdraw()"));
+        require(success, "Attack failed");
+    }
+    
+    fallback() external payable {
+        if (attackCount < 3) {
+            attackCount++;
+            // Re-enter withdraw before balance is set to zero
+            (bool success, ) = target.call(abi.encodeWithSignature("withdraw()"));
+            require(success, "Reentrancy failed");
+        }
+    }
+}
+```

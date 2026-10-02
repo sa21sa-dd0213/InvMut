@@ -1,0 +1,102 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("W_WALLET mutant test", function () {
+  it("should kill mutant m7633a088 by verifying exact balance accounting", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy Log contract first (required constructor argument for W_WALLET)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Deploy W_WALLET with Log address as constructor argument
+    const WalletFactory = await ethers.getContractFactory("W_WALLET");
+    const wallet = await WalletFactory.deploy(await log.getAddress());
+    await wallet.waitForDeployment();
+
+    // Get initial balance of addr1
+    const initialBalance = await ethers.provider.getBalance(addr1.address);
+
+    // Send exactly 1 ether to Put function from addr1
+    const putAmount = ethers.parseEther("1");
+    const tx = await wallet.connect(addr1).Put(0, { value: putAmount });
+    await tx.wait();
+
+    // Now try to collect the exact same amount (1 ether)
+    // Original: balance should be exactly 1 ether, collect should succeed
+    // Mutant: balance will be 1 ether + 1 wei, so collecting 1 ether will leave 1 wei
+    // But the contract only has 1 ether in actual ETH, so sending 1 ether should work
+    // However the mutant records 1 wei more, so when we try to collect 1 ether
+    // The contract will try to send 1 ether which it has, but the balance recorded
+    // is higher than actual ETH held, so we need to check the exact accounting
+
+    // Actually, let's verify by collecting slightly less than 1 ether to expose the bug
+    // Send 0.5 ether first to see the pattern
+    const collectAmount = ethers.parseEther("0.5");
+
+    // First check that MinSum condition is met (1 ether minimum)
+    // Since MinSum = 1 ether and we sent 1 ether, we can collect
+    // But we need to wait for unlockTime to pass (it's set to block.timestamp since _unlockTime=0)
+
+    // Advance time slightly to ensure block.timestamp > unlockTime
+    await ethers.provider.send("evm_increaseTime", [2]);
+    await ethers.provider.send("evm_mine", []);
+
+    // Try to collect 0.5 ether - should succeed on original
+    // On mutant, the balance is recorded as 1 ether + 1 wei
+    // So when we collect 0.5 ether, the new balance would be 0.5 ether + 1 wei
+    // This still works, but let's try to drain all balance
+
+    // Collect full 1 ether
+    const collectTx = wallet.connect(addr1).Collect(putAmount);
+
+    // On the original: this should succeed (balance = 1 ether, send 1 ether)
+    // On the mutant: this should revert because:
+    //   - Recorded balance = 1 ether + 1 wei
+    //   - Trying to send 1 ether via call{value: 1 ether}
+    //   - After subtraction, recorded balance = 1 wei
+    //   - But actual ETH in contract = 0 (sent back to addr1)
+    //   - The contract can still send 1 ether (it received 1 ether)
+    //   - Actually this won't revert... Let me reconsider
+
+    // The actual bug: The mutant adds 1 wei to the balance record
+    // but doesn't actually receive that extra wei. So if someone
+    // tries to collect the exact amount they deposited, it works.
+    // But if someone tries to collect the recorded balance amount,
+    // it will try to send more ETH than the contract has.
+
+    // Better approach: Send 1 ether, then try to collect 1 ether + 1 wei
+    // This should fail on original (balance < _am) but succeed on mutant
+    // Wait, that's the opposite - we want to kill the mutant
+
+    // Let me think again. The mutant adds 1 wei to balance.
+    // So if we send 1 ether and try to collect 1 ether + 1 wei:
+    // - Original: balance = 1 ether, _am = 1 ether + 1 wei => condition fails, revert
+    // - Mutant: balance = 1 ether + 1 wei, _am = 1 ether + 1 wei => condition passes
+    //   Then tries to send 1 ether + 1 wei, but only has 1 ether => send fails => revert
+
+    // Both revert, so that doesn't differentiate.
+
+    // Correct approach: Send 1 ether, collect 1 ether (exact amount)
+    // Original: balance = 1 ether, sends 1 ether, succeeds
+    // Mutant: balance = 1 ether + 1 wei, sends 1 ether, succeeds
+    //   But balance becomes 1 wei (which is stuck forever)
+    //   The actual ETH in contract = 0
+
+    // So the test should: send 1 ether, collect 1 ether, then check
+    // that the remaining recorded balance is 0 (original) vs 1 wei (mutant)
+
+    // Collect 1 ether
+    await (await collectTx).wait();
+
+    // Check the recorded balance for addr1
+    const holder = await wallet.Acc(addr1.address);
+
+    // On original: balance should be 0
+    // On mutant: balance should be 1 wei
+    expect(holder.balance).to.equal(0);
+
+    // This will pass on original (balance = 0) and fail on mutant (balance = 1 wei)
+  });
+});

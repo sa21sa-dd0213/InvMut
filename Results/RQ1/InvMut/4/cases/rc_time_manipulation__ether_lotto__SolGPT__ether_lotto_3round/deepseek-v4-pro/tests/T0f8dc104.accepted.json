@@ -1,0 +1,12 @@
+{
+ "difference_id": "T0f8dc104",
+ "property_summary": "After any sequence of calls to play(), the pot balance must never exceed the sum of ticket amounts received; the mutant doubles the pot, causing an inflated balance and violating this invariant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Insert a line that doubles the pot before the random check, altering the amounts transferred.",
+ "mutated_unit_code": "function play()  public payable {\n        require(msg.value == TICKET_AMOUNT);\n        pot += msg.value;\n        pot *= 2;\n\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n\n        if (random == 0) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    function setUp() public { c = new EtherLotto(); }\n    function testFuzz_property(uint256 calls, uint256 seed) public {\n        uint256 numCalls = bound(calls, 1, 10);\n        uint256 totalTickets = 0;\n\n        for (uint256 i = 0; i < numCalls; i++) {\n            address player = address(uint160(uint256(keccak256(abi.encode(seed, i)))));\n            vm.deal(player, 20 ether);\n            vm.prank(player);\n            (bool success, ) = address(c).call{value: 10 wei}(abi.encodeWithSignature(\"play()\"));\n            if (success) {\n                totalTickets += 10 wei;\n            }\n        }\n\n        assertTrue(c.pot() <= totalTickets);\n    }\n}\n"
+}

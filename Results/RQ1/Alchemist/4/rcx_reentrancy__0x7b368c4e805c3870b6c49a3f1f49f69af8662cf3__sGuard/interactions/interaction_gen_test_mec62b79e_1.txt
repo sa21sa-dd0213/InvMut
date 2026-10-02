@@ -1,0 +1,63 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mec62b79e of W_WALLET.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test W_WALLET.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for W_WALLET:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("W_WALLET reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy W_WALLET by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("W_WALLET"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("W_WALLET mutant kill test - Put uses block.prevrandao", function () {
+  it("should kill mutant by showing Collect reverts when unlockTime defaults to block.prevrandao", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy Log contract first (required by W_WALLET constructor)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+    
+    // Deploy W_WALLET with Log address
+    const Factory = await ethers.getContractFactory("W_WALLET");
+    const instance = await Factory.deploy(await logInstance.getAddress());
+    await instance.waitForDeployment();
+    
+    // Get current block timestamp for reference
+    const blockNumBefore = await ethers.provider.getBlockNumber();
+    const blockBefore = await ethers.provider.getBlock(blockNumBefore);
+    const currentTimestamp = blockBefore!.timestamp;
+    
+    // addr1 calls Put with _unlockTime = 0 (far in the past)
+    // In original: unlockTime becomes current block.timestamp
+    // In mutant: unlockTime becomes block.prevrandao (random, likely huge)
+    const putAmount = ethers.parseEther("2");
+    const putTx = await instance.connect(addr1).Put(0, { value: putAmount });
+    await putTx.wait();
+    
+    // Verify balance was added
+    const holderBefore = await instance.Acc(addr1.address);
+    expect(holderBefore.balance).to.equal(putAmount);
+    
+    // Now try to Collect the full amount
+    // In original: block.timestamp > unlockTime (since unlockTime = block.timestamp) -> true after next block
+    // In mutant: block.timestamp > block.prevrandao is almost certainly false (prevrandao is huge)
+    const collectTx = instance.connect(addr1).Collect(putAmount);
+    
+    // The mutant will revert because prevrandao is a large random value > current timestamp
+    // The original would succeed (or possibly revert for other reasons, but definitely not this one)
+    await expect(collectTx).to.be.reverted;
+  });
+});
+```

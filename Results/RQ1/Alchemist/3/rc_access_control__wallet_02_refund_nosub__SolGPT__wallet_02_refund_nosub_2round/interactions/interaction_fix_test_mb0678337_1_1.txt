@@ -1,0 +1,48 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Wallet reference (ethers v6; deploy may require constructor arguments)", function () {   it("should kill mutant mb0678337 by depositing a very small amount and verifying the assertion behavior", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Wallet");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // First deposit some ether to establish a non-zero balance     const depositAmount1 = ethers.parseEther("1.0");     await instance.connect(addr1).deposit({ value: depositAmount1 });      // Now deposit the maximum possible amount that would cause overflow in the assertion check     // We want to trigger the assert condition: balances[msg.sender] + msg.value > balances[msg.sender]     // If the assertion is removed (mutant), this deposit will succeed but the balance will overflow     // The maximum safe deposit that would make the assert fail is type(uint256).max - currentBalance + 1     const currentBalance = await instance.balances(addr1.address);     const overflowDeposit = ethers.MaxUint256 - currentBalance + 1n;          // In the original contract, this deposit should revert because the assert condition fails     // In the mutant (without assert), this deposit would succeed and overflow the balance     await expect(       instance.connect(addr1).deposit({ value: overflowDeposit })     ).to.be.reverted;      // Verify the balance was not corrupted     const finalBalance = await instance.balances(addr1.address);     expect(finalBalance).to.equal(depositAmount1);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Wallet { address creator; mapping(address => uint256) balances; constructor() public { creator = payable(msg.sender); } function deposit() public payable { assert(balances[msg.sender] + msg.value > balances[msg.sender]); balances[msg.sender] += msg.value; } function withdraw(uint256 amount) public { require(amount <= balances[msg.sender]); payable(msg.sender).transfer(amount); balances[msg.sender] -= amount; } function refund() public { payable(msg.sender).transfer(balances[msg.sender]); balances[msg.sender] = 0; } function migrateTo(address to) public { require(creator == msg.sender); payable(to).transfer(address(this).balance); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Wallet reference (ethers v6; deploy may require constructor arguments)", function () {
+  it("should kill mutant mb0678337 by depositing a very small amount and verifying the assertion behavior", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Wallet");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // First deposit some ether to establish a non-zero balance
+    const depositAmount1 = ethers.parseEther("1.0");
+    await instance.connect(addr1).deposit({ value: depositAmount1 });
+
+    // Now deposit the maximum possible amount that would cause overflow in the assertion check
+    // We want to trigger the assert condition: balances[msg.sender] + msg.value > balances[msg.sender]
+    // If the assertion is removed (mutant), this deposit will succeed but the balance will overflow
+    // The maximum safe deposit that would make the assert fail is type(uint256).max - currentBalance + 1
+    const currentBalance = await instance.balances(addr1.address);
+    const overflowDeposit = ethers.MaxUint256 - currentBalance + 1n;
+
+    // In the original contract, this deposit should revert because the assert condition fails
+    // In the mutant (without assert), this deposit would succeed and overflow the balance
+    await expect(
+      instance.connect(addr1).deposit({ value: overflowDeposit })
+    ).to.be.reverted;
+
+    // Verify the balance was not corrupted
+    const finalBalance = await instance.balances(addr1.address);
+    expect(finalBalance).to.equal(depositAmount1);
+  });
+});
+```

@@ -1,0 +1,62 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mde0a5d2a of MONEY_BOX.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test MONEY_BOX.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for MONEY_BOX:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("MONEY_BOX reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy MONEY_BOX by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("MONEY_BOX"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MONEY_BOX mutant detection - mde0a5d2a", function () {
+  it("should kill mutant by sending 0 wei to Put (via fallback) and expecting success on original but revert on mutant", async function () {
+    const [owner] = await ethers.getSigners();
+    
+    // Deploy Log contract first (required by MONEY_BOX constructor)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+    
+    // Deploy MONEY_BOX with Log address
+    const MoneyBoxFactory = await ethers.getContractFactory("MONEY_BOX");
+    const moneyBox = await MoneyBoxFactory.deploy();
+    await moneyBox.waitForDeployment();
+    
+    // Set MinSum to 0 so balance checks don't interfere
+    await moneyBox.SetMinSum(0);
+    
+    // Set LogFile to the deployed Log contract
+    await moneyBox.SetLogFile(await logInstance.getAddress());
+    
+    // Initialize the contract
+    await moneyBox.Initialized();
+    
+    // First deposit some ether to create a balance (required for the mutant to fail)
+    await owner.sendTransaction({
+      to: await moneyBox.getAddress(),
+      value: ethers.parseEther("1")
+    });
+    
+    // Now test the mutant: sending 0 wei should fail in mutant but succeed in original
+    // The fallback calls Put(0) which triggers the mutated require check
+    await expect(
+      owner.sendTransaction({
+        to: await moneyBox.getAddress(),
+        value: 0
+      })
+    ).to.be.reverted;
+  });
+});
+```

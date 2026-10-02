@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "Call transfer with an array of two addresses where the token contract's transferFrom and transfer functions have different effects on a state variable; the reference increments a public counter via transferFrom, the bug increments a different counter via transfer, causing a difference in the total value.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "Replace the bytes4 id assignment with id=bytes4(keccak256('transfer(address,uint256)')) to call a different function signature.",
+ "mutated_unit_code": "    function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id=bytes4(keccak256(\"transfer(address,uint256)\"));\n        for(uint i=0;i<_tos.length;i++){\n\n            caddress.call(abi.encodeWithSelector(id,from,_tos[i],v));\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {demo} from \"../src/demo.sol\";\n\ncontract InvMutTest is Test {\n    demo c;\n    function setUp() public { c = new demo(); }\n    function testRegression_property() public {\n        TokenMock token = new TokenMock();\n        address[] memory tos = new address[](1);\n        tos[0] = address(0x1234);\n        c.transfer(address(this), address(token), tos, 100);\n        assertTrue(token.callType() == 1);\n    }\n}\n\ncontract TokenMock {\n    uint256 public callType;\n    function transferFrom(address, address, uint256) external returns (bool) {\n        callType = 1;\n        return true;\n    }\n    function transfer(address, uint256) external returns (bool) {\n        callType = 2;\n        return true;\n    }\n}"
+}

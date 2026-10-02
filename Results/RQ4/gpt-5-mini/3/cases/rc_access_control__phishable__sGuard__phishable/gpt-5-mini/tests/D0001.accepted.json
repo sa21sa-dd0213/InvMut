@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "For any caller and recipient, the correct contract preserves that withdrawAll succeeds (transfers the contract balance) if and only if the caller is the owner; the mutant inverts the owner check so a non-owner can withdraw and the owner cannot, thus breaking the rule for inputs where caller==owner (or caller!=owner).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the require owner check with require(msg.sender != owner) so only non-owners can call withdrawAll.",
+ "mutated_unit_code": "function withdrawAll(address _recipient) public {\n\n        require(msg.sender != owner);\n        payable(_recipient).transfer(address(this).balance);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Phishable} from \"../src/Phishable.sol\";\n\ncontract InvMutTest is Test {\n    Phishable c;\n\n    function setUp() public { c = new Phishable(address(this)); }\n\n    function testFuzz_property(address caller, address recipient, uint256 seedAmount) public {\n        vm.assume(caller != address(0));\n        vm.assume(recipient != address(0));\n\n        uint256 amount = bound(seedAmount, 0, 1 ether);\n\n        vm.deal(caller, amount + 1 wei);\n\n        vm.prank(caller);\n        (bool sent,) = address(c).call{value: amount}(\"\");\n        require(sent);\n\n        bool ok;\n        vm.prank(caller);\n        try c.withdrawAll(recipient) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        bool property = false;\n        if (ok) {\n            property = (caller == address(this)) && (address(c).balance == 0);\n        } else {\n            property = (caller != address(this)) && (address(c).balance == amount);\n        }\n\n        assertTrue(property);\n    }\n}\n"
+}

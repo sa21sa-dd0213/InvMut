@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract ReentrancyDAO:
+        Contract Code: pragma solidity ^0.8.0; contract ReentrancyDAO { mapping (address => uint) credit; uint balance; function withdrawAll() public { uint oCredit = credit[msg.sender]; if (oCredit > 0) { balance -= oCredit; credit[msg.sender] = 0; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); } } function deposit() public payable { credit[msg.sender] += msg.value; balance += msg.value; } }
+
+    Consider the following mutant of ReentrancyDAO:
+        Mutant m8f0dd4b9 of function withdrawAll replaces > with >=
+        Mutant Diff: ---|         if (oCredit > 0) { +++|         if (oCredit >=  0) {
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the condition `if (oCredit > 0)` to `if (oCredit >= 0)`, which means the withdrawal logic will execute even when the sender's credit balance is zero. In the original, a user with zero credit cannot call `withdrawAll()` because the condition fails, so no state changes or external calls occur. In the mutant, a user with zero credit will still enter the `if` block, subtract zero from `balance`, set their credit to zero (already zero), and then attempt an external call with zero value. This external call with zero value may succeed (since sending 0 wei is allowed), but it unnecessarily consumes gas and could be exploited in combination with other vulnerabilities.  
+
+**Hypothesis**: A test case where a user who has never deposited (or has zero credit) calls `withdrawAll()` and expects that no external call is made and the contract state remains unchanged should kill the mutant, because the mutant will make an unnecessary external call and potentially alter the `balance` variable (subtracting zero), while the original would revert or simply not execute the withdrawal block.

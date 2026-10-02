@@ -1,0 +1,41 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Wallet mutant m53d5979e test", function () {   it("should detect overflow guard weakening by depositing max uint256 into an existing balance", async function () {     const [owner] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Wallet");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // First deposit to create a non-zero balance     const initialDeposit = ethers.parseEther("1");     await (await instance.connect(owner).deposit({ value: initialDeposit })).wait();      // Now attempt to deposit an amount that would cause overflow     // Since balances[owner] = 1 ether, we need to add max uint256 - 1 ether + 1 to overflow     const currentBalance = await ethers.provider.getBalance(await instance.getAddress());     const maxUint256 = ethers.MaxUint256;     const overflowAmount = maxUint256 - initialDeposit + 1n;      // In original contract this should revert due to assertion, in mutant it would succeed     await expect(       instance.connect(owner).deposit({ value: overflowAmount })     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Wallet { address creator; mapping(address => uint256) balances; constructor() public { creator = payable(msg.sender); } function deposit() public payable { assert(balances[msg.sender] + msg.value > balances[msg.sender]); balances[msg.sender] += msg.value; } function withdraw(uint256 amount) public { require(amount <= balances[msg.sender]); payable(msg.sender).transfer(amount); balances[msg.sender] -= amount; } function refund() public { payable(msg.sender).transfer(balances[msg.sender]); balances[msg.sender] = 0; } function migrateTo(address to) public { require(creator == msg.sender); payable(to).transfer(address(this).balance); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Wallet mutant m53d5979e test", function () {
+  it("should detect overflow guard weakening by depositing max uint256 into an existing balance", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Wallet");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // First deposit to create a non-zero balance
+    const initialDeposit = ethers.parseEther("1");
+    await (await instance.connect(owner).deposit({ value: initialDeposit })).wait();
+
+    // Now attempt to deposit an amount that would cause overflow
+    // Since balances[owner] = 1 ether, we need to add max uint256 - 1 ether + 1 to overflow
+    const maxUint256 = ethers.MaxUint256;
+    const overflowAmount = maxUint256 - initialDeposit + 1n;
+
+    // In original contract this should revert due to assertion, in mutant it would succeed
+    await expect(
+      instance.connect(owner).deposit({ value: overflowAmount })
+    ).to.be.reverted;
+  });
+});
+```

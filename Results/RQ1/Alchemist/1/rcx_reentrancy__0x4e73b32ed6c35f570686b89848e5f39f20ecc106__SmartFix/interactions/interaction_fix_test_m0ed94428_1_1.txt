@@ -1,0 +1,54 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PRIVATE_ETH_CELL mutant kill test", function () {   it("should kill mutant m0ed94428 by calling Collect with balance > MinSum", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("PRIVATE_ETH_CELL");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Setup: set MinSum and initialize     const minSum = ethers.parseEther("1.0");     await instance.SetMinSum(minSum);     await instance.Initialized();      // Deploy LogFile for logging     const LogFactory = await ethers.getContractFactory("LogFile");     const logInstance = await LogFactory.deploy();     await logInstance.waitForDeployment();     await instance.SetLogFile(await logInstance.getAddress());      // Deposit 2 ETH (balance > MinSum)     const depositAmount = ethers.parseEther("2.0");     await instance.connect(addr1).Deposit({ value: depositAmount });      // Attempt Collect with 1 ETH (balance is 2, MinSum is 1, so balance > MinSum)     const collectAmount = ethers.parseEther("1.0");          // Original would succeed, mutant reverts because balance != MinSum     await expect(       instance.connect(addr1).Collect(collectAmount)     ).to.not.be.reverted;      // Verify balance decreased     const finalBalance = await instance.balances(addr1.address);     expect(finalBalance).to.equal(ethers.parseEther("1.0"));   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PRIVATE_ETH_CELL { mapping (address=>uint256) public balances; uint public MinSum; LogFile Log; bool intitalized; function SetMinSum(uint _val) public { require(!intitalized); MinSum = _val; } function SetLogFile(address _log) public { require(!intitalized); Log = LogFile(_log); } function Initialized() public { intitalized = true; } function Deposit() public payable { require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); balances[msg.sender]+= msg.value; Log.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { if(balances[msg.sender]>=MinSum && balances[msg.sender]>=_am) { balances[msg.sender] = (balances[msg.sender] - _am); (bool _veri_ok,) = msg.sender.call{value: _am}(""); if(_veri_ok) { Log.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } receive() external payable { Deposit(); } } contract LogFile { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val,string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PRIVATE_ETH_CELL mutant kill test", function () {
+  it("should kill mutant m0ed94428 by calling Collect with balance > MinSum", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("PRIVATE_ETH_CELL");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Setup: set MinSum and initialize
+    const minSum = ethers.parseEther("1.0");
+    await instance.SetMinSum(minSum);
+    await instance.Initialized();
+
+    // Deploy LogFile for logging
+    const LogFactory = await ethers.getContractFactory("LogFile");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+    await instance.SetLogFile(await logInstance.getAddress());
+
+    // Deposit 2 ETH (balance > MinSum)
+    const depositAmount = ethers.parseEther("2.0");
+    await instance.connect(addr1).Deposit({ value: depositAmount });
+
+    // Attempt Collect with 1 ETH (balance is 2, MinSum is 1, so balance > MinSum)
+    const collectAmount = ethers.parseEther("1.0");
+    
+    // Original would succeed, mutant reverts because balance != MinSum
+    await expect(
+      instance.connect(addr1).Collect(collectAmount)
+    ).to.not.be.reverted;
+
+    // Verify balance decreased
+    const finalBalance = await instance.balances(addr1.address);
+    expect(finalBalance).to.equal(ethers.parseEther("1.0"));
+  });
+});
+```

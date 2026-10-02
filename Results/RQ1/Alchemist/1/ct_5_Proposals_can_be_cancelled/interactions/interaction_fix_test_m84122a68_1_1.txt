@@ -1,0 +1,241 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("DAO mutant detection - hasQuorum always false", function () {   it("should detect mutant where hasQuorum always returns false by verifying proposal finalisation is blocked", async function () {     const [owner, voter1, voter2, voter3, recipient] = await ethers.getSigners();          // Deploy mock contracts for VADER, USDV, and VAULT     const VADERFactory = await ethers.getContractFactory("iVADER");     const USDVFactory = await ethers.getContractFactory("iERC20");     const VAULTFactory = await ethers.getContractFactory("iVAULT");          const vader = await VADERFactory.deploy();     await vader.waitForDeployment();          const usdv = await USDVFactory.deploy();     await usdv.waitForDeployment();          const vault = await VAULTFactory.deploy();     await vault.waitForDeployment();          // Deploy DAO     const DAOFactory = await ethers.getContractFactory("DAO");     const dao = await DAOFactory.deploy();     await dao.waitForDeployment();          // Initialize DAO     await dao.init(await vader.getAddress(), await usdv.getAddress(), await vault.getAddress());          // Create a grant proposal     const grantAmount = ethers.parseEther("100");     await dao.newGrantProposal(recipient.address, grantAmount);          const proposalId = 1;          // Set up vault to return meaningful totalWeight values     // Mock vault.totalWeight() to return 300 (so quorum requires >100 votes)     await ethers.provider.send("evm_setNextBlockTimestamp", [Math.floor(Date.now() / 1000) + 1000]);          // Vote with enough weight to exceed quorum (1/3 of 300 = 100, so need >100 votes)     // We'll simulate votes by manipulating the vault mock          // For simplicity, we'll test the quorum function directly     // First verify that with no votes, hasQuorum returns false     expect(await dao.hasQuorum(proposalId)).to.equal(false);          // Now simulate voting by calling voteProposal which internally uses countMemberVotes     // But we need the vault mock to return sufficient weight     // Since we can't easily mock the vault in this test setup, we'll use a different approach          // Directly test the hasQuorum function logic     // Add votes to the proposal by calling voteProposal     // The vault mock needs to return a weight > 100 for at least one voter          // For the test to work with actual vault behavior, we need to ensure:     // - vault.totalWeight() returns some value T     // - quorum threshold = T/3     // - We need votes > T/3          // Since we can't control the vault mock return values easily,     // let's test the quorum function with known state          // The key test: if hasQuorum always returns false (mutant),     // then proposals can never be finalised through normal flow          // Create a proposal and try to finalise it after voting     await dao.newGrantProposal(recipient.address, grantAmount);     const proposalId2 = 2;          // Vote on the proposal (this will add votes)     await dao.connect(voter1).voteProposal(proposalId2);          // Check if quorum is reached (should be true if vault returns enough weight)     const quorumResult = await dao.hasQuorum(proposalId2);          // In the original contract, with sufficient votes this should be true     // In the mutant, this will always be false     // We expect the original to return true when votes > totalWeight/3          // To detect the mutant, we need to verify that when quorum should be reached,     // the function actually returns true          // Since we can't guarantee vault returns specific values in this mock,     // let's use a more direct approach - test the finaliseProposal flow          // Call _finalise to set the proposal as finalising     // Then try to call finaliseProposal          // First, let's vote enough to trigger auto-finalisation     // The vault mock needs to return weight values          // For this test, we'll directly check if hasQuorum behaves correctly     // by checking that it returns true when votes exceed threshold          // Let's set up the vault mock to return known values     // We'll use the vault's totalWeight function          // Since we're using a real vault mock, let's check what totalWeight returns     // and verify hasQuorum logic          // The critical test: if hasQuorum always returns false (mutant),     // then calling finaliseProposal should revert when it should succeed          // Set the proposal to finalising state first     // (this would normally happen in voteProposal when conditions are met)          // For the test, we'll manually trigger the finalising state     // by calling voteProposal with enough votes          // Since we can't easily control the vault mock, let's use a simpler approach:     // Check that hasQuorum behaves correctly by comparing with expected logic          // In the original, hasQuorum returns true when votes > totalWeight/3     // In the mutant, it always returns false          // We can detect this by:     // 1. Setting up a scenario where votes > totalWeight/3     // 2. Checking that hasQuorum returns true (original) vs false (mutant)          // For this test, we'll check the quorum function directly     // If the mutant is present, hasQuorum will always return false     // So a test that expects hasQuorum to return true under certain conditions will fail          // The most reliable test: check that hasQuorum returns false when it should return true     // This will detect the mutant because the original would return true          // Let's create a scenario where we know quorum should be reached     // and verify that hasQuorum returns true          // Since we can't easily mock the vault, let's check the function behavior     // by examining the vote count and total weight          // After voting, check if quorum is reached     // If the mutant is present, hasQuorum will always return false     // So a test that expects hasQuorum to return true will fail on the mutant          // The key assertion: after voting with sufficient weight, hasQuorum should return true     // If it returns false, the mutant is detected          // For this test to work, we need the vault mock to return appropriate values     // Let's assume the vault returns totalWeight = 300 and each voter has weight = 100          // With 3 voters voting, total votes = 300, quorum threshold = 100     // So hasQuorum should return true          // But since we can't guarantee the vault mock setup, let's make the test     // check that hasQuorum returns the correct boolean value          // The simplest test: check that hasQuorum returns true when it should     // This will fail on the mutant because it always returns false          // Let's create a test that checks hasQuorum returns true after sufficient voting     // We'll need to ensure the vault returns appropriate values          // For the test to be effective, we need to set up the vault mock     // to return specific totalWeight and member weight values          // Let's use ethers to set the vault mock's return values     // Since we're using a real vault implementation, we need to interact with it          // For this test, we'll check the hasQuorum function with no votes first     // Then after voting, check if it returns true          // The mutant will always return false, so the test will detect it     // when the second assertion fails          // Let's write the actual test assertions          // Check that hasQuorum returns false when there are no votes (should be false in both)     expect(await dao.hasQuorum(proposalId2)).to.equal(false);          // Now vote with multiple voters to accumulate votes     // We need the vault to return enough weight          // Vote with voter2 and voter3 as well     await dao.connect(voter2).voteProposal(proposalId2);     await dao.connect(voter3).voteProposal(proposalId2);          // Check if quorum is reached     // In the original, if total votes > totalWeight/3, this returns true     // In the mutant, this always returns false          // If the mutant is present, this assertion will fail     // because the mutant returns false instead of true     const quorumAfterVoting = await dao.hasQuorum(proposalId2);          // The test passes on original if quorum is reached (returns true)     // The test fails on mutant because it returns false     // This detects the mutant     expect(quorumAfterVoting).to.equal(true);          // Additional check: verify that finaliseProposal works correctly     // when quorum is reached          // First, we need the proposal to be in finalising state     // This happens automatically in voteProposal when quorum is reached     // and the proposal type allows auto-finalisation          // For a GRANT proposal, auto-finalisation happens when quorum is reached     // regardless of majority          // Check if the proposal is finalising     const isFinalising = await dao.mapPID_finalising(proposalId2);          // If quorum was reached, the proposal should be in finalising state     // If the mutant prevented quorum, it won't be finalising          // This is another way to detect the mutant     // If the proposal is not finalising when it should be, the mutant is detected     expect(isFinalising).to.equal(true);          // Try to finalise the proposal     // This should work if the proposal is in finalising state     // and the cool-off period has passed          // Set the timestamp to after the cool-off period     await ethers.provider.send("evm_setNextBlockTimestamp", [       Math.floor(Date.now() / 1000) + 100     ]);          // Finalise the proposal     // If the mutant prevented quorum, this will revert     await expect(dao.finaliseProposal(proposalId2)).to.not.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; interface iERC20 { function name() external view returns (string memory); function symbol() external view returns (string memory); function decimals() external view returns (uint); function totalSupply() external view returns (uint); function balanceOf(address account) external view returns (uint); function transfer(address, uint) external returns (bool); function allowance(address owner, address spender) external view returns (uint); function approve(address, uint) external returns (bool); function transferFrom(address, address, uint) external returns (bool); function transferTo(address, uint) external returns (bool); function burn(uint) external; function burnFrom(address, uint) external; event Transfer(address indexed from, address indexed to, uint value); event Approval(address indexed owner, address indexed spender, uint value); } interface iVADER { function UTILS() external view returns (address); function DAO() external view returns (address); function emitting() external view returns (bool); function minting() external view returns (bool); function secondsPerEra() external view returns (uint); function flipEmissions() external; function flipMinting() external; function setParams(uint newEra, uint newCurve) external; function setRewardAddress(address newAddress) external; function changeUTILS(address newUTILS) external; function changeDAO(address newDAO) external; function purgeDAO() external; function upgrade(uint amount) external; function redeem() external returns (uint); function redeemToMember(address member) external returns (uint); } interface iVAULT { function setParams(uint newEra, uint newDepositTime, uint newGrantTime) external; function grant(address recipient, uint amount) external; function deposit(address synth, uint amount) external; function depositForMember(address synth, address member, uint amount) external; function harvest(address synth) external returns (uint reward); function calcCurrentReward(address synth, address member) external view returns (uint reward); function calcReward(address synth, address member) external view returns (uint); function withdraw(address synth, uint basisPoints) external returns (uint redeemedAmount); function totalWeight() external view returns (uint); function reserveUSDV() external view returns (uint); function reserveVADER() external view returns (uint); function getMemberDeposit(address synth, address member) external view returns (uint); function getMemberWeight(address member) external view returns (uint); function getMemberLastTime(address synth, address member) external view returns (uint); } contract DAO { struct GrantDetails{ address recipient; uint amount; } bool private inited; uint public proposalCount; address public VADER; address public USDV; address public VAULT; uint public coolOffPeriod; mapping(uint => GrantDetails) public mapPID_grant; mapping(uint => address) public mapPID_address; mapping(uint => string) public mapPID_type; mapping(uint => uint) public mapPID_votes; mapping(uint => uint) public mapPID_timeStart; mapping(uint => bool) public mapPID_finalising; mapping(uint => bool) public mapPID_finalised; mapping(uint => mapping(address => uint)) public mapPIDMember_votes; event NewProposal(address indexed member, uint indexed proposalID, string proposalType); event NewVote(address indexed member, uint indexed proposalID, uint voteWeight, uint totalVotes, string proposalType); event ProposalFinalising(address indexed member,uint indexed proposalID, uint timeFinalised, string proposalType); event CancelProposal(address indexed member, uint indexed oldProposalID, uint oldVotes, uint newVotes, uint totalWeight); event FinalisedProposal(address indexed member,uint indexed proposalID, uint votesCast, uint totalWeight, string proposalType); constructor() { } function init(address _vader, address _usdv, address _vault) public { require(inited == false); inited = true; VADER = _vader; USDV = _usdv; VAULT = _vault; coolOffPeriod = 1; } function newGrantProposal(address recipient, uint amount) public { string memory typeStr = "GRANT"; proposalCount += 1; mapPID_type[proposalCount] = typeStr; GrantDetails memory grant; grant.recipient = recipient; grant.amount = amount; mapPID_grant[proposalCount] = grant; emit NewProposal(msg.sender, proposalCount, typeStr); } function newAddressProposal(address proposedAddress, string memory typeStr) public { proposalCount += 1; mapPID_address[proposalCount] = proposedAddress; mapPID_type[proposalCount] = typeStr; emit NewProposal(msg.sender, proposalCount, typeStr); } function voteProposal(uint proposalID) public returns (uint voteWeight) { bytes memory _type = bytes(mapPID_type[proposalID]); voteWeight = countMemberVotes(proposalID); if(hasQuorum(proposalID) && mapPID_finalising[proposalID] == false){ if(isEqual(_type, 'DAO') || isEqual(_type, 'UTILS') || isEqual(_type, 'REWARD')){ if(hasMajority(proposalID)){ _finalise(proposalID); } } else { _finalise(proposalID); } } emit NewVote(msg.sender, proposalID, voteWeight, mapPID_votes[proposalID], string(_type)); } function _finalise(uint _proposalID) internal { bytes memory _type = bytes(mapPID_type[_proposalID]); mapPID_finalising[_proposalID] = true; mapPID_timeStart[_proposalID] = block.timestamp; emit ProposalFinalising(msg.sender, _proposalID, block.timestamp+coolOffPeriod, string(_type)); } function cancelProposal(uint oldProposalID, uint newProposalID) public { require(mapPID_finalising[oldProposalID], "Must be finalising"); require(newProposalID != oldProposalID, "New proposal ID must be different from old proposal ID"); require(hasMinority(newProposalID), "Must have minority"); require(isEqual(bytes(mapPID_type[oldProposalID]), bytes(mapPID_type[newProposalID])), "Must be same"); mapPID_votes[oldProposalID] = 0; emit CancelProposal(msg.sender, oldProposalID, mapPID_votes[oldProposalID], mapPID_votes[newProposalID], iVAULT(VAULT).totalWeight()); } function finaliseProposal(uint proposalID) public  { require((block.timestamp - mapPID_timeStart[proposalID]) > coolOffPeriod, "Must be after cool off"); require(mapPID_finalising[proposalID] == true, "Must be finalising"); if(!hasQuorum(proposalID)){ _finalise(proposalID); } bytes memory _type = bytes(mapPID_type[proposalID]); if (isEqual(_type, 'GRANT')){ grantFunds(proposalID); } else if (isEqual(_type, 'UTILS')){ moveUtils(proposalID); } else if (isEqual(_type, 'REWARD')){ moveRewardAddress(proposalID); } } function completeProposal(uint _proposalID) internal { string memory _typeStr = mapPID_type[_proposalID]; emit FinalisedProposal(msg.sender, _proposalID, mapPID_votes[_proposalID], iVAULT(VAULT).totalWeight(), _typeStr); mapPID_votes[_proposalID] = 0; mapPID_finalised[_proposalID] = true; mapPID_finalising[_proposalID] = false; } function grantFunds(uint _proposalID) internal { GrantDetails memory _grant = mapPID_grant[_proposalID]; require(_grant.amount <= iERC20(USDV).balanceOf(VAULT) / 10, "Not more than 10%"); completeProposal(_proposalID); iVAULT(VAULT).grant(_grant.recipient, _grant.amount); } function moveUtils(uint _proposalID) internal { address _proposedAddress = mapPID_address[_proposalID]; require(_proposedAddress != address(0), "No address proposed"); iVADER(VADER).changeUTILS(_proposedAddress); completeProposal(_proposalID); } function moveRewardAddress(uint _proposalID) internal { address _proposedAddress = mapPID_address[_proposalID]; require(_proposedAddress != address(0), "No address proposed"); iVADER(VADER).setRewardAddress(_proposedAddress); completeProposal(_proposalID); } function countMemberVotes(uint _proposalID) internal returns (uint voteWeight){ mapPID_votes[_proposalID] -= mapPIDMember_votes[_proposalID][msg.sender]; voteWeight = iVAULT(VAULT).getMemberWeight(msg.sender); mapPID_votes[_proposalID] += voteWeight; mapPIDMember_votes[_proposalID][msg.sender] = voteWeight; } function hasMajority(uint _proposalID) public view returns (bool){ uint votes = mapPID_votes[_proposalID]; uint consensus = iVAULT(VAULT).totalWeight() / 2; if(votes > consensus){ return true; } else { return false; } } function hasQuorum(uint _proposalID) public view returns (bool){ uint votes = mapPID_votes[_proposalID]; uint consensus = iVAULT(VAULT).totalWeight() / 3; if(votes > consensus){ return true; } else { return false; } } function hasMinority(uint _proposalID) public view returns (bool){ uint votes = mapPID_votes[_proposalID]; uint consensus = iVAULT(VAULT).totalWeight() / 6; if(votes > consensus){ return true; } else { return false; } } function isEqual(bytes memory part1, bytes memory part2) public pure returns (bool){ if(sha256(part1) == sha256(part2)){ return true; } else { return false; } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DAO mutant detection - hasQuorum always false", function () {
+  it("should detect mutant where hasQuorum always returns false by verifying proposal finalisation is blocked", async function () {
+    const [owner, voter1, voter2, voter3, recipient] = await ethers.getSigners();
+    
+    // Deploy mock contracts for VADER, USDV, and VAULT
+    const VADERFactory = await ethers.getContractFactory("iVADER");
+    const USDVFactory = await ethers.getContractFactory("iERC20");
+    const VAULTFactory = await ethers.getContractFactory("iVAULT");
+    
+    const vader = await VADERFactory.deploy();
+    await vader.waitForDeployment();
+    
+    const usdv = await USDVFactory.deploy();
+    await usdv.waitForDeployment();
+    
+    const vault = await VAULTFactory.deploy();
+    await vault.waitForDeployment();
+    
+    // Deploy DAO
+    const DAOFactory = await ethers.getContractFactory("DAO");
+    const dao = await DAOFactory.deploy();
+    await dao.waitForDeployment();
+    
+    // Initialize DAO
+    await dao.init(await vader.getAddress(), await usdv.getAddress(), await vault.getAddress());
+    
+    // Create a grant proposal
+    const grantAmount = ethers.parseEther("100");
+    await dao.newGrantProposal(recipient.address, grantAmount);
+    
+    const proposalId = 1;
+    
+    // Set up vault to return meaningful totalWeight values
+    // Mock vault.totalWeight() to return 300 (so quorum requires >100 votes)
+    await ethers.provider.send("evm_setNextBlockTimestamp", [Math.floor(Date.now() / 1000) + 1000]);
+    
+    // Vote with enough weight to exceed quorum (1/3 of 300 = 100, so need >100 votes)
+    // We'll simulate votes by manipulating the vault mock
+    
+    // For simplicity, we'll test the quorum function directly
+    // First verify that with no votes, hasQuorum returns false
+    expect(await dao.hasQuorum(proposalId)).to.equal(false);
+    
+    // Now simulate voting by calling voteProposal which internally uses countMemberVotes
+    // But we need the vault mock to return sufficient weight
+    // Since we can't easily mock the vault in this test setup, we'll use a different approach
+    
+    // Directly test the hasQuorum function logic
+    // Add votes to the proposal by calling voteProposal
+    // The vault mock needs to return a weight > 100 for at least one voter
+    
+    // For the test to work with actual vault behavior, we need to ensure:
+    // - vault.totalWeight() returns some value T
+    // - quorum threshold = T/3
+    // - We need votes > T/3
+    
+    // Since we can't control the vault mock return values easily,
+    // let's test the quorum function with known state
+    
+    // The key test: if hasQuorum always returns false (mutant),
+    // then proposals can never be finalised through normal flow
+    
+    // Create a proposal and try to finalise it after voting
+    await dao.newGrantProposal(recipient.address, grantAmount);
+    const proposalId2 = 2;
+    
+    // Vote on the proposal (this will add votes)
+    await dao.connect(voter1).voteProposal(proposalId2);
+    
+    // Check if quorum is reached (should be true if vault returns enough weight)
+    const quorumResult = await dao.hasQuorum(proposalId2);
+    
+    // In the original contract, with sufficient votes this should be true
+    // In the mutant, this will always be false
+    // We expect the original to return true when votes > totalWeight/3
+    
+    // To detect the mutant, we need to verify that when quorum should be reached,
+    // the function actually returns true
+    
+    // Since we can't guarantee vault returns specific values in this mock,
+    // let's use a more direct approach - test the finaliseProposal flow
+    
+    // Call _finalise to set the proposal as finalising
+    // Then try to call finaliseProposal
+    
+    // First, let's vote enough to trigger auto-finalisation
+    // The vault mock needs to return weight values
+    
+    // For this test, we'll directly check if hasQuorum behaves correctly
+    // by checking that it returns true when votes exceed threshold
+    
+    // Let's set up the vault mock to return known values
+    // We'll use the vault's totalWeight function
+    
+    // Since we're using a real vault mock, let's check what totalWeight returns
+    // and verify hasQuorum logic
+    
+    // The critical test: if hasQuorum always returns false (mutant),
+    // then calling finaliseProposal should revert when it should succeed
+    
+    // Set the proposal to finalising state first
+    // (this would normally happen in voteProposal when conditions are met)
+    
+    // For the test, we'll manually trigger the finalising state
+    // by calling voteProposal with enough votes
+    
+    // Since we can't easily control the vault mock, let's use a simpler approach:
+    // Check that hasQuorum behaves correctly by comparing with expected logic
+    
+    // In the original, hasQuorum returns true when votes > totalWeight/3
+    // In the mutant, it always returns false
+    
+    // We can detect this by:
+    // 1. Setting up a scenario where votes > totalWeight/3
+    // 2. Checking that hasQuorum returns true (original) vs false (mutant)
+    
+    // For this test, we'll check the quorum function directly
+    // If the mutant is present, hasQuorum will always return false
+    // So a test that expects hasQuorum to return true under certain conditions will fail
+    
+    // The most reliable test: check that hasQuorum returns false when it should return true
+    // This will detect the mutant because the original would return true
+    
+    // Let's create a scenario where we know quorum should be reached
+    // and verify that hasQuorum returns true
+    
+    // Since we can't easily mock the vault, let's check the function behavior
+    // by examining the vote count and total weight
+    
+    // After voting, check if quorum is reached
+    // If the mutant is present, hasQuorum will always return false
+    // So a test that expects hasQuorum to return true will fail on the mutant
+    
+    // The key assertion: after voting with sufficient weight, hasQuorum should return true
+    // If it returns false, the mutant is detected
+    
+    // For this test to work, we need the vault mock to return appropriate values
+    // Let's assume the vault returns totalWeight = 300 and each voter has weight = 100
+    
+    // With 3 voters voting, total votes = 300, quorum threshold = 100
+    // So hasQuorum should return true
+    
+    // But since we can't guarantee the vault mock setup, let's make the test
+    // check that hasQuorum returns the correct boolean value
+    
+    // The simplest test: check that hasQuorum returns true when it should
+    // This will fail on the mutant because it always returns false
+    
+    // Let's create a test that checks hasQuorum returns true after sufficient voting
+    // We'll need to ensure the vault returns appropriate values
+    
+    // For the test to be effective, we need to set up the vault mock
+    // to return specific totalWeight and member weight values
+    
+    // Let's use ethers to set the vault mock's return values
+    // Since we're using a real vault implementation, we need to interact with it
+    
+    // For this test, we'll check the hasQuorum function with no votes first
+    // Then after voting, check if it returns true
+    
+    // The mutant will always return false, so the test will detect it
+    // when the second assertion fails
+    
+    // Let's write the actual test assertions
+    
+    // Check that hasQuorum returns false when there are no votes (should be false in both)
+    expect(await dao.hasQuorum(proposalId2)).to.equal(false);
+    
+    // Now vote with multiple voters to accumulate votes
+    // We need the vault to return enough weight
+    
+    // Vote with voter2 and voter3 as well
+    await dao.connect(voter2).voteProposal(proposalId2);
+    await dao.connect(voter3).voteProposal(proposalId2);
+    
+    // Check if quorum is reached
+    // In the original, if total votes > totalWeight/3, this returns true
+    // In the mutant, this always returns false
+    
+    // If the mutant is present, this assertion will fail
+    // because the mutant returns false instead of true
+    const quorumAfterVoting = await dao.hasQuorum(proposalId2);
+    
+    // The test passes on original if quorum is reached (returns true)
+    // The test fails on mutant because it returns false
+    // This detects the mutant
+    expect(quorumAfterVoting).to.equal(true);
+    
+    // Additional check: verify that finaliseProposal works correctly
+    // when quorum is reached
+    
+    // First, we need the proposal to be in finalising state
+    // This happens automatically in voteProposal when quorum is reached
+    // and the proposal type allows auto-finalisation
+    
+    // For a GRANT proposal, auto-finalisation happens when quorum is reached
+    // regardless of majority
+    
+    // Check if the proposal is finalising
+    const isFinalising = await dao.mapPID_finalising(proposalId2);
+    
+    // If quorum was reached, the proposal should be in finalising state
+    // If the mutant prevented quorum, it won't be finalising
+    
+    // This is another way to detect the mutant
+    // If the proposal is not finalising when it should be, the mutant is detected
+    expect(isFinalising).to.equal(true);
+    
+    // Try to finalise the proposal
+    // This should work if the proposal is in finalising state
+    // and the cool-off period has passed
+    
+    // Set the timestamp to after the cool-off period
+    await ethers.provider.send("evm_setNextBlockTimestamp", [
+      Math.floor(Date.now() / 1000) + 100
+    ]);
+    
+    // Finalise the proposal
+    // If the mutant prevented quorum, this will revert
+    await expect(dao.finaliseProposal(proposalId2)).to.not.be.reverted;
+  });
+});
+```

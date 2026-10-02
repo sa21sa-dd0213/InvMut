@@ -1,0 +1,48 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EtherLotto mutant kill test - m89187fec", function () {   it("should kill the mutant by verifying bank receives exactly 1 wei fee after a win", async function () {     const [owner, player] = await ethers.getSigners();          // Deploy the contract     const Factory = await ethers.getContractFactory("EtherLotto");     const instance = await Factory.deploy();     await instance.waitForDeployment();          const TICKET_AMOUNT = ethers.parseEther("10");     const FEE_AMOUNT = ethers.parseEther("1");          // Record bank balance before play     const bankBefore = await ethers.provider.getBalance(owner.address);          // Player calls play with exactly 10 wei     const tx = await instance.connect(player).play({ value: TICKET_AMOUNT });     await tx.wait();          // Check bank balance after play     const bankAfter = await ethers.provider.getBalance(owner.address);          // In the original, bank receives exactly 1 wei fee     // In the mutant, the transfer to player uses division (pot / 1 = pot),     // so the contract would have insufficient balance to pay the bank,     // causing a revert or the bank balance not increasing by exactly 1 wei     expect(bankAfter - bankBefore).to.equal(FEE_AMOUNT);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant kill test - m89187fec", function () {
+  it("should kill the mutant by verifying bank receives exactly 1 wei fee after a win", async function () {
+    const [owner, player] = await ethers.getSigners();
+
+    // Deploy the contract
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = ethers.parseEther("10");
+    const FEE_AMOUNT = ethers.parseEther("1");
+
+    // Record bank balance before play
+    const bankBefore = await ethers.provider.getBalance(owner.address);
+
+    // Player calls play with exactly 10 ether
+    const tx = await instance.connect(player).play({ value: TICKET_AMOUNT });
+    await tx.wait();
+
+    // Check bank balance after play
+    const bankAfter = await ethers.provider.getBalance(owner.address);
+
+    // In the original, bank receives exactly 1 wei fee
+    // In the mutant, the transfer to player uses division (pot / 1 = pot),
+    // so the contract would have insufficient balance to pay the bank,
+    // causing a revert or the bank balance not increasing by exactly 1 wei
+    expect(bankAfter - bankBefore).to.equal(FEE_AMOUNT);
+  });
+});
+```

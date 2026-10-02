@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract SimpleWallet:
+        Contract Code: pragma solidity ^0.8.0; contract SimpleWallet { address public owner = msg.sender; uint public depositsCount; modifier onlyOwner { require(msg.sender == owner); _; } receive() external payable { require(((depositsCount + 1) >= depositsCount)); depositsCount++; } function withdrawAll() public onlyOwner { withdraw(address(this).balance); } function withdraw(uint _value) public onlyOwner { payable(msg.sender).transfer(_value); } function sendMoney(address _target, uint _value, bytes memory _data) public onlyOwner { _target.call{value: _value}(_data); } }
+
+    Consider the following mutant of SimpleWallet:
+        Mutant m84b73a6a of function receive replaces >= with ==
+        Mutant Diff: ---|         require(((depositsCount + 1) >= depositsCount)); +++|         require(((depositsCount + 1) == depositsCount));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original `receive` function uses `require(((depositsCount + 1) >= depositsCount))`, which is a tautology (always true) because adding 1 to an unsigned integer will always be greater than or equal to the original value, unless overflow occurs. The mutant changes `>=` to `==`, making the condition `require(((depositsCount + 1) == depositsCount))`, which is only true when an overflow happens (i.e., `depositsCount` is at its maximum value, so `depositsCount + 1` wraps back to 0, which equals `depositsCount`? Actually no – if `depositsCount` is `type(uint).max`, then `depositsCount + 1` overflows to 0, which is not equal to `max`. The only way `depositsCount + 1 == depositsCount` is mathematically impossible in normal arithmetic, so this condition is always false under normal execution, causing the function to always revert. Therefore, a test that sends ether to the contract when `depositsCount` is zero (or any normal value) should succeed in the original but revert in the mutant.
+
+**Hypothesis**: "The mutant changes the `>=` to `==` in the overflow check, making the condition always false under normal conditions. Therefore, a test case that sends ether to the contract (triggering the `receive` function) when `depositsCount` is 0 and expects the transaction to succeed should kill the mutant, as the mutant will revert."

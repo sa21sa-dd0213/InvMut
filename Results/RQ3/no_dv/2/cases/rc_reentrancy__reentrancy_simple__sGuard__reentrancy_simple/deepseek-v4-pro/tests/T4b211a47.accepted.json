@@ -1,0 +1,12 @@
+{
+ "difference_id": "T4b211a47",
+ "property_summary": "After any sequence of calls through addToBalance, the total userBalance across all addresses must equal the total ether sent to the contract, and the bug violates this by crediting address(0) instead of the sender.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace msg.sender with address(0) so that the balance update is applied to the zero address instead of the caller.",
+ "mutated_unit_code": "function addToBalance() public nonReentrant_ payable {\n    userBalance[address(0)] = add_uint256(userBalance[address(0)], msg.value);\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n    function testFuzz_property(uint256 amount, address actor) public {\n        vm.assume(actor != address(0));\n        vm.assume(amount > 0);\n        vm.assume(amount <= 1 ether);\n\n        uint256 initSenderBal = c.getBalance(actor);\n        uint256 initTotalBal = sumAllBalances(actor);\n        uint256 initEth = address(c).balance;\n\n        vm.deal(actor, amount);\n        vm.prank(actor);\n        c.addToBalance{value: amount}();\n\n        uint256 finalSenderBal = c.getBalance(actor);\n        uint256 finalTotalBal = sumAllBalances(actor);\n        uint256 finalEth = address(c).balance;\n\n        assertTrue(finalSenderBal == initSenderBal + amount && finalTotalBal == initTotalBal + amount && finalEth == initEth + amount);\n    }\n\n    function sumAllBalances(address actor) internal view returns (uint256 total) {\n        total = c.getBalance(actor) + c.getBalance(address(0));\n    }\n}\n"
+}

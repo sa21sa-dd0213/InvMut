@@ -1,0 +1,43 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("TimelockController mutant test", function () {
+  it("should kill mutant m8e20af9b by scheduling with delay > minDelay", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("TimelockController");
+    
+    // Constructor args: minDelay, proposers array, executors array
+    const minDelay = 3600; // 1 hour
+    const proposers = [owner.address];
+    const executors = [owner.address];
+    
+    const instance = await Factory.deploy(minDelay, proposers, executors);
+    await instance.waitForDeployment();
+
+    // Get the PROPOSER_ROLE
+    const PROPOSER_ROLE = await instance.PROPOSER_ROLE();
+    
+    // Grant PROPOSER_ROLE to addr1
+    const DEFAULT_ADMIN_ROLE = await instance.DEFAULT_ADMIN_ROLE();
+    await instance.connect(owner).grantRole(PROPOSER_ROLE, addr1.address);
+    
+    // Schedule an operation with delay = 2 * minDelay (strictly greater)
+    const target = owner.address;
+    const value = 0;
+    const data = "0x";
+    const predecessor = ethers.ZeroHash;
+    const salt = ethers.ZeroHash;
+    const delay = minDelay * 2; // 7200 seconds, greater than minDelay
+    
+    // This should succeed on original but fail on mutant (mutant requires delay == minDelay)
+    await expect(
+      instance.connect(addr1).schedule(target, value, data, predecessor, salt, delay)
+    ).to.not.be.reverted;
+    
+    // Verify the operation was actually scheduled
+    const id = await instance.hashOperation(target, value, data, predecessor, salt);
+    const timestamp = await instance.getTimestamp(id);
+    expect(timestamp).to.be.gt(0);
+    expect(timestamp).to.be.gt(await ethers.provider.getBlock("latest").then(b => b!.timestamp));
+  });
+});

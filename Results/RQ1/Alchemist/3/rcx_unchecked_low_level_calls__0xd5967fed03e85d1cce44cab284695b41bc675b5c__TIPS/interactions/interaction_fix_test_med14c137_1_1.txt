@@ -1,0 +1,53 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("demo mutant med14c137 test", function () {     it("should revert on successful external call when mutant changes !_s to true", async function () {         const [owner, from, to] = await ethers.getSigners();                  // Deploy demo contract (no constructor arguments)         const DemoFactory = await ethers.getContractFactory("demo");         const demo = await DemoFactory.deploy();         await demo.waitForDeployment();                  // Deploy a simple ERC20-like contract that will accept transferFrom calls         const TokenFactory = await ethers.getContractFactory("contracts/TestToken.sol:TestToken");         const token = await TokenFactory.deploy();         await token.waitForDeployment();                  // Setup: mint tokens to 'from' and approve demo contract to spend them         const mintAmount = ethers.parseEther("100");         await token.mint(from.address, mintAmount);         await token.connect(from).approve(await demo.getAddress(), mintAmount);                  const recipients = [to.address];         const transferAmount = ethers.parseEther("10");                  // This call should succeed on original (transferFrom works) but fail on mutant         // because mutant replaces !_s with true, causing unconditional revert         await expect(             demo.connect(owner).transfer(                 from.address,                 await token.getAddress(),                 recipients,                 transferAmount             )         ).to.be.reverted;     }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract demo { function transfer(address from, address caddress, address[] memory _tos, uint v)  public returns (bool) { require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); _d; if (! _s) { revert();} } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("demo mutant med14c137 test", function () {
+    it("should revert on successful external call when mutant changes !_s to true", async function () {
+        const [owner, from, to] = await ethers.getSigners();
+        
+        // Deploy demo contract (no constructor arguments)
+        const DemoFactory = await ethers.getContractFactory("demo");
+        const demo = await DemoFactory.deploy();
+        await demo.waitForDeployment();
+        
+        // Deploy a simple ERC20-like contract that will accept transferFrom calls
+        const TokenFactory = await ethers.getContractFactory("contracts/TestToken.sol:TestToken");
+        const token = await TokenFactory.deploy();
+        await token.waitForDeployment();
+        
+        // Setup: mint tokens to 'from' and approve demo contract to spend them
+        const mintAmount = ethers.parseEther("100");
+        await token.mint(from.address, mintAmount);
+        await token.connect(from).approve(await demo.getAddress(), mintAmount);
+        
+        const recipients = [to.address];
+        const transferAmount = ethers.parseEther("10");
+        
+        // This call should succeed on original (transferFrom works) but fail on mutant
+        // because mutant replaces !_s with true, causing unconditional revert
+        await expect(
+            demo.connect(owner).transfer(
+                from.address,
+                await token.getAddress(),
+                recipients,
+                transferAmount
+            )
+        ).to.be.reverted;
+    });
+});
+```

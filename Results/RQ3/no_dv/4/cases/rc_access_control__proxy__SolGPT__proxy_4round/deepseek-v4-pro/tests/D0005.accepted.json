@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0005",
+ "property_summary": "After any successful forward call, the contract's ETH balance must never decrease in the correct version, but the buggy version may drain it.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace `callee.call(_data)` with `callee.call{value: address(this).balance}(_data)` so that all contract balance is forwarded.",
+ "mutated_unit_code": "function forward(address callee, bytes memory _data) public {\n        { (bool _s,) = callee.call{value: address(this).balance}(_data); require(_s); }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Proxy} from \"../src/Proxy.sol\";\n\ncontract InvMutTest is Test {\n    Proxy c;\n    function setUp() public { c = new Proxy(); }\n    function testFuzz_property(address callee, bytes memory data, uint256 ethToSend) public {\n        vm.assume(callee != address(0));\n        vm.assume(callee != address(c));\n        ethToSend = bound(ethToSend, 0, 1000 ether);\n        vm.deal(address(this), ethToSend);\n        vm.deal(address(c), ethToSend);\n        uint256 balanceBefore = address(c).balance;\n        bool ok = false;\n        try c.forward(callee, data) { ok = true; } catch { ok = false; }\n        if (ok) {\n            uint256 balanceAfter = address(c).balance;\n            assertTrue(balanceAfter >= balanceBefore);\n        }\n    }\n}"
+}

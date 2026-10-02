@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0007",
+ "property_summary": "After calling fallback with 10 ether when block.number % 15 == 0, the reference contract transfers all balance to msg.sender (c.balance becomes 0) while the buggy contract does not transfer (c.balance remains 10 ether).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "Change block.number % 15 == 0 to block.number % 15 != 0 to invert the transfer condition.",
+ "mutated_unit_code": "    fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        if(block.number % 15 != 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testRegression_property() public {\n        vm.roll(15);\n        vm.warp(1000);\n\n        address actor = address(0x1234);\n        vm.deal(actor, 10 ether);\n        vm.prank(actor);\n        (bool success, ) = address(c).call{value: 10 ether}(\"\");\n\n        assertTrue(success);\n\n        assertTrue(address(c).balance == 0);\n    }\n}"
+}

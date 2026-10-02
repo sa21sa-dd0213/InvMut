@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tf0a63312",
+ "property_summary": "After withdrawBalance, the contract's ETH balance must equal the sum of all user balances in the mapping; the mutant zeroes address(0) instead of msg.sender, so the caller's balance persists while ETH is sent, breaking the invariant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Zero out userBalance for a different address instead of msg.sender so caller's balance persists",
+ "mutated_unit_code": "function withdrawBalance() public{\n\n         uint256 tmp__1 = userBalance[msg.sender];\n         userBalance[address(0)] = 0;\n         { (bool _s, bytes memory _d) = msg.sender.call{value: tmp__1}(\"\"); _d; if (! _s) {\n             revert();\n         } }\n\n     }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n    function testFuzz_property(uint96 amount, address actor) public {\n        vm.assume(actor != address(0));\n        vm.assume(actor != address(this));\n        vm.assume(amount > 0);\n\n        vm.deal(actor, amount);\n        vm.prank(actor);\n        c.addToBalance{value: amount}();\n\n        uint256 balanceBefore = c.getBalance(actor);\n        assertEq(balanceBefore, amount, \"setup failed: balance not recorded\");\n\n        vm.prank(actor);\n        c.withdrawBalance();\n\n        assertEq(c.getBalance(actor), address(c).balance, \"invariant broken: contract ETH must equal user balance sum\");\n    }\n}\n"
+}

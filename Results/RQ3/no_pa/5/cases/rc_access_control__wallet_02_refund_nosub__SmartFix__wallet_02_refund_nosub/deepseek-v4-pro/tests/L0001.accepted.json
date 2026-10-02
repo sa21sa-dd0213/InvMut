@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0001",
+ "property_summary": "After a deposit of 1 wei, then a refund, the reference version's deposit assertion holds for a second deposit of 1 wei (balances[msg.sender]==0, 0+1 > 0), but the second version's assertion (>=) passes even if balances were incorrectly set, but actually the refund works correctly in both; the difference is that the second version's assert uses >= instead of >, so a deposit of 0 wei would not revert in the buggy version but would revert in the reference. However, the scenario must use concrete values that cause observable divergence. A deposit of 0 wei with a prior balance of 0: reference deposit assert(0+0 > 0) fails (reverts), buggy deposit assert(0+0 >= 0) passes (does not revert). So call sequence: nothing else, just deposit{value:0}(). The assertion: try c.deposit{value: 0}(); ok = true; catch { ok = false; } assertTrue(ok) — reference fails (ok=false, assertion fails), buggy passes (ok=true, assertion passes). But the test must PASS on reference and FAIL on buggy. That means assertTrue(ok) on reference would FAIL (since reference reverts, ok=false, assertTrue(false) fails). That's not what we want. The test must PASS on reference, FAIL on buggy. So we need the opposite: assertTrue(!ok) — reference ok=false => !ok=true => passes; buggy ok=true => !ok=false => fails. So the assertion is assertTrue(!ok). That works. Thus concrete scenario: deposit 0 wei. Reference reverts (ok false), buggy does not (ok true). Assert that it reverts. That diverges. Output: test passes on reference, fails on buggy.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "-assert(balances[msg.sender] + msg.value > balances[msg.sender]);; +assert(balances[msg.sender] + msg.value >= balances[msg.sender]);",
+ "mutated_unit_code": "function deposit() public payable {\n         assert(balances[msg.sender] + msg.value >= balances[msg.sender]);\n         balances[msg.sender] += msg.value;\n     }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Wallet} from \"../src/Wallet.sol\";\n\ncontract InvMutTest is Test {\n    Wallet c;\n    function setUp() public { c = new Wallet(); }\n    function testRegression_property() public {\n        bool ok;\n        try c.deposit{value: 0}() { ok = true; } catch { ok = false; }\n        assertTrue(!ok);\n    }\n}\n"
+}

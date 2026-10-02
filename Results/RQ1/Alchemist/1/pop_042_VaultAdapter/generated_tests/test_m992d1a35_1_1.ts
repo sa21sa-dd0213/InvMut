@@ -1,0 +1,88 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("VaultAdapter - kill mutant m992d1a35", function () {
+  it("should preserve multiplier above minMultiplier when utilization is below kink", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy VaultAdapter (no constructor arguments as per contract)
+    const VaultAdapterFactory = await ethers.getContractFactory("VaultAdapter");
+    const vaultAdapter = await VaultAdapterFactory.deploy();
+    await vaultAdapter.waitForDeployment();
+
+    // Deploy a mock vault for testing
+    const MockVaultFactory = await ethers.getContractFactory("MockVault");
+    const mockVault = await MockVaultFactory.deploy();
+    await mockVault.waitForDeployment();
+
+    const vaultAddress = await mockVault.getAddress();
+    const assetAddress = addr1.address; // Use addr1 as asset address for simplicity
+
+    // Initialize the VaultAdapter
+    const AccessControlFactory = await ethers.getContractFactory("MockAccessControl");
+    const accessControl = await AccessControlFactory.deploy();
+    await accessControl.waitForDeployment();
+
+    await vaultAdapter.initialize(await accessControl.getAddress());
+
+    // Grant access to owner for setSlopes and setLimits
+    const setSlopesSelector = ethers.id("setSlopes(address,(uint256,uint256,uint256))").substring(0, 10);
+    const setLimitsSelector = ethers.id("setLimits(uint256,uint256,uint256)").substring(0, 10);
+    const upgradeSelector = "0x00000000";
+
+    await accessControl.grantAccess(setSlopesSelector, await vaultAdapter.getAddress(), owner.address);
+    await accessControl.grantAccess(setLimitsSelector, await vaultAdapter.getAddress(), owner.address);
+    await accessControl.grantAccess(upgradeSelector, await vaultAdapter.getAddress(), owner.address);
+
+    // Set slopes with kink at 50% (5e26)
+    const kink = ethers.parseEther("0.5"); // 5e26
+    const slope0 = ethers.parseEther("0.1"); // 1e26
+    const slope1 = ethers.parseEther("0.2"); // 2e26
+
+    await vaultAdapter.connect(owner).setSlopes(assetAddress, {
+      kink: kink,
+      slope0: slope0,
+      slope1: slope1
+    });
+
+    // Set limits: maxMultiplier = 2e27, minMultiplier = 1e27, rate = 1e27
+    const maxMultiplier = ethers.parseEther("2");
+    const minMultiplier = ethers.parseEther("1");
+    const rate = ethers.parseEther("1");
+
+    await vaultAdapter.connect(owner).setLimits(maxMultiplier, minMultiplier, rate);
+
+    // Setup vault to return utilization below kink (e.g., 30%)
+    const utilization = ethers.parseEther("0.3"); // 30%
+    await mockVault.setUtilization(assetAddress, utilization);
+
+    // First call to rate() to initialize multiplier (it will be 1e27 initially)
+    await vaultAdapter.connect(owner).rate(vaultAddress, assetAddress);
+
+    // Now set utilization to a different value and call rate() again to update multiplier
+    // This should increase multiplier above minMultiplier due to the rate mechanism
+    await mockVault.setUtilization(assetAddress, ethers.parseEther("0.25")); // 25%
+
+    // Call rate() to trigger _applySlopes and multiplier update
+    await vaultAdapter.connect(owner).rate(vaultAddress, assetAddress);
+
+    // Get the multiplier from storage to verify it's above minMultiplier
+    // Since we can't read private storage directly, we'll call rate() again
+    // and check that the result is not forced to minMultiplier value
+
+    // The key test: call rate() again - in the original, multiplier should stay above min
+    // In the mutant, multiplier gets reset to minMultiplier
+
+    // Get the result from a fresh rate() call
+    const result = await vaultAdapter.connect(owner).rate(vaultAddress, assetAddress);
+
+    // Calculate what the result would be if multiplier were minMultiplier:
+    // interestRate = (slope0 * utilization / kink) * minMultiplier / 1e27
+    // = (0.1e27 * 0.25e27 / 0.5e27) * 1e27 / 1e27 = 0.05e27
+    const expectedMinRate = slope0 * utilization / kink * minMultiplier / ethers.parseEther("1");
+
+    // The actual result should be higher than expectedMinRate if multiplier > minMultiplier
+    // In the mutant, result would equal expectedMinRate (or very close)
+    expect(result).to.be.gt(expectedMinRate);
+  });
+});

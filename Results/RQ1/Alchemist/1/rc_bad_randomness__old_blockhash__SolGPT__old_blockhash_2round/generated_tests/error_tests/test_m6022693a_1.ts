@@ -1,0 +1,48 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PredictTheBlockHashChallenge mutant detection", function () {
+  it("should detect mutant that replaces blockhash with 0", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy with 1 ether as required by constructor
+    const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge");
+    const instance = await Factory.deploy({ value: ethers.parseEther("1") });
+    await instance.waitForDeployment();
+    
+    // Attacker locks in a guess that is NOT keccak256(abi.encodePacked(0))
+    // On the original contract, the correct answer is keccak256(blockhash(targetBlock))
+    // On the mutant, the answer is always keccak256(abi.encodePacked(0))
+    // So we lock in a different value to ensure mutant would incorrectly pay out
+    const wrongGuess = ethers.keccak256(ethers.toUtf8Bytes("wrong_guess"));
+    
+    // Attacker locks in guess with 1 ether
+    const lockTx = await instance.connect(attacker).lockInGuess(wrongGuess, {
+      value: ethers.parseEther("1")
+    });
+    await lockTx.wait();
+    
+    // Mine blocks until we can settle
+    const currentBlock = await ethers.provider.getBlockNumber();
+    // Need to wait until block.number > guesses[attacker].block
+    // The lockInGuess sets block to block.number + 1, so we need to mine at least 2 more blocks
+    while ((await ethers.provider.getBlockNumber()) <= currentBlock + 2) {
+      await ethers.provider.send("evm_mine", []);
+    }
+    
+    // Try to settle - on original contract this should NOT send ether (wrong guess)
+    // On mutant, this WILL send ether because it always compares against keccak256(0)
+    const settleTx = await instance.connect(attacker).settle();
+    await settleTx.wait();
+    
+    // Check attacker balance - should have lost 1 ether on original (no payout)
+    // On mutant, attacker would have received 2 ether, gaining 1 ether net
+    // So we verify attacker did NOT receive the 2 ether payout
+    const attackerBalance = await ethers.provider.getBalance(attacker.address);
+    // The attacker started with 10000 ether (default) and spent 1 ether
+    // If mutant paid out, they'd have 10000 + 2 - 1 = 10001 ether
+    // If original didn't pay out, they'd have 10000 - 1 = 9999 ether
+    // We expect the original behavior (no payout)
+    expect(attackerBalance).to.be.lessThan(ethers.parseEther("10000"));
+  });
+});

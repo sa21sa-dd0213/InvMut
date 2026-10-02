@@ -1,0 +1,54 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m37f438f1 of FlashGovernanceArbiter.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test FlashGovernanceArbiter.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for FlashGovernanceArbiter:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("FlashGovernanceArbiter reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy FlashGovernanceArbiter by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("FlashGovernanceArbiter"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("FlashGovernanceArbiter mutant kill test - enforceTolerance v1=0, v2=0", function () {
+  it("should pass on original but revert on mutant when v1=0 and v2=0", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy with a DAO address (can be any address since we're testing enforceTolerance directly)
+    const Factory = await ethers.getContractFactory("FlashGovernanceArbiter");
+    const instance = await Factory.deploy(addr1.address);
+    await instance.waitForDeployment();
+    
+    // We need to set up the contract so enforceTolerance doesn't return early
+    // First, configure the contract to set configured=true via DAO
+    const DAO = addr1;
+    
+    // Set DAO to allow configuration
+    await instance.connect(owner).setDAO(DAO.address);
+    
+    // We need to make configured return true - call endConfiguration()
+    // But first we need to be DAO or owner to call it... Actually endConfiguration has no modifier
+    await instance.connect(owner).endConfiguration();
+    
+    // Now we need to set enforceLimitsActive for the caller
+    // Call setEnforcement to enable enforcement for addr1
+    await instance.connect(addr1).setEnforcement(true);
+    
+    // Now call enforceTolerance with v1=0, v2=0
+    // This should pass on original (0 <= 1) but revert on mutant (0 >= 1 is false)
+    await expect(
+      instance.connect(addr1).enforceTolerance(0, 0)
+    ).to.be.revertedWith("FE1");
+  });
+});
+```

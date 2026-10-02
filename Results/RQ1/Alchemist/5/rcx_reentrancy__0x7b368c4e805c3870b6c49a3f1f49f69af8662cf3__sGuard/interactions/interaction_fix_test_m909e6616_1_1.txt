@@ -1,0 +1,58 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("W_WALLET mutant m909e6616 - Put logs msg.value+1", function () {   it("should kill the mutant by verifying the logged value equals msg.value", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy Log contract first (needed as constructor argument for W_WALLET)     const LogFactory = await ethers.getContractFactory("Log");     const logInstance = await LogFactory.deploy();     await logInstance.waitForDeployment();          // Deploy W_WALLET with Log contract address     const Factory = await ethers.getContractFactory("W_WALLET");     const instance = await Factory.deploy(await logInstance.getAddress());     await instance.waitForDeployment();          const walletAddress = await instance.getAddress();     const logAddress = await logInstance.getAddress();          // Connect addr1 to the wallet contract     const walletAsAddr1 = instance.connect(addr1);          // Send 1 ether with unlockTime = current timestamp + 1000     const sendAmount = ethers.parseEther("1");     const currentTime = Math.floor(Date.now() / 1000);     const unlockTime = currentTime + 1000;          const tx = await walletAsAddr1.Put(unlockTime, { value: sendAmount });     await tx.wait();          // Get the Log contract instance connected to addr1     const logAsAddr1 = logInstance.connect(addr1);          // Read the last message from History array (index 0 since it's the first entry)     const historyEntry = await logAsAddr1.History(0);          // The logged Val should be exactly the sent amount (1 ether)     // Mutant logs msg.value+1, so it would log 1 ether + 1 wei     expect(historyEntry.Val).to.equal(sendAmount);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } } contract W_WALLET is sGuard { function Put(uint _unlockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); LogFile.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("W_WALLET mutant m909e6616 - Put logs msg.value+1", function () {
+  it("should kill the mutant by verifying the logged value equals msg.value", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy Log contract first (needed as constructor argument for W_WALLET)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+    
+    // Deploy W_WALLET with Log contract address
+    const Factory = await ethers.getContractFactory("W_WALLET");
+    const instance = await Factory.deploy(await logInstance.getAddress());
+    await instance.waitForDeployment();
+    
+    const walletAddress = await instance.getAddress();
+    const logAddress = await logInstance.getAddress();
+    
+    // Connect addr1 to the wallet contract
+    const walletAsAddr1 = instance.connect(addr1);
+    
+    // Send 1 ether with unlockTime = current timestamp + 1000
+    const sendAmount = ethers.parseEther("1");
+    const currentTime = Math.floor(Date.now() / 1000);
+    const unlockTime = currentTime + 1000;
+    
+    const tx = await walletAsAddr1.Put(unlockTime, { value: sendAmount });
+    await tx.wait();
+    
+    // Get the Log contract instance connected to addr1
+    const logAsAddr1 = logInstance.connect(addr1);
+    
+    // Read the last message from History array (index 0 since it's the first entry)
+    const historyEntry = await logAsAddr1.History(0);
+    
+    // The logged Val should be exactly the sent amount (1 ether)
+    // Mutant logs msg.value+1, so it would log 1 ether + 1 wei
+    expect(historyEntry.Val).to.equal(sendAmount);
+  });
+});
+```

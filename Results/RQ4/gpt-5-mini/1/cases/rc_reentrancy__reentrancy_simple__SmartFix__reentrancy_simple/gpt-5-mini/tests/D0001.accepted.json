@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "For any actor A, performing addToBalance() with value v always makes A's post-call balance equal to its pre-call balance plus v; the mutant that assigns userBalance[msg.sender] = msg.value breaks this when A had a non-zero pre-balance (post != pre+v).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the addition with assignment, so the sender's balance becomes exactly msg.value instead of increasing by msg.value.",
+ "mutated_unit_code": "function addToBalance()  public payable {\n         require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender]));\n         userBalance[msg.sender] = msg.value;\n     }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n\n    function testFuzz_property(address actor, uint256 firstDeposit, uint256 secondDeposit) public {\n        vm.assume(actor != address(0));\n        firstDeposit = bound(firstDeposit, 0, 1 ether);\n        secondDeposit = bound(secondDeposit, 0, 1 ether);\n\n        vm.deal(actor, firstDeposit + secondDeposit + 1);\n\n        vm.prank(actor);\n        c.addToBalance{value: firstDeposit}();\n\n        uint256 pre = c.getBalance(actor);\n\n        vm.prank(actor);\n        c.addToBalance{value: secondDeposit}();\n\n        uint256 post = c.getBalance(actor);\n        assertTrue(post == pre + secondDeposit);\n    }\n}\n"
+}

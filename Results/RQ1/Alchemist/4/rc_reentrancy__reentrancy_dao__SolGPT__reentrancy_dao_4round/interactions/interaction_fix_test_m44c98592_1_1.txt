@@ -1,0 +1,69 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("ReentrancyDAO mutant test - m44c98592", function () {   it("should revert when withdrawAll is called by a contract that reverts on receiving ether", async function () {     const [owner, attacker] = await ethers.getSigners();          // Deploy the ReentrancyDAO contract (no constructor arguments)     const DAOFactory = await ethers.getContractFactory("ReentrancyDAO");     const dao = await DAOFactory.deploy();     await dao.waitForDeployment();          // Deploy a malicious contract that will revert on receive     const MaliciousFactory = await ethers.getContractFactory("MaliciousReverter");     const malicious = await MaliciousFactory.deploy(await dao.getAddress());     await malicious.waitForDeployment();          // Fund the DAO first via the malicious contract     const depositAmount = ethers.parseEther("1.0");     await malicious.deposit({ value: depositAmount });          // Verify balance was credited     expect(await dao.credit(await malicious.getAddress())).to.equal(depositAmount);          // Call withdrawAll from the malicious contract - should revert because the call fails     await expect(malicious.attack()).to.be.reverted;          // Verify state was not changed (if require was removed, balance would be zero)     expect(await dao.credit(await malicious.getAddress())).to.equal(depositAmount);     expect(await dao.balance()).to.equal(depositAmount);   }); });  // Helper contract to simulate a failed call contract MaliciousReverter {     ReentrancyDAO dao;          constructor(address _dao) {         dao = ReentrancyDAO(_dao);     }          function deposit() external payable {         dao.deposit{value: msg.value}();     }          function attack() external {         dao.withdrawAll();     }          receive() external payable {         revert("I refuse to accept ether");     } }
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract ReentrancyDAO { mapping (address => uint) credit; uint balance; function withdrawAll() public { uint oCredit = credit[msg.sender]; if (oCredit > 0) { balance -= oCredit; credit[msg.sender] = 0; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); } } function deposit() public payable { credit[msg.sender] += msg.value; balance += msg.value; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ReentrancyDAO mutant test - m44c98592", function () {
+  it("should revert when withdrawAll is called by a contract that reverts on receiving ether", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the ReentrancyDAO contract (no constructor arguments)
+    const DAOFactory = await ethers.getContractFactory("ReentrancyDAO");
+    const dao = await DAOFactory.deploy();
+    await dao.waitForDeployment();
+    
+    // Deploy a malicious contract that will revert on receive
+    const MaliciousFactory = await ethers.getContractFactory("MaliciousReverter");
+    const malicious = await MaliciousFactory.deploy(await dao.getAddress());
+    await malicious.waitForDeployment();
+    
+    // Fund the DAO first via the malicious contract
+    const depositAmount = ethers.parseEther("1.0");
+    await malicious.deposit({ value: depositAmount });
+    
+    // Verify balance was credited
+    expect(await dao.credit(await malicious.getAddress())).to.equal(depositAmount);
+    
+    // Call withdrawAll from the malicious contract - should revert because the call fails
+    await expect(malicious.attack()).to.be.reverted;
+    
+    // Verify state was not changed (if require was removed, balance would be zero)
+    expect(await dao.credit(await malicious.getAddress())).to.equal(depositAmount);
+    expect(await dao.balance()).to.equal(depositAmount);
+  });
+});
+
+// Helper contract to simulate a failed call
+contract MaliciousReverter {
+    ReentrancyDAO dao;
+    
+    constructor(address _dao) {
+        dao = ReentrancyDAO(_dao);
+    }
+    
+    function deposit() external payable {
+        dao.deposit{value: msg.value}();
+    }
+    
+    function attack() external {
+        dao.withdrawAll();
+    }
+    
+    receive() external payable {
+        revert("I refuse to accept ether");
+    }
+}
+```

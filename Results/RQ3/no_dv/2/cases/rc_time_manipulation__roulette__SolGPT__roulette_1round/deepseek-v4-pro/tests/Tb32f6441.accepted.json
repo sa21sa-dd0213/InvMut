@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tb32f6441",
+ "property_summary": "For any two consecutive admissible calls, the original contract pays out on the second call if and only if the block number is a multiple of 15, whereas the mutant can pay out prematurely or on different blocks (e.g., multiples of 10), causing a difference in the contract's balance after the calls.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change the block.number modulus from 15 to a different value, e.g., 10, shifting payout blocks.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        if(block.number % 10 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 firstBlock, uint256 secondBlock) public {\n        firstBlock = bound(firstBlock, 1, 1_000_000);\n        secondBlock = bound(secondBlock, firstBlock + 1, firstBlock + 1_000_000);\n        uint256 firstTimestamp = firstBlock;\n        uint256 secondTimestamp = secondBlock;\n\n        address caller = address(0x1234);\n        vm.deal(caller, 20 ether);\n\n        vm.roll(firstBlock);\n        vm.warp(firstTimestamp);\n        vm.prank(caller);\n        (bool ok1, ) = address(c).call{value: 10 ether}(\"\");\n        require(ok1, \"first call failed\");\n\n        uint256 balanceAfterFirst = address(c).balance;\n\n        vm.deal(caller, 10 ether);\n        vm.roll(secondBlock);\n        vm.warp(secondTimestamp);\n        vm.prank(caller);\n        (bool ok2, ) = address(c).call{value: 10 ether}(\"\");\n        require(ok2, \"second call failed\");\n\n        uint256 balanceAfterSecond = address(c).balance;\n\n        bool isPayoutBlock = (secondBlock % 15 == 0);\n        bool contractDrained = (balanceAfterSecond == 0);\n        assertTrue(contractDrained == isPayoutBlock);\n    }\n}"
+}

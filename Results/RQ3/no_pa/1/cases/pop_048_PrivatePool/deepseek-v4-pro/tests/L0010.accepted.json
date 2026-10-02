@@ -1,0 +1,11 @@
+{
+ "difference_id": "L0010",
+ "property_summary": "After calling the constructor (which sets feeRate to 0) and then calling initialize with _feeRate=5000, a subsequent call to availableForFlashLoan with an invalid tokenId reverts due to the external call; in the reference version the modifier onlyOwner is not relevant and the call does not change feeRate, while in the buggy version the modifier does nothing, so feeRate remains 5000. But the test exploits that after initialize, a call to setFeeRate (which is protected by onlyOwner) will change feeRate in the reference only if called by the owner, but in the buggy version the modifier is removed so anyone can call it. We set up: owner = address(this), non-owner = address(1). The reference onlyOwner check will revert when non-owner calls setFeeRate(1000), so feeRate stays 5000. The buggy version allows the call, so feeRate becomes 1000. Then we call availableForFlashLoan (which does not change state) and assert that feeRate equals 5000 (reference holds) vs 1000 (bug breaks).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "change_summary": "Remove the entire require check, removing the access control.",
+ "mutated_unit_code": "    modifier onlyOwner() virtual {\n        \n        _;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {PrivatePool} from \"../src/PrivatePool.sol\";\n\ncontract InvMutTest is Test {\n    PrivatePool c;\n    function setUp() public { c = new PrivatePool(address(this), address(this), address(this)); }\n    function testRegression_property() public {\n        c.initialize(address(0), address(0), 1e18, 1e18, 0, 5000, bytes32(0), false, false);\n\n        vm.prank(address(1));\n        bool setSucceeded;\n        try c.setFeeRate(1000) {\n            setSucceeded = true;\n        } catch {\n            setSucceeded = false;\n        }\n\n        uint256 feeRateAfter = c.feeRate();\n\n        assertTrue(feeRateAfter == 5000);\n    }\n}\n"
+}

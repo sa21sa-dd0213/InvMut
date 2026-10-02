@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Roulette:
+        Contract Code: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp + 1; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+
+    Consider the following mutant of Roulette:
+        Mutant m916b9143 of function fallback replaces block.timestamp with block.prevrandao
+        Mutant Diff: ---|         require(block.timestamp > pastBlockTime); +++|         require(block.prevrandao > pastBlockTime);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract uses `block.timestamp` to enforce that each transaction must occur in a new block (strictly after the previous one), preventing reentrancy within the same block. The mutant replaces `block.timestamp` with `block.prevrandao`, which returns a random number derived from the beacon chain (on Ethereum post‑merge) and has no relationship to time or block ordering.  
+
+**Hypothesis**: The mutant replaces a time‑based condition (`block.timestamp > pastBlockTime`) with a condition based on a non‑monotonic, random value (`block.prevrandao > pastBlockTime`). Therefore, a test case that sends two sequential transactions in the same block (e.g., via a multi‑call or by mining them together), where the second transaction should revert in the original contract because `block.timestamp` has not increased, but may pass in the mutant if `block.prevrandao` happens to be greater than the stored `pastBlockTime`, should kill the mutant.

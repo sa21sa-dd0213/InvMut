@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract ModifierEntrancy:
+        Contract Code: pragma solidity ^0.8.0; contract SmartFix { bool public _locked = false; modifier _nonReentrant() { require(!_locked); _locked = true; _; _locked = false; } } contract ModifierEntrancy is SmartFix { mapping (address => uint) public tokenBalance; string constant name = "Nu Token"; function airDrop()  public _nonReentrant  hasNoBalance supportsToken { require(((tokenBalance[msg.sender] + 20) >= tokenBalance[msg.sender])); tokenBalance[msg.sender] += 20; } modifier supportsToken() { require(keccak256(abi.encodePacked("Nu Token")) == Bank(msg.sender).supportsToken()); _; } modifier hasNoBalance { require(tokenBalance[msg.sender] == 0); _; } } contract Bank{ function supportsToken() external pure returns (bytes32){ return(keccak256(abi.encodePacked("Nu Token"))); } }
+
+    Consider the following mutant of ModifierEntrancy:
+        Mutant md7d40a34 of function airDrop replaces >= with ==
+        Mutant Diff: ---|     require(((tokenBalance[msg.sender] + 20) >= tokenBalance[msg.sender])); +++|     require(((tokenBalance[msg.sender] + 20) == tokenBalance[msg.sender]));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract uses `>=` in a redundant check that always passes because adding 20 to any unsigned integer will always be greater than or equal to the original value. The mutant changes this to `==`, which would only be true if `tokenBalance[msg.sender]` is such that adding 20 results in the same value—which is impossible for normal integers, except in the case of an arithmetic overflow.  
+
+**Hypothesis:** The mutant changes the comparison operator from `>=` to `==`, making the require statement fail for any caller with a nonzero token balance, because `tokenBalance[msg.sender] + 20` can never equal `tokenBalance[msg.sender]` under normal arithmetic. Therefore, a test case that calls `airDrop` from an address that already has a nonzero token balance (e.g., after receiving tokens from a previous airdrop) should succeed on the original contract but revert on the mutant, thereby killing it.

@@ -1,0 +1,55 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("SimpleWallet reference (ethers v6; deploy may require constructor arguments)", function () {   it("should revert when depositsCount overflows after reaching max uint (kills mutant m992bcbed)", async function () {     const [owner] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("SimpleWallet");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // First, we need to bring depositsCount to its maximum value (type(uint).max)     // We can do this by sending many small deposits that sum to exactly max uint     // Since depositsCount increments by 1 each time, we need to send max uint times     // But that's impractical. Instead, we can directly set the storage slot for depositsCount     // using ethers provider to manipulate storage, since the contract doesn't have a setter.          // Get the storage slot for depositsCount (slot 1, after owner at slot 0)     const storageSlot = ethers.toBeHex(1, 32);          // Set depositsCount to type(uint).max - 1 (so next deposit will trigger overflow check)     const maxUint = ethers.MaxUint256;     const nearMax = maxUint - 1n;          // Use hardhat_setStorageAt to directly set the storage     await ethers.provider.send("hardhat_setStorageAt", [       await instance.getAddress(),       storageSlot,       ethers.toBeHex(nearMax, 32)     ]);      // Verify depositsCount is now nearMax     expect(await instance.depositsCount()).to.equal(nearMax);      // Now send 1 wei to trigger receive() - this should cause overflow check to fail     // Original: ((depositsCount + 1) >= depositsCount) will be false when depositsCount is max     // Mutant: ((depositsCount * 1) >= depositsCount) will always be true     const tx = owner.sendTransaction({       to: await instance.getAddress(),       value: 1n     });      // On original contract this should revert, on mutant it would succeed     await expect(tx).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract SimpleWallet { address public owner = msg.sender; uint public depositsCount; modifier onlyOwner { require(msg.sender == owner); _; } receive() external payable { require(((depositsCount + 1) >= depositsCount)); depositsCount++; } function withdrawAll() public onlyOwner { withdraw(address(this).balance); } function withdraw(uint _value) public onlyOwner { payable(msg.sender).transfer(_value); } function sendMoney(address _target, uint _value) public onlyOwner { _target.call{value: _value}(""); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("SimpleWallet reference (ethers v6; deploy may require constructor arguments)", function () {
+  it("should revert when depositsCount overflows after reaching max uint (kills mutant m992bcbed)", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("SimpleWallet");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get the storage slot for depositsCount (slot 1, after owner at slot 0)
+    const storageSlot = ethers.toBeHex(1, 32);
+
+    // Set depositsCount to type(uint).max - 1 (so next deposit will trigger overflow check)
+    const maxUint = ethers.MaxUint256;
+    const nearMax = maxUint - 1n;
+
+    // Use hardhat_setStorageAt to directly set the storage
+    await ethers.provider.send("hardhat_setStorageAt", [
+      await instance.getAddress(),
+      storageSlot,
+      ethers.toBeHex(nearMax, 32)
+    ]);
+
+    // Verify depositsCount is now nearMax
+    expect(await instance.depositsCount()).to.equal(nearMax);
+
+    // Now send 1 wei to trigger receive() - this should cause overflow check to fail
+    // Original: ((depositsCount + 1) >= depositsCount) will be false when depositsCount is max
+    // Mutant: ((depositsCount * 1) >= depositsCount) will always be true
+    const tx = owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: 1n
+    });
+
+    // On original contract this should revert, on mutant it would succeed
+    await expect(tx).to.be.reverted;
+  });
+});
+```

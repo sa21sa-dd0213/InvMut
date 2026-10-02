@@ -1,0 +1,61 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m8ff6d7b0 of GameItems.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test GameItems.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for GameItems:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("GameItems reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy GameItems by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("GameItems"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("GameItems - Kill mutant m8ff6d7b0", function () {
+    it("should revert when user has insufficient NRN balance for mint", async function () {
+        const [owner, buyer, treasury] = await ethers.getSigners();
+        
+        // Deploy Neuron contract
+        const NeuronFactory = await ethers.getContractFactory("Neuron");
+        const neuron = await NeuronFactory.deploy(owner.address, treasury.address, owner.address);
+        await neuron.waitForDeployment();
+        
+        // Deploy GameItems contract
+        const GameItemsFactory = await ethers.getContractFactory("GameItems");
+        const gameItems = await GameItemsFactory.deploy(owner.address, treasury.address);
+        await gameItems.waitForDeployment();
+        
+        // Setup: Create a game item with price > 0
+        await gameItems.connect(owner).adjustAdminAccess(owner.address, true);
+        await gameItems.connect(owner).createGameItem(
+            "TestItem",
+            "ipfs://test",
+            false,  // finiteSupply = false
+            true,   // transferable = true
+            100,    // itemsRemaining
+            ethers.parseEther("10"), // itemPrice = 10 NRN
+            100     // dailyAllowance
+        );
+        
+        // Connect Neuron to GameItems
+        await gameItems.connect(owner).instantiateNeuronContract(await neuron.getAddress());
+        
+        // Buyer has no NRN tokens (balance = 0)
+        // Attempt to mint 1 item costing 10 NRN with 0 balance
+        // Original contract should revert with "Not enough NRN for purchase"
+        // Mutant would allow this without revert
+        await expect(
+            gameItems.connect(buyer).mint(0, 1)
+        ).to.be.revertedWith("Not enough NRN for purchase");
+    });
+});
+```

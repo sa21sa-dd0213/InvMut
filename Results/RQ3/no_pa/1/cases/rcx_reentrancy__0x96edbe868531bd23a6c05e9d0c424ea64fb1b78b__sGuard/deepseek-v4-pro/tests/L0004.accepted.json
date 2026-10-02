@@ -1,0 +1,11 @@
+{
+ "difference_id": "L0004",
+ "property_summary": "After initialization, SetMinSum(0), and SetLogFile (with a real LogFile address for the reference, omitted for the bug), then Put(1 wei) from an address and warping past unlock, Collect(1) in the reference succeeds (returns without revert) while in the bug it reverts because Log is uninitialized.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "change_summary": "Delete the entire line 'Log = LogFile(_log);', leaving the function body empty after the reversion check.",
+ "mutated_unit_code": "function SetLogFile(address _log) public nonReentrant_ {\n    if(intitalized)revert();\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {PENNY_BY_PENNY} from \"../src/PENNY_BY_PENNY.sol\";\n\ncontract InvMutTest is Test {\n    PENNY_BY_PENNY c;\n    function setUp() public { c = new PENNY_BY_PENNY(); }\n    function testRegression_property() public {\n        LogFile log = new LogFile();\n\n        c.SetMinSum(0);\n        c.SetLogFile(address(log));\n        c.Initialized();\n\n        address alice = address(0x1234);\n        vm.deal(alice, 1 ether);\n\n        vm.prank(alice);\n        c.Put{value: 1}(0);\n\n        vm.warp(1);\n\n        bool ok;\n        vm.prank(alice);\n        try c.Collect(1) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        assertTrue(ok);\n    }\n}\n\ncontract LogFile {\n    struct Message {\n        address Sender;\n        string  Data;\n        uint Val;\n        uint  Time;\n    }\n\n    Message[] public History;\n    Message LastMsg;\n\n    function AddMessage(address _adr, uint _val, string memory _data) public {\n        LastMsg.Sender = _adr;\n        LastMsg.Time = block.timestamp;\n        LastMsg.Val = _val;\n        LastMsg.Data = _data;\n        History.push(LastMsg);\n    }\n}\n"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T648f3a31",
+ "property_summary": "The function transfer must always revert when _tos array is empty and caddress is a contract that would revert on transferFrom; the mutant skips the loop and returns true instead.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the require that _tos.length > 0, so that an empty array causes the loop to be skipped and the function returns true normally instead of reverting.",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){\n        bytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0; i<_tos.length; i++){\n            { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); require(_s); }\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airPort} from \"../src/airPort.sol\";\n\ncontract InvMutTest is Test {\n    airPort c;\n    function setUp() public { c = new airPort(); }\n    function testFuzz_property(address from, address[] memory _tos, uint v) public {\n        vm.assume(_tos.length == 0);\n        Reverter reverter = new Reverter();\n        address caddress = address(reverter);\n        bool ok;\n        try c.transfer(from, caddress, _tos, v) returns (bool) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        assertTrue(!ok);\n    }\n}\n\ncontract Reverter {\n    fallback() external payable { revert(); }\n}\n"
+}

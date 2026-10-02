@@ -1,0 +1,28 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Wallet:
+        Contract Code: pragma solidity ^0.8.0; contract Wallet { address creator; mapping(address => uint256) balances; constructor() public { creator = payable(msg.sender); } function deposit() public payable { assert(balances[msg.sender] + msg.value > balances[msg.sender]); balances[msg.sender] += msg.value; } function withdraw(uint256 amount) public { require(amount <= balances[msg.sender]); payable(msg.sender).transfer(amount); balances[msg.sender] -= amount; } function refund() public { payable(msg.sender).transfer(balances[msg.sender]); balances[msg.sender] = 0; } function migrateTo(address to) public { require(creator == msg.sender); payable(to).transfer(address(this).balance); } }
+
+    Consider the following mutant of Wallet:
+        Mutant m6250521d of function withdraw replaces require(amount <= balances[msg.sender]); with 
+        Mutant Diff: ---|         require(amount <= balances[msg.sender]); +++|
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Looking at the mutant, the difference is that it removes the `require(amount <= balances[msg.sender]);` statement from the `withdraw` function. 
+
+**Step-by-step reasoning:**
+1. The original `withdraw` function has a critical security check that prevents a user from withdrawing more than their balance.
+2. The mutant removes this require statement entirely.
+3. Without this check, a user could call `withdraw` with an amount greater than their balance, which would cause an underflow in the `balances[msg.sender] -= amount` operation (in Solidity 0.8+, this would revert due to built-in overflow checks, but the key point is the behavior changes).
+4. The original contract would revert if a user tries to withdraw more than their balance (because of the require statement).
+5. The mutant would either revert differently (due to underflow) or potentially behave unexpectedly.
+
+**Hypothesis:** A test case that calls the `withdraw` function with an amount exceeding the caller's current balance and expects the transaction to revert (as the original contract does) should kill the mutant, because the mutant lacks the explicit require check and would either revert with a different error (arithmetic underflow) or behave differently than expected.

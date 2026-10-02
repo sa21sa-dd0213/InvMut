@@ -1,0 +1,53 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("ReentrancyDAO mutant m44c98592 - kill by reverting fallback", function () {   it("should revert when withdrawAll is called from a contract that rejects ether", async function () {     const [owner, attacker] = await ethers.getSigners();          // Deploy the ReentrancyDAO contract (no constructor arguments)     const Factory = await ethers.getContractFactory("ReentrancyDAO");     const dao = await Factory.deploy();     await dao.waitForDeployment();      // Deploy a malicious contract that reverts on receive/fallback     const MaliciousFactory = await ethers.getContractFactory("MaliciousRejecter");     const malicious = await MaliciousFactory.deploy();     await malicious.waitForDeployment();      // Fund the malicious contract with some ETH     await owner.sendTransaction({       to: malicious.target,       value: ethers.parseEther("1.0")     });      // Attacker (malicious contract) deposits ETH into DAO     const depositTx = await malicious.connect(attacker).depositIntoDAO(dao.target, { value: ethers.parseEther("0.5") });     await depositTx.wait();      // Now attempt to withdraw - should revert because malicious contract rejects ether     await expect(       malicious.connect(attacker).attack(dao.target)     ).to.be.reverted;      // Verify state is unchanged (mutant would have changed it, so this assertion would fail on mutant)     const balance = await ethers.provider.getBalance(dao.target);     expect(balance).to.equal(ethers.parseEther("0.5"));   }); });  // Helper contract that reverts on receive and exposes attack function // This must be deployed as a separate contract contract MaliciousRejecter {   function depositIntoDAO(address dao) external payable {     (bool success, ) = dao.call{value: msg.value}(abi.encodeWithSignature("deposit()"));     require(success);   }    function attack(address dao) external {     (bool success, ) = dao.call(abi.encodeWithSignature("withdrawAll()"));     // Do not require success - we want to test the revert   }    receive() external payable {     revert("I reject ether");   }    fallback() external payable {     revert("I reject ether");   } }
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract ReentrancyDAO { mapping (address => uint) credit; uint balance; function withdrawAll() public { uint oCredit = credit[msg.sender]; if (oCredit > 0) { balance -= oCredit; credit[msg.sender] = 0; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); } } function deposit() public payable { credit[msg.sender] += msg.value; balance += msg.value; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ReentrancyDAO mutant m44c98592 - kill by reverting fallback", function () {
+  it("should revert when withdrawAll is called from a contract that rejects ether", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+
+    // Deploy the ReentrancyDAO contract (no constructor arguments)
+    const Factory = await ethers.getContractFactory("ReentrancyDAO");
+    const dao = await Factory.deploy();
+    await dao.waitForDeployment();
+
+    // Deploy a malicious contract that reverts on receive/fallback
+    const MaliciousFactory = await ethers.getContractFactory("MaliciousRejecter");
+    const malicious = await MaliciousFactory.deploy();
+    await malicious.waitForDeployment();
+
+    // Fund the malicious contract with some ETH
+    await owner.sendTransaction({
+      to: malicious.target,
+      value: ethers.parseEther("1.0")
+    });
+
+    // Attacker (malicious contract) deposits ETH into DAO
+    const depositTx = await malicious.connect(attacker).depositIntoDAO(dao.target, { value: ethers.parseEther("0.5") });
+    await depositTx.wait();
+
+    // Now attempt to withdraw - should revert because malicious contract rejects ether
+    await expect(
+      malicious.connect(attacker).attack(dao.target)
+    ).to.be.reverted;
+
+    // Verify state is unchanged (mutant would have changed it, so this assertion would fail on mutant)
+    const balance = await ethers.provider.getBalance(dao.target);
+    expect(balance).to.equal(ethers.parseEther("0.5"));
+  });
+});
+```

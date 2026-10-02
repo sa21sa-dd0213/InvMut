@@ -1,0 +1,64 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m035a9a18 of CVXStaker.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test CVXStaker.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for CVXStaker:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("CVXStaker reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy CVXStaker by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("CVXStaker"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("CVXStaker mutant m035a9a18 - setOperator", function () {
+  it("should kill mutant by verifying operator is set to the provided address, not address(0)", async function () {
+    const [owner, operatorAddr] = await ethers.getSigners();
+    
+    // Deploy with constructor arguments
+    const CVXStakerFactory = await ethers.getContractFactory("CVXStaker");
+    
+    // We need to provide valid constructor args: _operator, _clpToken, _booster, _rewardTokens
+    // Since we're testing the mutant that affects setOperator, we can use zero addresses for the other args
+    // as they won't affect this test
+    const clpToken = ethers.ZeroAddress;
+    const booster = ethers.ZeroAddress;
+    const rewardTokens: string[] = [];
+    
+    const instance = await CVXStakerFactory.deploy(
+      operatorAddr.address,
+      clpToken,
+      booster,
+      rewardTokens
+    );
+    await instance.waitForDeployment();
+
+    // First, verify the initial operator is set correctly from constructor
+    const initialOperator = await instance.operator();
+    expect(initialOperator).to.equal(operatorAddr.address);
+
+    // Now call setOperator with a different address
+    const newOperator = addr1; // or another signer
+    await instance.connect(owner).setOperator(newOperator.address);
+
+    // Get the operator after the mutation
+    const updatedOperator = await instance.operator();
+
+    // The mutant would set operator to address(0), so we expect it to be the newOperator address
+    // If the mutant is live, this assertion will fail (kill the mutant)
+    expect(updatedOperator).to.equal(newOperator.address);
+    
+    // Additionally, verify it's not the zero address
+    expect(updatedOperator).to.not.equal(ethers.ZeroAddress);
+  });
+});
+```

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T7780d55d",
+ "property_summary": "The function onERC721Received must return the magic value ERC721TokenReceiver.onERC721Received.selector, but the buggy version returns 0x00000000, so a safe transfer call to a contract that forwards the return value will fail to recognize the recipient as a valid ERC721 receiver.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change the return value to a different bytes4 value, e.g. 0x00000000, altering the observable return data.",
+ "mutated_unit_code": "    function onERC721Received(\n        address,\n        address,\n        uint256,\n        bytes calldata\n    ) external virtual returns (bytes4) {\n        return 0x00000000;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {PrivatePool} from \"../src/PrivatePool.sol\";\n\ncontract ERC721ReceiverForwarder {\n    function forwardOnERC721Received(\n        address target,\n        address operator,\n        address from,\n        uint256 tokenId,\n        bytes calldata data\n    ) external returns (bytes4) {\n        (bool success, bytes memory ret) = target.call(\n            abi.encodeWithSignature(\"onERC721Received(address,address,uint256,bytes)\", operator, from, tokenId, data)\n        );\n        require(success, \"forward failed\");\n        return abi.decode(ret, (bytes4));\n    }\n}\n\ncontract InvMutTest is Test {\n    PrivatePool c;\n    ERC721ReceiverForwarder forwarder;\n\n    function setUp() public {\n        c = new PrivatePool(address(this), address(this), address(this));\n        forwarder = new ERC721ReceiverForwarder();\n    }\n\n    function testFuzz_property(\n        address operator,\n        address from,\n        uint256 tokenId,\n        bytes calldata data\n    ) public {\n        bytes4 returned = forwarder.forwardOnERC721Received(address(c), operator, from, tokenId, data);\n        assertTrue(returned == 0x150b7a02);\n    }\n}\n"
+}

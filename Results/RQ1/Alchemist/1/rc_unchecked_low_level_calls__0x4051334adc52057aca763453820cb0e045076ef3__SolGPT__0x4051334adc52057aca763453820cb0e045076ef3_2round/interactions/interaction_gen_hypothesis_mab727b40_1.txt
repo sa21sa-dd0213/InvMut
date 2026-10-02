@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract airdrop:
+        Contract Code: pragma solidity ^0.8.0; contract airdrop{ function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){ require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ { (bool _s,) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v)); require(_s); } } return true; } }
+
+    Consider the following mutant of airdrop:
+        Mutant mab727b40 of function transfer replaces > with <
+        Mutant Diff: ---| require(_tos.length > 0); +++| require(_tos.length < 0);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract requires `_tos.length > 0` to proceed, meaning at least one recipient must be provided. The mutant changes this to `require(_tos.length < 0)`, which is impossible for any array length to satisfy (length is always non-negative).  
+
+**Hypothesis**: A test case that calls the `transfer` function with exactly one recipient address in the `_tos` array (making `_tos.length` equal to 1) should pass on the original contract (since 1 > 0), but will fail on the mutant (since 1 < 0 is false, causing a revert). This would kill the mutant.

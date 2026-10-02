@@ -1,0 +1,89 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mf6561abf of PRIVATE_ETH_CELL.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PRIVATE_ETH_CELL.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PRIVATE_ETH_CELL:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PRIVATE_ETH_CELL reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PRIVATE_ETH_CELL by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PRIVATE_ETH_CELL"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PRIVATE_ETH_CELL - Kill mutant mf6561abf", function () {
+  it("should revert when Collect ETH transfer fails (mutant removes revert)", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the RejectingContract that will reject incoming ETH
+    const RejectFactory = await ethers.getContractFactory("RejectingContract");
+    const rejectContract = await RejectFactory.deploy();
+    await rejectContract.waitForDeployment();
+    
+    // Deploy PRIVATE_ETH_CELL (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("PRIVATE_ETH_CELL");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Setup: Initialize the contract and set MinSum
+    await instance.SetMinSum(ethers.parseEther("0.1"));
+    await instance.SetLogFile(ethers.getAddress("0x0000000000000000000000000000000000000001"));
+    await instance.Initialized();
+    
+    // Fund the contract with ETH
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    
+    // Fund the rejecting contract so it has balance
+    await owner.sendTransaction({
+      to: await rejectContract.getAddress(),
+      value: ethers.parseEther("1")
+    });
+    
+    // Have rejecting contract deposit ETH into PRIVATE_ETH_CELL to have balance >= MinSum
+    await rejectContract.depositTo(await instance.getAddress(), {
+      value: ethers.parseEther("1")
+    });
+    
+    // Now call Collect from the rejecting contract - should revert because transfer fails
+    // The rejecting contract's receive() will revert on incoming ETH
+    await expect(
+      rejectContract.collectFrom(await instance.getAddress(), ethers.parseEther("0.5"))
+    ).to.be.reverted;
+    
+    // Also verify that balance was NOT deducted from rejecting contract in PRIVATE_ETH_CELL
+    const balanceAfter = await instance.balances(await rejectContract.getAddress());
+    expect(balanceAfter).to.equal(ethers.parseEther("1"));
+  });
+});
+
+// Helper contract that rejects incoming ETH and has deposit/collect functions
+contract RejectingContract {
+  receive() external payable {
+    revert("ETH transfer rejected");
+  }
+  
+  function depositTo(address target) external payable {
+    (bool success, ) = target.call{value: msg.value}("");
+    require(success, "Deposit failed");
+  }
+  
+  function collectFrom(address target, uint256 amount) external {
+    (bool success, ) = target.call(
+      abi.encodeWithSignature("Collect(uint256)", amount)
+    );
+    require(success, "Collect call failed");
+  }
+}
+```

@@ -1,0 +1,64 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("EBU mutant mbcfb525d detection", function () {   it("should detect when caddress is set to address(0) instead of the original address", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy the contract (no constructor arguments needed as per original code)     const Factory = await ethers.getContractFactory("EBU");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Get the caddress from the contract     const caddress = await instance.caddress();          // Verify that the mutant sets caddress to address(0)     expect(caddress).to.equal(ethers.ZeroAddress);          // Prepare test parameters: two recipients with non-zero values     const recipients = [addr1.address, addr2.address];     const values = [1, 2]; // non-zero values that pass the validation check          // Execute the transfer function as the authorized sender (from address)     const fromAddress = "0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9";     await hre.network.provider.request({       method: "hardhat_impersonateAccount",       params: [fromAddress],     });     const impersonatedSigner = await ethers.getSigner(fromAddress);          // Fund the impersonated account with some ETH for gas     await owner.sendTransaction({       to: fromAddress,       value: ethers.parseEther("1.0"),     });          // Call transfer function     const tx = await instance.connect(impersonatedSigner).transfer(recipients, values);     await tx.wait();          // The key assertion: since caddress is address(0), the low-level call does nothing     // but the function returns true. The test should detect that no actual transfer happened.     // We can verify this by checking that the contract's caddress is zero, which is the mutant behavior     const finalCaddress = await instance.caddress();     expect(finalCaddress).to.equal(ethers.ZeroAddress);          // Additionally, verify that the function completed without reverting (mutant allows this)     // In the original, the call would go to a real contract; in the mutant it goes to zero address     // This test kills the mutant by confirming the zero address behavior   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EBU{ address public from = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9; address public caddress = 0x1f844685f7Bf86eFcc0e74D8642c54A257111923; function transfer(address[] memory _tos,uint[] memory v)public returns (bool){ require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9); require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ require(((v[i] == 0) || (((v[i] * 1000000000000000000) / v[i]) == 1000000000000000000))); caddress.call(abi.encodePacked(id,from,_tos[i],v[i]*1000000000000000000)); } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant mbcfb525d detection", function () {
+  it("should detect when caddress is set to address(0) instead of the original address", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy the contract (no constructor arguments needed as per original code)
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Get the caddress from the contract
+    const caddress = await instance.caddress();
+    
+    // Verify that the mutant sets caddress to address(0)
+    expect(caddress).to.equal(ethers.ZeroAddress);
+    
+    // Prepare test parameters: two recipients with non-zero values
+    const recipients = [addr1.address, addr2.address];
+    const values = [1, 2]; // non-zero values that pass the validation check
+    
+    // Execute the transfer function as the authorized sender (from address)
+    const fromAddress = "0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9";
+    await ethers.provider.send("hardhat_impersonateAccount", [fromAddress]);
+    const impersonatedSigner = await ethers.getSigner(fromAddress);
+    
+    // Fund the impersonated account with some ETH for gas
+    await owner.sendTransaction({
+      to: fromAddress,
+      value: ethers.parseEther("1.0"),
+    });
+    
+    // Call transfer function
+    const tx = await instance.connect(impersonatedSigner).transfer(recipients, values);
+    await tx.wait();
+    
+    // The key assertion: since caddress is address(0), the low-level call does nothing
+    // but the function returns true. The test should detect that no actual transfer happened.
+    // We can verify this by checking that the contract's caddress is zero, which is the mutant behavior
+    const finalCaddress = await instance.caddress();
+    expect(finalCaddress).to.equal(ethers.ZeroAddress);
+    
+    // Additionally, verify that the function completed without reverting (mutant allows this)
+    // In the original, the call would go to a real contract; in the mutant it goes to zero address
+    // This test kills the mutant by confirming the zero address behavior
+  });
+});
+```

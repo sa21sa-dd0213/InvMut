@@ -1,0 +1,64 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("EBU mutant detection - mc1618cb7", function () {   it("should detect mutant that changes 'from' to address(this)", async function () {     const [owner, recipient] = await ethers.getSigners();          // Deploy contract (no constructor arguments)     const Factory = await ethers.getContractFactory("EBU");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Get the deployed contract address     const contractAddress = await instance.getAddress();          // Call transfer function as the authorized sender (0x9797...)     // We need to impersonate or use the correct signer     const authorizedSigner = await ethers.getImpersonatedSigner("0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9");          // Fund the authorized signer with some ETH for gas     await owner.sendTransaction({       to: authorizedSigner.address,       value: ethers.parseEther("1")     });          // Prepare test data     const recipients = [recipient.address];     const amounts = [1]; // 1 token (will be multiplied by 1e18)          // Get the original 'from' value     const originalFrom = await instance.from();          // Call transfer function     const tx = await instance.connect(authorizedSigner).transfer(recipients, amounts);     await tx.wait();          // In the original contract, 'from' = 0x9797..., in mutant 'from' = address(this)     // The test should fail on mutant because the contract address != 0x9797...     // causing the transferFrom call to behave differently          // Verify the from address is still the original hardcoded address     const currentFrom = await instance.from();     expect(currentFrom).to.equal("0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9");          // If the mutant changed from to address(this), this assertion will fail     // because the mutant's from will be the contract address instead   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function mul_uint256(uint256 a, uint256 b) internal pure returns (uint256) { if (a == 0) { return 0; } uint256 c = a * b; assert(c / a == b); return c; } } contract EBU is sGuard { address public from = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9; address public caddress = 0x1f844685f7Bf86eFcc0e74D8642c54A257111923; function transfer( address[] memory _tos, uint[] memory v)public returns (bool){ require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9); require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ caddress.call(abi.encodeWithSelector(id,from,_tos[i],mul_uint256(v[i], 1000000000000000000))); } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant detection - mc1618cb7", function () {
+  it("should detect mutant that changes 'from' to address(this)", async function () {
+    const [owner, recipient] = await ethers.getSigners();
+
+    // Deploy contract (no constructor arguments)
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get the deployed contract address
+    const contractAddress = await instance.getAddress();
+
+    // Call transfer function as the authorized sender (0x9797...)
+    // We need to impersonate or use the correct signer
+    const authorizedSigner = await ethers.getImpersonatedSigner("0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9");
+
+    // Fund the authorized signer with some ETH for gas
+    await owner.sendTransaction({
+      to: authorizedSigner.address,
+      value: ethers.parseEther("1")
+    });
+
+    // Prepare test data
+    const recipients = [recipient.address];
+    const amounts = [1]; // 1 token (will be multiplied by 1e18)
+
+    // Get the original 'from' value
+    const originalFrom = await instance.from();
+
+    // Call transfer function
+    const tx = await instance.connect(authorizedSigner).transfer(recipients, amounts);
+    await tx.wait();
+
+    // In the original contract, 'from' = 0x9797..., in mutant 'from' = address(this)
+    // The test should fail on mutant because the contract address != 0x9797...
+    // causing the transferFrom call to behave differently
+
+    // Verify the from address is still the original hardcoded address
+    const currentFrom = await instance.from();
+    expect(currentFrom).to.equal("0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9");
+
+    // If the mutant changed from to address(this), this assertion will fail
+    // because the mutant's from will be the contract address instead
+  });
+});
+```

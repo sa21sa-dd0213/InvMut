@@ -1,0 +1,51 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("B mutant m8d6bd7d3", function () {   it("should detect mutant that sends ETH to address(this) instead of external address", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("B");     const instance = await Factory.deploy();     await instance.waitForDeployment();     const contractAddress = await instance.getAddress();      // Fund the contract with some ETH first via fallback     const fundTx = await owner.sendTransaction({       to: contractAddress,       value: ethers.parseEther("1.0")     });     await fundTx.wait();      // Check initial contract balance     const initialBalance = await ethers.provider.getBalance(contractAddress);     expect(initialBalance).to.equal(ethers.parseEther("1.0"));      // Call go() with 0.5 ETH from addr1     const goTx = await instance.connect(addr1).go({ value: ethers.parseEther("0.5") });     await goTx.wait();      // After go(), in the original contract, all ETH (initial 1.0 + 0.5 sent) would be forwarded to the external address     // In the mutant, the ETH is sent to address(this) so the contract retains the balance     const finalBalance = await ethers.provider.getBalance(contractAddress);          // In the original, finalBalance should be 0 because all ETH was transferred to owner     // In the mutant, finalBalance will be > 0 because ETH was sent to itself (address(this))     expect(finalBalance).to.equal(0);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract B { address public owner = payable(msg.sender); function go() public payable { address target = 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C; target.call{value: msg.value}(""); payable(owner).transfer(address(this).balance); } fallback() external payable { } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("B mutant m8d6bd7d3", function () {
+  it("should detect mutant that sends ETH to address(this) instead of external address", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("B");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    const contractAddress = await instance.getAddress();
+
+    // Fund the contract with some ETH first via fallback
+    const fundTx = await owner.sendTransaction({
+      to: contractAddress,
+      value: ethers.parseEther("1.0")
+    });
+    await fundTx.wait();
+
+    // Check initial contract balance
+    const initialBalance = await ethers.provider.getBalance(contractAddress);
+    expect(initialBalance).to.equal(ethers.parseEther("1.0"));
+
+    // Call go() with 0.5 ETH from addr1
+    const goTx = await instance.connect(addr1).go({ value: ethers.parseEther("0.5") });
+    await goTx.wait();
+
+    // After go(), in the original contract, all ETH (initial 1.0 + 0.5 sent) would be forwarded to the external address
+    // In the mutant, the ETH is sent to address(this) so the contract retains the balance
+    const finalBalance = await ethers.provider.getBalance(contractAddress);
+
+    // In the original, finalBalance should be 0 because all ETH was transferred to owner
+    // In the mutant, finalBalance will be > 0 because ETH was sent to itself (address(this))
+    expect(finalBalance).to.equal(0);
+  });
+});
+```

@@ -1,0 +1,12 @@
+{
+ "difference_id": "Ta64ba564",
+ "property_summary": "For every owner-invoked withdraw(amount) when the contract has >= amount balance, the reference C always reduces address(c).balance by exactly amount (transfer reverts on failure); the mutant that uses call and ignores success can leave address(c).balance unchanged when the recipient deliberately reverts, violating this rule for some recipient behavior.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replaced transfer with call to send value, which forwards all gas and returns success bool; revert on failure was removed (so failed call won't revert), changing post-withdraw balance observable.",
+ "mutated_unit_code": "function withdraw(uint _value)  public onlyOwner {\n    (bool success, ) = payable(msg.sender).call{value: _value}(\"\");\n    success; // deliberately ignore failure\n}\n",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n    function testFuzz_property(uint256 amount) public {\n        amount = bound(amount, 0, 10 ether);\n\n        Reverter bad = new Reverter();\n\n        vm.deal(address(this), 10 ether);\n        vm.prank(address(this));\n        (bool sent, ) = address(c).call{value: 10 ether}(\"\");\n        require(sent);\n\n        vm.assume(address(c).balance >= amount);\n\n        vm.deal(address(bad), 1 ether);\n\n        bool ok;\n        try c.withdraw{gas: gasleft()}(amount) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        uint256 balAfter = address(c).balance;\n        uint256 balBefore = 10 ether;\n\n        if (ok) {\n            assertTrue(balBefore - balAfter == amount);\n        } else {\n            assertTrue(true);\n        }\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"bad\");\n    }\n    receive() external payable {\n        revert(\"bad\");\n    }\n}\n"
+}

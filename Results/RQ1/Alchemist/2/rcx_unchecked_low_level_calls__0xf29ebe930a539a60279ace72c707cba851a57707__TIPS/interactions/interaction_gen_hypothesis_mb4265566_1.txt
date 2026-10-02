@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract B:
+        Contract Code: pragma solidity ^0.8.0; contract B { address public owner = payable(msg.sender); function go()  public payable { address target = 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C; { (bool _s, bytes memory _d) = target.call{value: msg.value}(""); _d; if (! _s) { revert();} } payable(owner).transfer(address(this).balance); } fallback() external payable { } }
+
+    Consider the following mutant of B:
+        Mutant mb4265566 of function go replaces 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C with address(0)
+        Mutant Diff: ---| 	address target = 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C; +++| 	address target = address(0);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract sends Ether to a specific hardcoded address (`0xC8A60C...`), while the mutant sends Ether to `address(0)`, which is a burn address. Sending Ether to `address(0)` will succeed (the call will return `true`) but the Ether will be lost and cannot be recovered. The mutant also still sends the contract's remaining balance to the `owner` afterward.  
+
+**Hypothesis:** "The mutant changes the target address to `address(0)`. Therefore, a test case that calls `go()` with a non-zero `msg.value`, then checks that the original hardcoded address received the expected amount of Ether (or that the contract's balance after the call is zero, while the original target address balance increased) should fail on the mutant, because in the mutant the Ether is sent to `address(0)` instead of the intended recipient."

@@ -1,0 +1,62 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mc055df69 of ReentrancyDAO.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test ReentrancyDAO.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for ReentrancyDAO:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("ReentrancyDAO reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy ReentrancyDAO by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("ReentrancyDAO"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ReentrancyDAO mutant detection", function () {
+  it("should detect the msg.value-1 mutant by verifying deposited amount equals withdrawn amount", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("ReentrancyDAO");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deposit exactly 1 ether
+    const depositAmount = ethers.parseEther("1.0");
+    await instance.connect(addr1).deposit({ value: depositAmount });
+
+    // Withdraw all
+    await instance.connect(addr1).withdrawAll();
+
+    // Check that addr1's balance increased by exactly 1 ether (not 1 ether - 1 wei)
+    const finalBalance = await ethers.provider.getBalance(addr1.address);
+    const expectedBalance = ethers.parseEther("10000.0"); // initial balance minus gas, but we check relative change
+    // More precise: check that the difference is exactly the deposit amount
+    const initialBalance = await ethers.provider.getBalance(addr1.address);
+    // Actually let's redo: track balance before deposit
+    const balanceBeforeDeposit = await ethers.provider.getBalance(addr1.address);
+    const txDeposit = await instance.connect(addr1).deposit({ value: depositAmount });
+    await txDeposit.wait();
+    const balanceAfterDeposit = await ethers.provider.getBalance(addr1.address);
+    const txWithdraw = await instance.connect(addr1).withdrawAll();
+    await txWithdraw.wait();
+    const balanceAfterWithdraw = await ethers.provider.getBalance(addr1.address);
+
+    // Net change after deposit + withdraw should be zero (minus gas)
+    // But mutant credits msg.value-1, so user loses 1 wei permanently
+    // With original contract, user gets back exactly what they deposited
+    // With mutant, user gets back msg.value-1, so net loss of 1 wei
+    // We can check that balanceAfterWithdraw is less than balanceBeforeDeposit by more than gas costs
+    // A simpler approach: check that contract balance is 0 after withdraw in original, but in mutant it's 1 wei
+    const contractBalance = await ethers.provider.getBalance(instance.target);
+    // In original, contract balance should be 0; in mutant, it's 1 wei
+    expect(contractBalance).to.equal(ethers.parseEther("0.0"));
+  });
+});
+```

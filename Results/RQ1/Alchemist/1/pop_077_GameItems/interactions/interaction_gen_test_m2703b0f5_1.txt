@@ -1,0 +1,58 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m2703b0f5 of GameItems.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test GameItems.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for GameItems:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("GameItems reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy GameItems by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("GameItems"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("GameItems mutant test - getAllowanceRemaining", function () {
+  it("should detect mutant that changes <= to == in daily allowance replenishment check", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("GameItems");
+    const instance = await Factory.deploy(owner.address, owner.address);
+    await instance.waitForDeployment();
+
+    // Create a game item with daily allowance
+    await instance.createGameItem(
+      "Test Item",
+      "ipfs://test",
+      false,  // finiteSupply = false
+      true,   // transferable = true
+      0,      // itemsRemaining (irrelevant since finiteSupply is false)
+      ethers.parseEther("1"),
+      10       // dailyAllowance = 10
+    );
+
+    // Set up allowance by calling getAllowanceRemaining to initialize the dailyAllowanceReplenishTime
+    // First call should return the full daily allowance
+    const initialAllowance = await instance.getAllowanceRemaining(addr1.address, 0);
+    expect(initialAllowance).to.equal(10);
+
+    // Fast forward time past the replenish time (1 day + 1 second)
+    await ethers.provider.send("evm_increaseTime", [86401]); // 1 day + 1 second
+    await ethers.provider.send("evm_mine");
+
+    // Now the original would return 10 (full allowance replenished)
+    // The mutant with == would return stale allowance (0 or whatever was remaining)
+    const allowanceAfterTime = await instance.getAllowanceRemaining(addr1.address, 0);
+    
+    // If the mutant is present, this will fail because it returns stale allowance instead of 10
+    expect(allowanceAfterTime).to.equal(10);
+  });
+});
+```

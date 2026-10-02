@@ -1,0 +1,88 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("FlashGovernanceArbiter mutant kill test - enforceToleranceInt exponentiation bug", function () {   it("should kill mutant by passing negative v1 where absolute value calculation differs", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy with a mock DAO address (can be any valid address for testing)     const Factory = await ethers.getContractFactory("FlashGovernanceArbiter");     const instance = await Factory.deploy(owner.address);     await instance.waitForDeployment();      // Configure security parameters to allow the test to pass     // First need to make a successful proposal to call configureSecurityParameters     // We'll use the owner as the proposer and manually set up the DAO     await instance.setDAO(owner.address);          // Configure security with changeTolerance = 50 (50%)     // This requires onlySuccessfulProposal modifier - we need to bypass it for testing     // Since we control the DAO, we can call directly for testing purposes     // Actually, let's test the enforceToleranceInt function directly          // Set up enforcement for addr1     await instance.setEnforcement(true);          // Configure the DAO to return configured() = true for addr1     // Since we're testing the pure logic, we can call enforceToleranceInt directly          // Test case: v1 = -5, v2 = 10     // Original: uv1 = uint256(-1 * -5) = 5, enforceTolerance(5, 10) should pass     // Mutant: uv1 = uint256(-1 ** -5) = uint256(-1) = max uint256, will revert          // To make the test work, we need configured = true and enforceLimitsActive[msg.sender] = true     // Let's call enforceToleranceInt directly from addr1 after setting up          // First, we need to make the DAO return configured() = true for addr1     // Since we can't easily mock, let's test with a simple call that should pass on original          // The key insight: with v1 = -5 and v2 = 10:     // Original: uv1 = 5, (10-5)*100 = 500, 50*5 = 250, 500 < 250? No, so it reverts with "FE1"     // Mutant: uv1 = max uint256, v2 = 10, v2 < uv1, so it checks (10 - max) which underflows          // Let's try v1 = -2, v2 = 3 with changeTolerance = 50     // Original: uv1 = 2, (3-2)*100 = 100, 50*2 = 100, 100 < 100? No, reverts     // Mutant: uv1 = max, same underflow          // Better test: v1 = -1, v2 = 1 with changeTolerance = 0     // Original: uv1 = 1, v1 > v2? No, v1 == v2, so neither branch, passes     // Mutant: uv1 = 1, same result - both pass          // Critical test: v1 = -2, v2 = 2 with changeTolerance = 0     // Original: uv1 = 2, v1 == v2, passes     // Mutant: uv1 = max, v2 < uv1, (max-2)*100 underflows          // Let's try v1 = -3, v2 = 4 with changeTolerance = 30     // Original: uv1 = 3, (4-3)*100 = 100, 30*3 = 90, 100 < 90? No, reverts with "FE1"     // Mutant: uv1 = max, underflow          // Test: v1 = -1, v2 = 0 with changeTolerance = 50     // Original: uv1 = 1, v1 > v2? 1 > 0, v2 == 0, require(1 <= 1) passes     // Mutant: uv1 = max, v1 > v2, v2 == 0, require(max <= 1) reverts with "FE1"          // This is our killer test case!     await expect(       instance.connect(addr1).enforceToleranceInt(-1, 0)     ).to.be.revertedWith("FE1");          // On the original, this would NOT revert because uv1 = 1 and 1 <= 1 passes     // On the mutant, uv1 = max uint256 and max <= 1 fails, causing revert with "FE1"     // Therefore, the mutant is killed when the test expects revert but original passes   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; abstract contract Burnable { function burn (uint amount) public virtual; } abstract contract FlashGovernanceArbiterLike { function assertGovernanceApproved(address sender, address target, bool emergency) public virtual; function enforceToleranceInt(int256 v1, int256 v2) public view virtual; function enforceTolerance(uint256 v1, uint256 v2) public view virtual; function burnFlashGovernanceAsset( address targetContract, address user, address asset, uint256 amount ) public virtual; function setEnforcement(bool enforce) public virtual; } interface IERC20 { event Transfer(address indexed from, address indexed to, uint256 value); event Approval(address indexed owner, address indexed spender, uint256 value); function totalSupply() external view returns (uint256); function balanceOf(address account) external view returns (uint256); function transfer(address to, uint256 amount) external returns (bool); function allowance(address owner, address spender) external view returns (uint256); function approve(address spender, uint256 amount) external returns (bool); function transferFrom(address from, address to, uint256 amount) external returns (bool); } abstract contract LimboDAOLike { function approveFlanMintingPower(address minter, bool enabled) public virtual; function makeProposal(address proposal, address proposer) public virtual; function currentProposalState() public view virtual returns ( uint256, uint256, address, uint256, address ); function setProposalConfig( uint256 votingDuration, uint256 requiredFateStake, address proposalFactory ) public virtual; function setApprovedAsset( address asset, bool approved, bool isUniswap, uint256 period ) public virtual; function successfulProposal(address proposal) public view virtual returns (bool); function domainConfig() public virtual returns ( address, address, address, address, bool, address, address ); function getFlashGoverner() external view virtual returns (address); function proposalConfig() public view virtual returns ( uint256, uint256, address ); function setFateToFlan(uint256 rate) public virtual; } abstract contract ProposalFactoryLike { function toggleWhitelistProposal(address proposal) public virtual; function soulUpdateProposal () public  virtual view returns (address); } abstract contract Governable { FlashGovernanceArbiterLike public governer; bool public configured; address public DAO; function endConfiguration() public { configured = true; } modifier onlySuccessfulProposal() { assertSuccessfulProposal(msg.sender); _; } modifier onlySoulUpdateProposal() { assertSoulUpdateProposal(msg.sender); _; } function assertSoulUpdateProposal(address sender) internal view { (, , address proposalFactory) = LimboDAOLike(DAO).proposalConfig(); require(!configured || sender == ProposalFactoryLike(proposalFactory).soulUpdateProposal(), "EJ"); assertSuccessfulProposal(sender); } function _governanceApproved(bool emergency) internal { bool successfulProposal = LimboDAOLike(DAO).successfulProposal(msg.sender); if (successfulProposal) { governer.setEnforcement(false); } else if (configured) { governer.setEnforcement(true); governer.assertGovernanceApproved(msg.sender, address(this), emergency); } } modifier governanceApproved(bool emergency) { _governanceApproved(emergency); _; } function assertSuccessfulProposal(address sender) internal view { require(!configured || LimboDAOLike(DAO).successfulProposal(sender), "EJ"); } constructor(address dao) { setDAO(dao); } function flashGoverner() internal returns (FlashGovernanceArbiterLike) { if (address(governer) == address(0)) governer = FlashGovernanceArbiterLike(LimboDAOLike(DAO).getFlashGoverner()); return governer; } function setDAO(address dao) public { require(DAO == address(0) || msg.sender == DAO || !configured, "EK"); DAO = dao; delete governer; } } abstract contract Configurable { function configured() public view virtual returns (bool); } contract FlashGovernanceArbiter is Governable { event flashDecision(address actor, address deposit_asset, uint256 amount, address target); mapping(address => bool) enforceLimitsActive; constructor(address dao) Governable(dao) {} struct FlashGovernanceConfig { uint256 amount; uint256 unlockTime; address asset; bool assetBurnable; } struct SecurityParameters { uint256 epochSize; uint256 lastFlashGovernanceAct; uint8 maxGovernanceChangePerEpoch; uint8 changeTolerance; } FlashGovernanceConfig public flashGovernanceConfig; SecurityParameters public security; mapping(address => bool) public governed; function setGoverned(address[] calldata governables, bool[] calldata isGoverned) external onlySuccessfulProposal { require(governables.length == isGoverned.length, "LIMBO: length mismatch"); for (uint256 i = 0; i < governables.length; i++) { governed[governables[i]] = isGoverned[i]; } } modifier flashEnabled(){ require(msg.sender == DAO || governed[msg.sender], "LIMBO: EP"); _; } mapping(address => mapping(address => FlashGovernanceConfig)) public pendingFlashDecision; function assertGovernanceApproved( address sender, address target, bool emergency ) public flashEnabled{ if ( IERC20(flashGovernanceConfig.asset).transferFrom(sender, address(this), flashGovernanceConfig.amount) && pendingFlashDecision[target][sender].unlockTime < block.timestamp ) { require( emergency || (block.timestamp - security.lastFlashGovernanceAct > security.epochSize), "LIMBO: flash governance disabled for rest of epoch" ); pendingFlashDecision[target][sender] = flashGovernanceConfig; pendingFlashDecision[target][sender].unlockTime += block.timestamp; security.lastFlashGovernanceAct = block.timestamp; emit flashDecision(sender, flashGovernanceConfig.asset, flashGovernanceConfig.amount, target); } else { revert("LIMBO: governance decision rejected."); } } function configureFlashGovernance( address asset, uint256 amount, uint256 unlockTime, bool assetBurnable ) public virtual onlySuccessfulProposal { flashGovernanceConfig.asset = asset; flashGovernanceConfig.amount = amount; flashGovernanceConfig.unlockTime = unlockTime; flashGovernanceConfig.assetBurnable = assetBurnable; } function configureSecurityParameters( uint8 maxGovernanceChangePerEpoch, uint256 epochSize, uint8 changeTolerance ) public virtual onlySuccessfulProposal { security.maxGovernanceChangePerEpoch = maxGovernanceChangePerEpoch; security.epochSize = epochSize; require(security.changeTolerance < 100, "Limbo: % between 0 and 100"); security.changeTolerance = changeTolerance; } function burnFlashGovernanceAsset( address targetContract, address user, address asset, uint256 amount ) public virtual onlySuccessfulProposal { if (pendingFlashDecision[targetContract][user].assetBurnable) { Burnable(asset).burn(amount); } delete pendingFlashDecision[targetContract][user]; } function withdrawGovernanceAsset(address targetContract, address asset) public virtual { require( pendingFlashDecision[targetContract][msg.sender].asset == asset && pendingFlashDecision[targetContract][msg.sender].amount > 0 && pendingFlashDecision[targetContract][msg.sender].unlockTime < block.timestamp, "Limbo: Flashgovernance decision pending." ); IERC20(pendingFlashDecision[targetContract][msg.sender].asset).transfer( msg.sender, pendingFlashDecision[targetContract][msg.sender].amount ); delete pendingFlashDecision[targetContract][msg.sender]; } function setEnforcement(bool enforce) public { enforceLimitsActive[msg.sender] = enforce; } function enforceToleranceInt(int256 v1, int256 v2) public view { if (!configured) return; uint256 uv1 = uint256(v1 > 0 ? v1 : -1 * v1); uint256 uv2 = uint256(v2 > 0 ? v2 : -1 * v2); enforceTolerance(uv1, uv2); } function enforceTolerance(uint256 v1, uint256 v2) public view { if (!enforceLimitsActive[msg.sender] || !Configurable(msg.sender).configured()) return; if (v1 > v2) { if (v2 == 0) require(v1 <= 1, "FE1"); else require(((v1 - v2) * 100) < security.changeTolerance * v1, "FE1"); } else { if (v1 == 0) require(v2 <= 1, "FE1"); else require(((v2 - v1) * 100) < security.changeTolerance * v1, "FE1"); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("FlashGovernanceArbiter mutant kill test - enforceToleranceInt exponentiation bug", function () {
+  it("should kill mutant by passing negative v1 where absolute value calculation differs", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy with a mock DAO address (can be any valid address for testing)
+    const Factory = await ethers.getContractFactory("FlashGovernanceArbiter");
+    const instance = await Factory.deploy(owner.address);
+    await instance.waitForDeployment();
+
+    // Configure security parameters to allow the test to pass
+    // First need to make a successful proposal to call configureSecurityParameters
+    // We'll use the owner as the proposer and manually set up the DAO
+    await instance.setDAO(owner.address);
+    
+    // Configure security with changeTolerance = 50 (50%)
+    // This requires onlySuccessfulProposal modifier - we need to bypass it for testing
+    // Since we control the DAO, we can call directly for testing purposes
+    // Actually, let's test the enforceToleranceInt function directly
+    
+    // Set up enforcement for addr1
+    await instance.setEnforcement(true);
+    
+    // Configure the DAO to return configured() = true for addr1
+    // Since we're testing the pure logic, we can call enforceToleranceInt directly
+    
+    // Test case: v1 = -5, v2 = 10
+    // Original: uv1 = uint256(-1 * -5) = 5, enforceTolerance(5, 10) should pass
+    // Mutant: uv1 = uint256(-1 ** -5) = uint256(-1) = max uint256, will revert
+    
+    // To make the test work, we need configured = true and enforceLimitsActive[msg.sender] = true
+    // Let's call enforceToleranceInt directly from addr1 after setting up
+    
+    // First, we need to make the DAO return configured() = true for addr1
+    // Since we can't easily mock, let's test with a simple call that should pass on original
+    
+    // The key insight: with v1 = -5 and v2 = 10:
+    // Original: uv1 = 5, (10-5)*100 = 500, 50*5 = 250, 500 < 250? No, so it reverts with "FE1"
+    // Mutant: uv1 = max uint256, v2 = 10, v2 < uv1, so it checks (10 - max) which underflows
+    
+    // Let's try v1 = -2, v2 = 3 with changeTolerance = 50
+    // Original: uv1 = 2, (3-2)*100 = 100, 50*2 = 100, 100 < 100? No, reverts
+    // Mutant: uv1 = max, same underflow
+    
+    // Better test: v1 = -1, v2 = 1 with changeTolerance = 0
+    // Original: uv1 = 1, v1 > v2? No, v1 == v2, so neither branch, passes
+    // Mutant: uv1 = 1, same result - both pass
+    
+    // Critical test: v1 = -2, v2 = 2 with changeTolerance = 0
+    // Original: uv1 = 2, v1 == v2, passes
+    // Mutant: uv1 = max, v2 < uv1, (max-2)*100 underflows
+    
+    // Let's try v1 = -3, v2 = 4 with changeTolerance = 30
+    // Original: uv1 = 3, (4-3)*100 = 100, 30*3 = 90, 100 < 90? No, reverts with "FE1"
+    // Mutant: uv1 = max, underflow
+    
+    // Test: v1 = -1, v2 = 0 with changeTolerance = 50
+    // Original: uv1 = 1, v1 > v2? 1 > 0, v2 == 0, require(1 <= 1) passes
+    // Mutant: uv1 = max, v1 > v2, v2 == 0, require(max <= 1) reverts with "FE1"
+    
+    // This is our killer test case!
+    await expect(
+      instance.connect(addr1).enforceToleranceInt(-1, 0)
+    ).to.be.revertedWith("FE1");
+    
+    // On the original, this would NOT revert because uv1 = 1 and 1 <= 1 passes
+    // On the mutant, uv1 = max uint256 and max <= 1 fails, causing revert with "FE1"
+    // Therefore, the mutant is killed when the test expects revert but original passes
+  });
+});
+```

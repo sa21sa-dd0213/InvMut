@@ -1,0 +1,26 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract ModifierEntrancy:
+        Contract Code: pragma solidity ^0.8.0; contract SmartFix { bool public _locked = false; modifier _nonReentrant() { require(!_locked); _locked = true; _; _locked = false; } } contract ModifierEntrancy is SmartFix { mapping (address => uint) public tokenBalance; string constant name = "Nu Token"; function airDrop()  public _nonReentrant  hasNoBalance supportsToken { require(((tokenBalance[msg.sender] + 20) >= tokenBalance[msg.sender])); tokenBalance[msg.sender] += 20; } modifier supportsToken() { require(keccak256(abi.encodePacked("Nu Token")) == Bank(msg.sender).supportsToken()); _; } modifier hasNoBalance { require(tokenBalance[msg.sender] == 0); _; } } contract Bank{ function supportsToken() external pure returns (bytes32){ return(keccak256(abi.encodePacked("Nu Token"))); } }
+
+    Consider the following mutant of ModifierEntrancy:
+        Mutant m119c7296 of function modifier:supportsToken replaces == with >=
+        Mutant Diff: ---|     require(keccak256(abi.encodePacked("Nu Token")) == Bank(msg.sender).supportsToken()); +++|     require(keccak256(abi.encodePacked("Nu Token")) >= Bank(msg.sender).supportsToken());
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's break this down step-by-step.
+
+The original `supportsToken` modifier uses `==` to compare the hash of "Nu Token" with the return value from `Bank(msg.sender).supportsToken()`. This means only a contract that returns the **exact** matching hash will pass the check.
+
+The mutant changes `==` to `>=`. Now the check passes if the returned hash is **greater than or equal to** the hash of "Nu Token". This is a weaker condition — a contract could return a larger hash value and still pass, even if it doesn't actually support the token.
+
+**Hypothesis:**  
+The mutant weakens the equality check to a greater-than-or-equal comparison. Therefore, a test case that calls `airDrop()` from a malicious contract that returns a `bytes32` value strictly greater than the hash of "Nu Token" (but not equal to it) should fail on the original contract (revert) but succeed on the mutant, thereby killing the mutant.

@@ -1,0 +1,56 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PENNY_BY_PENNY mutant m4a2a5368 detection", function () {   it("should detect mutant by showing Collect fails when lockTime is 0", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy PENNY_BY_PENNY (no constructor arguments needed)     const Factory = await ethers.getContractFactory("PENNY_BY_PENNY");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Deploy LogFile (no constructor arguments needed)     const LogFactory = await ethers.getContractFactory("LogFile");     const logInstance = await LogFactory.deploy();     await logInstance.waitForDeployment();          // Set MinSum to 0 and initialize     await instance.connect(owner).SetMinSum(0);     await instance.connect(owner).SetLogFile(await logInstance.getAddress());     await instance.connect(owner).Initialized();          // addr1 puts 1 ether with _lockTime = 0     const putAmount = ethers.parseEther("1");     await instance.connect(addr1).Put(0, { value: putAmount });          // Check unlockTime was set (should be current block.timestamp in original)     const acc = await instance.Acc(addr1.address);     const currentTime = (await ethers.provider.getBlock("latest")).timestamp;          // Try to collect immediately - should succeed in original, fail in mutant     await expect(       instance.connect(addr1).Collect(putAmount)     ).to.not.be.reverted;          // Verify balance was deducted (original behavior)     const accAfter = await instance.Acc(addr1.address);     expect(accAfter.balance).to.equal(0);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } } contract PENNY_BY_PENNY is sGuard { struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; uint public MinSum; LogFile Log; bool intitalized; function SetMinSum(uint _val)  public nonReentrant_ { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log)  public nonReentrant_ { if(intitalized)revert(); Log = LogFile(_log); } function Initialized()  public nonReentrant_ { intitalized = true; } function Put(uint _lockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); if(add_uint256(block.timestamp, _lockTime)>acc.unlockTime)acc.unlockTime=add_uint256(block.timestamp, _lockTime); Log.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); Log.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } } contract LogFile is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PENNY_BY_PENNY mutant m4a2a5368 detection", function () {
+  it("should detect mutant by showing Collect fails when lockTime is 0", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy PENNY_BY_PENNY (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("PENNY_BY_PENNY");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy LogFile (no constructor arguments needed)
+    const LogFactory = await ethers.getContractFactory("LogFile");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+
+    // Set MinSum to 0 and initialize
+    await instance.connect(owner).SetMinSum(0);
+    await instance.connect(owner).SetLogFile(await logInstance.getAddress());
+    await instance.connect(owner).Initialized();
+
+    // addr1 puts 1 ether with _lockTime = 0
+    const putAmount = ethers.parseEther("1");
+    await instance.connect(addr1).Put(0, { value: putAmount });
+
+    // Check unlockTime was set (should be current block.timestamp in original)
+    const acc = await instance.Acc(addr1.address);
+    const currentTime = (await ethers.provider.getBlock("latest"))!.timestamp;
+
+    // Try to collect immediately - should succeed in original, fail in mutant
+    await expect(
+      instance.connect(addr1).Collect(putAmount)
+    ).to.not.be.reverted;
+
+    // Verify balance was deducted (original behavior)
+    const accAfter = await instance.Acc(addr1.address);
+    expect(accAfter.balance).to.equal(0);
+  });
+});
+```

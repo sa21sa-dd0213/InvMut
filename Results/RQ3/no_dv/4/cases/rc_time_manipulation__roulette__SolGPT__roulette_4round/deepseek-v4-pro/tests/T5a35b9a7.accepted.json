@@ -1,0 +1,12 @@
+{
+ "difference_id": "T5a35b9a7",
+ "property_summary": "For any valid call to fallback (10 ether, timestamp > pastBlockTime), the contract’s ETH balance after the call must be zero if and only if block.number % 15 == 0; after the fallback executes, the invariant holds for the original contract, but the mutant always transfers the balance, causing a non-zero balance when block.number % 15 != 0.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replace 'if(block.number % 15 == 0)' with 'if(true)' so the transfer always occurs, changing the balance returned to sender and internal state (balance) surfaced via ETH transfers.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        if(true) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 fuzzBlockNumber, uint256 fuzzTimestamp) public {\n        vm.assume(fuzzTimestamp > 0);\n        vm.assume(fuzzTimestamp > c.pastBlockTime());\n        vm.roll(fuzzBlockNumber);\n        vm.warp(fuzzTimestamp);\n\n        address caller = address(0x1234);\n        vm.deal(caller, 10 ether);\n        vm.prank(caller);\n        (bool success, ) = address(c).call{value: 10 ether}(\"\");\n        require(success, \"fallback call failed\");\n\n        bool shouldBeZero = (fuzzBlockNumber % 15 == 0);\n        uint256 bal = address(c).balance;\n        if (shouldBeZero) {\n            assertTrue(bal == 0);\n        } else {\n            assertTrue(bal > 0);\n        }\n    }\n}"
+}

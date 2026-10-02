@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract ModifierEntrancy:
+        Contract Code: pragma solidity ^0.8.0; contract SmartFix { bool public _locked = false; modifier _nonReentrant() { require(!_locked); _locked = true; _; _locked = false; } } contract ModifierEntrancy is SmartFix { mapping (address => uint) public tokenBalance; string constant name = "Nu Token"; function airDrop()  public _nonReentrant  hasNoBalance supportsToken { require(((tokenBalance[msg.sender] + 20) >= tokenBalance[msg.sender])); tokenBalance[msg.sender] += 20; } modifier supportsToken() { require(keccak256(abi.encodePacked("Nu Token")) == Bank(msg.sender).supportsToken()); _; } modifier hasNoBalance { require(tokenBalance[msg.sender] == 0); _; } } contract Bank{ function supportsToken() external pure returns (bytes32){ return(keccak256(abi.encodePacked("Nu Token"))); } }
+
+    Consider the following mutant of ModifierEntrancy:
+        Mutant m4deb0867 of function airDrop replaces >= with >
+        Mutant Diff: ---|     require(((tokenBalance[msg.sender] + 20) >= tokenBalance[msg.sender])); +++|     require(((tokenBalance[msg.sender] + 20)  > tokenBalance[msg.sender]));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the `>=` (greater than or equal) to `>` (strictly greater than). In the original contract, the check `require(((tokenBalance[msg.sender] + 20) >= tokenBalance[msg.sender]))` is always true for any non-negative integer (since adding 20 to a number always results in a value that is greater than or equal to the original). The mutant makes it `>`, which would fail when `tokenBalance[msg.sender]` is zero (since `0 + 20 > 0` is true, so it passes), but more importantly, it would also fail if the balance is somehow already very large and an overflow occurs? Actually, in Solidity 0.8.x arithmetic is checked by default, so overflow would revert anyway. The key difference is that the original `>=` allows the case where `tokenBalance[msg.sender]` is zero (0 + 20 >= 0 is true), and the mutant `>` also allows it (20 > 0 is true). However, the mutant would incorrectly revert if `tokenBalance[msg.sender]` is already 20? No, 20+20=40 > 20 is true. The only edge case is if `tokenBalance[msg.sender]` is already so large that `tokenBalance[msg.sender] + 20` overflows? But overflow is prevented. Actually, the mutant changes the semantics for the case where `tokenBalance[msg.sender]` is exactly zero? Let's check: original `0 + 20 >= 0` → true; mutant `0 + 20 > 0` → true. Both pass. So when does the mutant fail? It fails when `tokenBalance[msg.sender]` is already a value such that `balance + 20` is not strictly greater than balance? That only happens if 20 <= 0, which is impossible. Wait – the mutant would fail if the balance is already the maximum possible uint and adding 20 overflows? But that reverts anyway.  
+
+**Re-analysis**: The `hasNoBalance` modifier ensures `tokenBalance[msg.sender] == 0` before the function body executes. So the only time `airDrop` can be called is when the sender's balance is zero. Therefore, the `require` inside the function is checking `(0 + 20)

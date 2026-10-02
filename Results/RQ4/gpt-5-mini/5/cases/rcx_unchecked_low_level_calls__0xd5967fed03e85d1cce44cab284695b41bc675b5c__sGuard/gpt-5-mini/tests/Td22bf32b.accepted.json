@@ -1,0 +1,12 @@
+{
+ "difference_id": "Td22bf32b",
+ "property_summary": "For any inputs with a non-empty _tos array, the reference contract always returns (does not revert) from transfer even if an external callee reverts; the mutant that requires the callee's success will revert for some inputs where the callee fails.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the low-level call with an explicit require on its success, causing transfer to revert if any external call fails.",
+ "mutated_unit_code": "function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0;i<_tos.length;i++){\n\n            (bool ok, ) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v));\n            require(ok);\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {demo} from \"../src/demo.sol\";\n\ncontract InvMutTest is Test {\n    demo c;\n    function setUp() public { c = new demo(); }\n\n    function testFuzz_property(address from, address[] memory tos) public {\n        vm.assume(tos.length > 0);\n\n        Reverter rev = new Reverter();\n\n        bool ok;\n        try c.transfer(from, address(rev), tos, 1) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok);\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"bad\");\n    }\n    receive() external payable {\n        revert(\"bad\");\n    }\n}"
+}

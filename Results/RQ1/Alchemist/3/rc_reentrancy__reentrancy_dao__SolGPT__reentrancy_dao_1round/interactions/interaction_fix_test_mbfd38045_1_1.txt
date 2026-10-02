@@ -1,0 +1,53 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("ReentrancyDAO mutant test - mbfd38045", function () {   it("should kill mutant by verifying withdrawal works when credit > 0", async function () {     const [owner, user] = await ethers.getSigners();          // Deploy contract (no constructor arguments needed for this contract)     const Factory = await ethers.getContractFactory("ReentrancyDAO");     const instance = await Factory.deploy();     await instance.waitForDeployment();     const contractAddress = await instance.getAddress();      // User deposits 1 ether     const depositAmount = ethers.parseEther("1");     const userBalanceBefore = await ethers.provider.getBalance(user.address);     const contractBalanceBefore = await ethers.provider.getBalance(contractAddress);          await instance.connect(user).deposit({ value: depositAmount });          // Verify deposit was recorded     expect(await ethers.provider.getBalance(contractAddress)).to.equal(contractBalanceBefore + depositAmount);      // User calls withdrawAll - this should transfer the deposit back     const tx = await instance.connect(user).withdrawAll();     await tx.wait();      // Assert: user's balance increased by deposit (minus gas), contract balance decreased     const userBalanceAfter = await ethers.provider.getBalance(user.address);     const contractBalanceAfter = await ethers.provider.getBalance(contractAddress);          // On original: user gets money back, contract balance decreases     // On mutant: withdrawal never executes (oCredit < 0 is always false for uint), so user gets nothing     expect(userBalanceAfter).to.be.gt(userBalanceBefore);     expect(contractBalanceAfter).to.be.lt(contractBalanceBefore);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract ReentrancyDAO { mapping (address => uint) credit; uint balance; function withdrawAll() public { uint oCredit = credit[msg.sender]; if (oCredit > 0) { balance -= oCredit; credit[msg.sender] = 0; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); } } function deposit() public payable { credit[msg.sender] += msg.value; balance += msg.value; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ReentrancyDAO mutant test - mbfd38045", function () {
+  it("should kill mutant by verifying withdrawal works when credit > 0", async function () {
+    const [owner, user] = await ethers.getSigners();
+
+    // Deploy contract (no constructor arguments needed for this contract)
+    const Factory = await ethers.getContractFactory("ReentrancyDAO");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    const contractAddress = await instance.getAddress();
+
+    // User deposits 1 ether
+    const depositAmount = ethers.parseEther("1");
+    const userBalanceBefore = await ethers.provider.getBalance(user.address);
+    const contractBalanceBefore = await ethers.provider.getBalance(contractAddress);
+
+    await instance.connect(user).deposit({ value: depositAmount });
+
+    // Verify deposit was recorded
+    expect(await ethers.provider.getBalance(contractAddress)).to.equal(contractBalanceBefore + depositAmount);
+
+    // User calls withdrawAll - this should transfer the deposit back
+    const tx = await instance.connect(user).withdrawAll();
+    await tx.wait();
+
+    // Assert: user's balance increased by deposit (minus gas), contract balance decreased
+    const userBalanceAfter = await ethers.provider.getBalance(user.address);
+    const contractBalanceAfter = await ethers.provider.getBalance(contractAddress);
+
+    // On original: user gets money back, contract balance decreases
+    // On mutant: withdrawal never executes (oCredit < 0 is always false for uint), so user gets nothing
+    expect(userBalanceAfter).to.be.gt(userBalanceBefore);
+    expect(contractBalanceAfter).to.be.lt(contractBalanceBefore);
+  });
+});
+```

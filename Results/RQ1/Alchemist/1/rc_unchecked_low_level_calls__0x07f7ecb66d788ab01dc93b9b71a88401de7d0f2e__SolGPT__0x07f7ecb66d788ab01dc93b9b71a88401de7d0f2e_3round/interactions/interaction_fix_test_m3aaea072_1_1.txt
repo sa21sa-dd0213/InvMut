@@ -1,0 +1,113 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PoCGame mutant kill test - m3aaea072", function () {   it("should detect the mutant where +1 is replaced with -1 in winningNumber calculation", async function () {     const [owner, player, whale] = await ethers.getSigners();          // Deploy with required constructor arguments: whaleAddress, wagerLimit     const betLimit = ethers.parseEther("1");     const Factory = await ethers.getContractFactory("PoCGame");     const instance = await Factory.deploy(whale.address, betLimit);     await instance.waitForDeployment();          // Set difficulty to a known value for predictable testing     const difficulty = 10; // Must be >= 2 so that difficulty/2 = 5     await instance.connect(owner).AdjustDifficulty(difficulty);          // Open the contract to the public     await instance.connect(owner).OpenToThePublic();          // Player makes a wager     await instance.connect(player).wager({ value: betLimit });          // Mine a block to advance block.number so blockhash is available     await ethers.provider.send("evm_mine", []);          // Calculate the expected winning condition for the ORIGINAL contract:     // winningNumber = (hash % difficulty) + 1     // We need (hash % difficulty) + 1 == difficulty / 2 => (hash % difficulty) == difficulty/2 - 1 = 4     // So we need to find a blockhash such that (uint256(blockhash) % 10) == 4     // We'll mine blocks until we find such a block          let foundBlock = false;     let targetBlockNumber;          for (let i = 0; i < 100; i++) {       await ethers.provider.send("evm_mine", []);       const currentBlock = await ethers.provider.getBlock("latest");       const blockNum = currentBlock!.number;       const blockHash = currentBlock!.hash;              // Compute hash % difficulty       const hashMod = BigInt(blockHash) % BigInt(difficulty);              if (hashMod === BigInt(4)) { // difficulty/2 - 1 = 4         targetBlockNumber = blockNum;         foundBlock = true;         break;       }     }          expect(foundBlock).to.be.true;          // Now the player calls play() - the timestamp should be set to the block where they wagered     // We need to simulate that the player's timestamp is from a previous block     // Since we already mined blocks after the wager, the condition blockNumber < block.number should hold          // Get the player's wager block number (the block where wager was called)     // We can't directly access timestamps mapping, but we know wager was called before the mined blocks          // Call play() - this should succeed and compute winningNumber     // In the original: (hash % 10) + 1 = 5 => win     // In the mutant: (hash % 10) - 1 = 3 => lose (because hash % 10 = 4, minus 1 = 3, not equal to 5)          // Get balance before play     const playerBalanceBefore = await ethers.provider.getBalance(player.address);     const contractBalanceBefore = await ethers.provider.getBalance(instance.target);          // Execute play     const tx = await instance.connect(player).play();     const receipt = await tx.wait();          // Check the outcome - in original, player should win and receive half the contract balance     // In mutant, player should lose and whale receives betLimit/2          // For the original: payout sends address(this).balance / 2 to winner     // For the mutant: loseWager sends betLimit / 2 to whale          const playerBalanceAfter = await ethers.provider.getBalance(player.address);     const contractBalanceAfter = await ethers.provider.getBalance(instance.target);          // In the original, player's balance increases by contractBalanceBefore / 2     // In the mutant, player's balance stays the same (they lose) and whale gets betLimit/2          // The test should FAIL on the mutant because the original would succeed with a win     // but the mutant produces a loss          // Assert that the player received the payout (this should fail on mutant)     const expectedPayout = contractBalanceBefore / 2n;     expect(playerBalanceAfter - playerBalanceBefore).to.equal(expectedPayout);          // Also verify the Win event was emitted (original behavior)     await expect(tx)       .to.emit(instance, "Win")       .withArgs(expectedPayout, player.address);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PoCGame { modifier onlyOwner() { require(msg.sender == owner); _; } modifier isOpenToPublic() { require(openToPublic); _; } modifier onlyRealPeople() { require(msg.sender == tx.origin); _; } modifier onlyPlayers() { require(wagers[msg.sender] > 0); _; } event Wager(uint256 amount, address depositer); event Win(uint256 amount, address paidTo); event Lose(uint256 amount, address loser); event Donate(uint256 amount, address paidTo, address donator); event DifficultyChanged(uint256 currentDifficulty); event BetLimitChanged(uint256 currentBetLimit); address private whale; uint256 betLimit; uint difficulty; uint private randomSeed; address owner; mapping(address => uint256) timestamps; mapping(address => uint256) wagers; bool openToPublic; uint256 totalDonated; constructor(address whaleAddress, uint256 wagerLimit) public { openToPublic = false; owner = payable(msg.sender); whale = whaleAddress; totalDonated = 0; betLimit = wagerLimit; } function OpenToThePublic()  public onlyOwner() { openToPublic = true; } function AdjustBetAmounts(uint256 amount)  public onlyOwner() { betLimit = amount; emit BetLimitChanged(betLimit); } function AdjustDifficulty(uint256 amount)  public onlyOwner() { difficulty = amount; emit DifficultyChanged(difficulty); } fallback() external payable {} function wager()  public isOpenToPublic() onlyRealPeople() payable { require(msg.value == betLimit); require(wagers[msg.sender] == 0); timestamps[msg.sender] = block.number; wagers[msg.sender] = msg.value; emit Wager(msg.value, msg.sender); } function play()  public isOpenToPublic() onlyRealPeople() onlyPlayers() { uint256 blockNumber = timestamps[msg.sender]; if (blockNumber < block.number) { timestamps[msg.sender] = 0; wagers[msg.sender] = 0; uint256 winningNumber = uint256(keccak256(abi.encodePacked(blockhash(blockNumber), msg.sender, randomSeed))) % difficulty + 1; if (winningNumber == difficulty / 2) { payout(msg.sender); } else { loseWager(betLimit / 2); } } else { revert(); } } function donate()  public isOpenToPublic() payable { donateToWhale(msg.value); } function payout(address winner) internal { uint256 ethToTransfer = address(this).balance / 2; payable(winner).transfer(ethToTransfer); emit Win(ethToTransfer, winner); } function donateToWhale(uint256 amount) internal { { (bool _s,) = whale.call{value: amount}(""); require(_s); } totalDonated += amount; emit Donate(amount, whale, msg.sender); } function loseWager(uint256 amount) internal { { (bool _s,) = whale.call{value: amount}(""); require(_s); } totalDonated += amount; emit Lose(amount, msg.sender); } function ethBalance() public view returns (uint256) { return address(this).balance; } function currentDifficulty() public view returns (uint256) { return difficulty; } function currentBetLimit() public view returns (uint256) { return betLimit; } function hasPlayerWagered(address player) public view returns (bool) { return wagers[player] > 0; } function winnersPot() public view returns (uint256) { return address(this).balance / 2; } function transferAnyERC20Token(address tokenAddress, address tokenOwner, uint tokens) public onlyOwner() returns (bool success) { return ERC20Interface(tokenAddress).transfer(tokenOwner, tokens); } } abstract contract ERC20Interface { function transfer(address to, uint256 tokens) virtual public returns (bool success); }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PoCGame mutant kill test - m3aaea072", function () {
+  it("should detect the mutant where +1 is replaced with -1 in winningNumber calculation", async function () {
+    const [owner, player, whale] = await ethers.getSigners();
+    
+    // Deploy with required constructor arguments: whaleAddress, wagerLimit
+    const betLimit = ethers.parseEther("1");
+    const Factory = await ethers.getContractFactory("PoCGame");
+    const instance = await Factory.deploy(whale.address, betLimit);
+    await instance.waitForDeployment();
+    
+    // Set difficulty to a known value for predictable testing
+    const difficulty = 10; // Must be >= 2 so that difficulty/2 = 5
+    await instance.connect(owner).AdjustDifficulty(difficulty);
+    
+    // Open the contract to the public
+    await instance.connect(owner).OpenToThePublic();
+    
+    // Player makes a wager
+    await instance.connect(player).wager({ value: betLimit });
+    
+    // Mine a block to advance block.number so blockhash is available
+    await ethers.provider.send("evm_mine", []);
+    
+    // Calculate the expected winning condition for the ORIGINAL contract:
+    // winningNumber = (hash % difficulty) + 1
+    // We need (hash % difficulty) + 1 == difficulty / 2 => (hash % difficulty) == difficulty/2 - 1 = 4
+    // So we need to find a blockhash such that (uint256(blockhash) % 10) == 4
+    // We'll mine blocks until we find such a block
+    
+    let foundBlock = false;
+    let targetBlockNumber;
+    
+    for (let i = 0; i < 100; i++) {
+      await ethers.provider.send("evm_mine", []);
+      const currentBlock = await ethers.provider.getBlock("latest");
+      const blockNum = currentBlock!.number;
+      const blockHash = currentBlock!.hash;
+      
+      // Compute hash % difficulty
+      const hashMod = BigInt(blockHash) % BigInt(difficulty);
+      
+      if (hashMod === BigInt(4)) { // difficulty/2 - 1 = 4
+        targetBlockNumber = blockNum;
+        foundBlock = true;
+        break;
+      }
+    }
+    
+    expect(foundBlock).to.be.true;
+    
+    // Now the player calls play() - the timestamp should be set to the block where they wagered
+    // We need to simulate that the player's timestamp is from a previous block
+    // Since we already mined blocks after the wager, the condition blockNumber < block.number should hold
+    
+    // Get the player's wager block number (the block where wager was called)
+    // We can't directly access timestamps mapping, but we know wager was called before the mined blocks
+    
+    // Call play() - this should succeed and compute winningNumber
+    // In the original: (hash % 10) + 1 = 5 => win
+    // In the mutant: (hash % 10) - 1 = 3 => lose (because hash % 10 = 4, minus 1 = 3, not equal to 5)
+    
+    // Get balance before play
+    const playerBalanceBefore = await ethers.provider.getBalance(player.address);
+    const contractBalanceBefore = await ethers.provider.getBalance(instance.target);
+    
+    // Execute play
+    const tx = await instance.connect(player).play();
+    const receipt = await tx.wait();
+    
+    // Check the outcome - in original, player should win and receive half the contract balance
+    // In mutant, player should lose and whale receives betLimit/2
+    
+    // For the original: payout sends address(this).balance / 2 to winner
+    // For the mutant: loseWager sends betLimit / 2 to whale
+    
+    const playerBalanceAfter = await ethers.provider.getBalance(player.address);
+    const contractBalanceAfter = await ethers.provider.getBalance(instance.target);
+    
+    // In the original, player's balance increases by contractBalanceBefore / 2
+    // In the mutant, player's balance stays the same (they lose) and whale gets betLimit/2
+    
+    // The test should FAIL on the mutant because the original would succeed with a win
+    // but the mutant produces a loss
+    
+    // Assert that the player received the payout (this should fail on mutant)
+    const expectedPayout = contractBalanceBefore / 2n;
+    expect(playerBalanceAfter - playerBalanceBefore).to.equal(expectedPayout);
+    
+    // Also verify the Win event was emitted (original behavior)
+    await expect(tx)
+      .to.emit(instance, "Win")
+      .withArgs(expectedPayout, player.address);
+  });
+});
+```

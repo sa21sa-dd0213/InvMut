@@ -1,0 +1,36 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract ACCURAL_DEPOSIT:
+        Contract Code: pragma solidity ^0.8.0; contract ACCURAL_DEPOSIT { mapping (address=>uint256) public balances; uint public MinSum = 1 ether; LogFile Log = LogFile(0x0486cF65A2F2F3A392CBEa398AFB7F5f0B72FF46); bool intitalized; function SetMinSum(uint _val) public { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log) public { if(intitalized)revert(); Log = LogFile(_log); } function Initialized() public { intitalized = true; } function Deposit() public payable { require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); balances[msg.sender]+= msg.value; Log.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { if(balances[msg.sender]>=MinSum && balances[msg.sender]>=_am) { balances[msg.sender] = (balances[msg.sender] - _am); (bool _veri_ok,) = msg.sender.call{value: _am}(""); if(_veri_ok) { Log.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } receive() external payable { Deposit(); } } contract LogFile { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val,string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+
+    Consider the following mutant of ACCURAL_DEPOSIT:
+        Mutant m2b350671 of function Deposit replaces + with -
+        Mutant Diff: ---|         require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); +++|         require(((balances[msg.sender] - msg.value) >= balances[msg.sender]));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let’s reason step-by-step.
+
+The original `Deposit` function contains a safety check:
+
+```solidity
+require(((balances[msg.sender] + msg.value) >= balances[msg.sender]));
+```
+
+This is a classic overflow guard — it ensures the addition doesn’t wrap around (underflow is impossible here because both values are non-negative). In the mutant, the `+` is changed to `-`:
+
+```solidity
+require(((balances[msg.sender] - msg.value) >= balances[msg.sender]));
+```
+
+Now, for any positive `msg.value`, the left side (`balance - msg.value`) will always be less than `balance` (assuming no underflow), so the condition will **always be false** unless `msg.value == 0`. This means the mutant will revert for any legitimate deposit of a positive amount.
+
+**Hypothesis:**  
+A test case that sends a positive amount of ether (e.g., 1 wei) to the `Deposit` function (or via the `receive` fallback) and expects the transaction to succeed (i.e., the balance to increase) should pass on the original contract but will revert on the mutant, thereby killing it.

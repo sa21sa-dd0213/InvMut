@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0002",
+ "property_summary": "For any single valid play() call sending exactly TICKET_AMOUNT, the reference contract always leaves pot equal to either 0 (if payout occurred) or TICKET_AMOUNT (if payout did not occur); the mutant can produce other pot values by shifting which random branch triggers payout.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Change the branch condition to trigger payout when random == 1 instead of 0, which moves when pot is reset and thus observable.",
+ "mutated_unit_code": "function play()  public payable {\n        require(msg.value == TICKET_AMOUNT);\n        pot += msg.value;\n\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n\n        if (random == 1) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    uint constant TICKET = 10;\n\n    function setUp() public { c = new EtherLotto(); }\n\n    function testFuzz_property(address player) public {\n        vm.assume(player != address(0));\n\n        vm.deal(player, 1 ether);\n\n        vm.prank(player);\n        c.play{value: TICKET}();\n\n        uint p = c.pot();\n        assertTrue(p == 0 || p == TICKET);\n    }\n}\n"
+}

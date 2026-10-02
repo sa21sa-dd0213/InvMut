@@ -1,0 +1,40 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("ReentrancyDAO mutant detection", function () {     it("should revert when user with zero credit calls withdrawAll (kills mutant mc5cbb662)", async function () {         const [owner, addr1] = await ethers.getSigners();         const Factory = await ethers.getContractFactory("ReentrancyDAO");         const instance = await Factory.deploy();         await instance.waitForDeployment();          // addr1 has zero credit (no deposit made)         // The mutant allows execution even with zero credit (oCredit >= 0)         // The original would skip the if block when oCredit == 0         // The mutant will try to send 0 ether via call and set credit to 0                  // We expect this to revert because the mutant's call will attempt         // to execute the withdrawal logic for zero balance, which may fail         // due to the call() behavior with 0 value or because the require(callResult)         // will fail when sending 0 ether to a contract         await expect(             instance.connect(addr1).withdrawAll()         ).to.be.reverted;     }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuardPlus { constructor() { __lock_modifier0_lock = false; } bool private __lock_modifier0_lock; modifier __lock_modifier0() { require(!__lock_modifier0_lock); __lock_modifier0_lock = true; _; __lock_modifier0_lock = false; } } contract ReentrancyDAO is sGuardPlus { mapping (address  => uint )    credit; uint     balance; function withdrawAll () public __lock_modifier0  { uint     oCredit = credit[msg.sender]; if (oCredit>0) { balance-=oCredit; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); credit[msg.sender]=0; } } function deposit () public payable { credit[msg.sender]+=msg.value; balance+=msg.value; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ReentrancyDAO mutant detection", function () {
+    it("should revert when user with zero credit calls withdrawAll (kills mutant mc5cbb662)", async function () {
+        const [owner, addr1] = await ethers.getSigners();
+        const Factory = await ethers.getContractFactory("ReentrancyDAO");
+        const instance = await Factory.deploy();
+        await instance.waitForDeployment();
+
+        // addr1 has zero credit (no deposit made)
+        // The mutant allows execution even with zero credit (oCredit >= 0)
+        // The original would skip the if block when oCredit == 0
+        // The mutant will try to send 0 ether via call and set credit to 0
+        
+        // We expect this to revert because the mutant's call will attempt
+        // to execute the withdrawal logic for zero balance, which may fail
+        // due to the call() behavior with 0 value or because the require(callResult)
+        // will fail when sending 0 ether to a contract
+        await expect(
+            instance.connect(addr1).withdrawAll()
+        ).to.be.reverted;
+    });
+});
+```

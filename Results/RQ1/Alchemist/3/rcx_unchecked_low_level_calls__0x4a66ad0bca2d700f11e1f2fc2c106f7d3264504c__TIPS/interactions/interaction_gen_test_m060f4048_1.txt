@@ -1,0 +1,73 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m060f4048 of EBU.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EBU.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EBU:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EBU reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EBU by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EBU"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant kill test - m060f4048", function () {
+  it("should kill the mutant by detecting exponentiation instead of multiplication", async function () {
+    // Deploy the contract (no constructor arguments needed as per original EBU)
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // The contract's from address is hardcoded as 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9
+    const fromAddress = "0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9";
+    
+    // Impersonate the from address to call transfer (since require(msg.sender == fromAddress))
+    await hre.network.provider.request({
+      method: "hardhat_impersonateAccount",
+      params: [fromAddress],
+    });
+    const signer = await ethers.getSigner(fromAddress);
+    
+    // Fund the impersonated account with some ETH for gas
+    await owner.sendTransaction({
+      to: fromAddress,
+      value: ethers.parseEther("1.0"),
+    });
+
+    // Prepare test data: use v[i] = 2, which will expose the difference
+    // Original: 2 * 1e18 = 2e18
+    // Mutant:   2 ** 1e18 = astronomically large (will overflow or revert)
+    const recipients = [addr1.address];
+    const values = [2]; // 2 tokens
+    
+    // Attach the contract instance to the impersonated signer
+    const contractWithSigner = instance.connect(signer);
+    
+    // The mutant will either:
+    // 1. Revert due to arithmetic overflow (exponentiation produces huge number)
+    // 2. If it somehow doesn't revert, the transfer amount will be wrong
+    
+    // We expect the call to revert because 2 ** 1e18 far exceeds uint256 max
+    await expect(
+      contractWithSigner.transfer(recipients, values)
+    ).to.be.reverted;
+    
+    // Clean up impersonation
+    await hre.network.provider.request({
+      method: "hardhat_stopImpersonatingAccount",
+      params: [fromAddress],
+    });
+  });
+});
+```

@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tcb9cac06",
+ "property_summary": "After a successful withdrawBalance call by any user, the contract's userBalance for that user is zero in the correct version; the mutant that fails to reset the reentrancy lock can cause withdrawBalance to revert on subsequent interactions (or leave the balance non-zero), so there exist inputs (an attacker that reverts on call) that make the mutant violate this invariant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Remove lock reset after the guarded call so that locked_ remains true, causing subsequent calls (including withdrawBalance) to revert due to the require, altering observable behavior.",
+ "mutated_unit_code": "modifier nonReentrant_() {\n    require(!locked_);\n    locked_ = true;\n    _;\n}\n",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n\n    function testFuzz_property(address depositor, uint256 amount) public {\n        vm.assume(depositor != address(0));\n        amount = bound(amount, 1, 1e18);\n\n        vm.deal(depositor, amount);\n        vm.prank(depositor);\n        c.addToBalance{value: amount}();\n\n        Reverter r = new Reverter();\n\n        vm.deal(address(r), amount);\n        vm.prank(address(r));\n        c.addToBalance{value: amount}();\n\n        bool ok;\n        try c.withdrawBalance{gas: gasleft()}() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        if (ok) {\n            assertTrue(c.getBalance(address(r)) == 0);\n        } else {\n            assertTrue(c.getBalance(address(r)) == amount);\n        }\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"revert on receive\");\n    }\n    receive() external payable {\n        revert(\"revert on receive\");\n    }\n}\n"
+}

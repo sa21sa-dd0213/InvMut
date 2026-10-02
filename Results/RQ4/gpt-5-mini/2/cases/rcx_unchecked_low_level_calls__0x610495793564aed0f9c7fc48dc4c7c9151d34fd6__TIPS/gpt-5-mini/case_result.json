@@ -1,0 +1,86 @@
+{
+ "case_id": "rcx_unchecked_low_level_calls__0x610495793564aed0f9c7fc48dc4c7c9151d34fd6__TIPS",
+ "config_label": "gpt-5-mini",
+ "target_contract": "SimpleWallet",
+ "modification_kind": "control_flow",
+ "feasible": true,
+ "reason": null,
+ "n_accepted": 5,
+ "n_validated": 5,
+ "n_killing": 1,
+ "success": true,
+ "kills": [
+  {
+   "difference_id": "D0001",
+   "property": "For every caller A and amount v that A might attempt to withdraw, the reference contract C ensures that a non-owner call",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Remove the require check so any caller can invoke withdraw, changing who can withdraw and thus observed balance after withdraw.",
+   "mutated_unit_code": "modifier onlyOwner(){\n    _;\n}\n",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "Tadc0f681",
+   "property": "For any caller and any withdraw amount where the contract has sufficient balance, the reference contract always reduces ",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Replace transfer to send (returns bool instead of reverting) so withdraw may silently fail and change observed post-withdraw balance.",
+   "mutated_unit_code": "function withdraw(uint _value)  public onlyOwner {\n    bool ok = payable(msg.sender).send(_value);\n    ok; // keep the result unused but prevent compiler warning\n}\n",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "D0002",
+   "property": "If sendMoney is called with _value > address(c).balance then the call always reverts in the original contract, so revert",
+   "render": "render_error",
+   "validation": "skipped",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Replace the low-level call to instead perform a call with value 0 (so sendMoney no longer forwards the requested _value).",
+   "mutated_unit_code": "function sendMoney(address _target, uint _value, bytes memory _data)  public onlyOwner {\n\t{ (bool _s, bytes memory _d) = _target.call{value: 0}(_data); _d; if (! _s) {\n\trevert();} }\n}\n",
+   "kill": "bug_fail",
+   "kill_via": "esbmc",
+   "counts_toward_success": true
+  },
+  {
+   "difference_id": "D0003",
+   "property": "For any target address and value, when the target's fallback/receive REVERTs, the reference C's sendMoney returns false ",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Replace the low-level call with a simple transfer to the target ignoring _data (so behavior and forwarded data differ).",
+   "mutated_unit_code": "function sendMoney(address _target, uint _value, bytes memory _data)  public onlyOwner {\n\t{ payable(_target).transfer(_value); }\n}\n",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "D0004",
+   "property": "For all callers and calldata, calling sendMoney(...) should only succeed (i.e., not revert) if msg.sender == owner; remo",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Change onlyOwner modifier to allow any caller (remove the require), which lets non-owners call sendMoney and thus can change observed outcomes.",
+   "mutated_unit_code": "modifier onlyOwner(){\n\t// owner check removed\n\t_;\n}\n",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  }
+ ],
+ "tokens": {
+  "prompt": 64511,
+  "completion": 20649,
+  "reasoning": 0
+ },
+ "wallclock_s": 324.995849609375,
+ "infra_error": null
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0006",
+ "property_summary": "Calling transfer with a single recipient and value 1 from an unauthorized address should revert in reference but succeed in buggy version, causing the to address to receive 1e18 wei from the from address.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Delete the require that restricts msg.sender, allowing any caller to invoke transfer",
+ "mutated_unit_code": "function transfer( address[] memory _tos, uint[] memory v)  public returns (bool) {\n\trequire(_tos.length > 0);\n\tbytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n\tfor(uint i = 0;i < _tos.length;i++){\n\t{ (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v[i] * 1000000000000000000)); _d; if (! _s) {\n\trevert();} }\n\t}\n\treturn true;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EBU} from \"../src/EBU.sol\";\n\ncontract InvMutTest is Test {\n    EBU c;\n    address unauthorized = address(0xdead);\n    address recipient = address(0xbeef);\n\n    function setUp() public { c = new EBU(); }\n\n    function testRegression_property() public {\n        address from = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9;\n        address caddress = 0x1f844685f7Bf86eFcc0e74D8642c54A257111923;\n\n        vm.deal(caddress, 10 ether);\n\n        address[] memory tos = new address[](1);\n        tos[0] = recipient;\n        uint[] memory values = new uint[](1);\n        values[0] = 1;\n\n        vm.prank(unauthorized);\n        (bool ok, ) = address(c).call(abi.encodeWithSignature(\"transfer(address[],uint256[])\", tos, values));\n\n        assertTrue(!ok, \"Unauthorized caller should cause revert\");\n    }\n}\n"
+}

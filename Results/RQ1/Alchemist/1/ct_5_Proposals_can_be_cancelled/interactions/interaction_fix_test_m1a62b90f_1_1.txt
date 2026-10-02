@@ -1,0 +1,82 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("DAO mutant m1a62b90f - hasQuorum explicit else branch", function () {   it("should return false when votes are less than or equal to quorum threshold", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy mock Vault that returns a fixed totalWeight     const MockVault = await ethers.getContractFactory("MockVault");     const mockVault = await MockVault.deploy();     await mockVault.waitForDeployment();          // Deploy DAO with mock addresses     const Factory = await ethers.getContractFactory("DAO");     const dao = await Factory.deploy();     await dao.waitForDeployment();          // Initialize DAO with mock addresses     const mockVader = ethers.ZeroAddress;     const mockUsdv = ethers.ZeroAddress;     await dao.init(mockVader, mockUsdv, await mockVault.getAddress());          // Create a proposal to have a proposalID to test hasQuorum     await dao.newAddressProposal(addr1.address, "GRANT");          // Set totalWeight to a known value via mock     const totalWeight = ethers.parseEther("100");     await mockVault.setTotalWeight(totalWeight);          // Calculate quorum threshold: totalWeight / 3     const quorumThreshold = totalWeight / 3n;          // Test case 1: votes equal to quorum threshold should return false     // We need to manipulate the internal state to set votes exactly to quorumThreshold     // Since we can't directly set votes, we'll simulate by having a voter with weight = quorumThreshold     // and then call hasQuorum after voting          // First, set the member weight for addr1 to exactly quorumThreshold     await mockVault.setMemberWeight(addr1.address, quorumThreshold);          // Vote on proposal 1     await dao.connect(addr1).voteProposal(1);          // Now votes should be quorumThreshold, which is NOT greater than consensus (quorumThreshold)     // hasQuorum should return false     const result = await dao.hasQuorum(1);     expect(result).to.equal(false);          // Test case 2: votes just above quorum threshold should return true     const aboveQuorum = quorumThreshold + 1n;     await mockVault.setMemberWeight(addr1.address, aboveQuorum);     // Create new proposal     await dao.newAddressProposal(addr1.address, "GRANT");     await dao.connect(addr1).voteProposal(2);     const result2 = await dao.hasQuorum(2);     expect(result2).to.equal(true);          // Test case 3: votes significantly below quorum threshold should return false     const belowQuorum = 1n;     await mockVault.setMemberWeight(addr1.address, belowQuorum);     await dao.newAddressProposal(addr1.address, "GRANT");     await dao.connect(addr1).voteProposal(3);     const result3 = await dao.hasQuorum(3);     expect(result3).to.equal(false);   }); });  // Mock contract to control totalWeight and member weights const MockVaultArtifact = {   abi: [     "function totalWeight() external view returns (uint)",     "function getMemberWeight(address) external view returns (uint)",     "function setTotalWeight(uint) external",     "function setMemberWeight(address, uint) external"   ],   bytecode: "0x608060405234801561001057600080fd5b5061012a806100206000396000f3fe6080604052348015600f57600080fd5b5060043610603c5760003560e01c80631e89d5451460415780633a98ef3914605b578063790fec61146071575b600080fd5b604960005481565b60405190815260200160405180910390f35b60496069565b60405190815260200160405180910390f35b6083607f36600460c4565b50600055565b005b60405180910390f35b600080546001600160a01b03831682526001602052604090912054919050565b60006020828403121560bf57600080fd5b5035919050565b60006020828403121560d557600080fd5b81356001600160a01b038116811460eb57600080fd5b939250505056fea2646970667358221220a8b5e2b9c5f1c5b5c5b5c5b5c5b5c5b5c5b5c5b5c5b5c5b5c5b5c5b5c5b5c5b5c64736f6c63430008120033" };
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; interface iERC20 { function name() external view returns (string memory); function symbol() external view returns (string memory); function decimals() external view returns (uint); function totalSupply() external view returns (uint); function balanceOf(address account) external view returns (uint); function transfer(address, uint) external returns (bool); function allowance(address owner, address spender) external view returns (uint); function approve(address, uint) external returns (bool); function transferFrom(address, address, uint) external returns (bool); function transferTo(address, uint) external returns (bool); function burn(uint) external; function burnFrom(address, uint) external; event Transfer(address indexed from, address indexed to, uint value); event Approval(address indexed owner, address indexed spender, uint value); } interface iVADER { function UTILS() external view returns (address); function DAO() external view returns (address); function emitting() external view returns (bool); function minting() external view returns (bool); function secondsPerEra() external view returns (uint); function flipEmissions() external; function flipMinting() external; function setParams(uint newEra, uint newCurve) external; function setRewardAddress(address newAddress) external; function changeUTILS(address newUTILS) external; function changeDAO(address newDAO) external; function purgeDAO() external; function upgrade(uint amount) external; function redeem() external returns (uint); function redeemToMember(address member) external returns (uint); } interface iVAULT { function setParams(uint newEra, uint newDepositTime, uint newGrantTime) external; function grant(address recipient, uint amount) external; function deposit(address synth, uint amount) external; function depositForMember(address synth, address member, uint amount) external; function harvest(address synth) external returns (uint reward); function calcCurrentReward(address synth, address member) external view returns (uint reward); function calcReward(address synth, address member) external view returns (uint); function withdraw(address synth, uint basisPoints) external returns (uint redeemedAmount); function totalWeight() external view returns (uint); function reserveUSDV() external view returns (uint); function reserveVADER() external view returns (uint); function getMemberDeposit(address synth, address member) external view returns (uint); function getMemberWeight(address member) external view returns (uint); function getMemberLastTime(address synth, address member) external view returns (uint); } contract DAO { struct GrantDetails{ address recipient; uint amount; } bool private inited; uint public proposalCount; address public VADER; address public USDV; address public VAULT; uint public coolOffPeriod; mapping(uint => GrantDetails) public mapPID_grant; mapping(uint => address) public mapPID_address; mapping(uint => string) public mapPID_type; mapping(uint => uint) public mapPID_votes; mapping(uint => uint) public mapPID_timeStart; mapping(uint => bool) public mapPID_finalising; mapping(uint => bool) public mapPID_finalised; mapping(uint => mapping(address => uint)) public mapPIDMember_votes; event NewProposal(address indexed member, uint indexed proposalID, string proposalType); event NewVote(address indexed member, uint indexed proposalID, uint voteWeight, uint totalVotes, string proposalType); event ProposalFinalising(address indexed member,uint indexed proposalID, uint timeFinalised, string proposalType); event CancelProposal(address indexed member, uint indexed oldProposalID, uint oldVotes, uint newVotes, uint totalWeight); event FinalisedProposal(address indexed member,uint indexed proposalID, uint votesCast, uint totalWeight, string proposalType); constructor() { } function init(address _vader, address _usdv, address _vault) public { require(inited == false); inited = true; VADER = _vader; USDV = _usdv; VAULT = _vault; coolOffPeriod = 1; } function newGrantProposal(address recipient, uint amount) public { string memory typeStr = "GRANT"; proposalCount += 1; mapPID_type[proposalCount] = typeStr; GrantDetails memory grant; grant.recipient = recipient; grant.amount = amount; mapPID_grant[proposalCount] = grant; emit NewProposal(msg.sender, proposalCount, typeStr); } function newAddressProposal(address proposedAddress, string memory typeStr) public { proposalCount += 1; mapPID_address[proposalCount] = proposedAddress; mapPID_type[proposalCount] = typeStr; emit NewProposal(msg.sender, proposalCount, typeStr); } function voteProposal(uint proposalID) public returns (uint voteWeight) { bytes memory _type = bytes(mapPID_type[proposalID]); voteWeight = countMemberVotes(proposalID); if(hasQuorum(proposalID) && mapPID_finalising[proposalID] == false){ if(isEqual(_type, 'DAO') || isEqual(_type, 'UTILS') || isEqual(_type, 'REWARD')){ if(hasMajority(proposalID)){ _finalise(proposalID); } } else { _finalise(proposalID); } } emit NewVote(msg.sender, proposalID, voteWeight, mapPID_votes[proposalID], string(_type)); } function _finalise(uint _proposalID) internal { bytes memory _type = bytes(mapPID_type[_proposalID]); mapPID_finalising[_proposalID] = true; mapPID_timeStart[_proposalID] = block.timestamp; emit ProposalFinalising(msg.sender, _proposalID, block.timestamp+coolOffPeriod, string(_type)); } function cancelProposal(uint oldProposalID, uint newProposalID) public { require(mapPID_finalising[oldProposalID], "Must be finalising"); require(newProposalID != oldProposalID, "New proposal ID must be different from old proposal ID"); require(hasMinority(newProposalID), "Must have minority"); require(isEqual(bytes(mapPID_type[oldProposalID]), bytes(mapPID_type[newProposalID])), "Must be same"); mapPID_votes[oldProposalID] = 0; emit CancelProposal(msg.sender, oldProposalID, mapPID_votes[oldProposalID], mapPID_votes[newProposalID], iVAULT(VAULT).totalWeight()); } function finaliseProposal(uint proposalID) public  { require((block.timestamp - mapPID_timeStart[proposalID]) > coolOffPeriod, "Must be after cool off"); require(mapPID_finalising[proposalID] == true, "Must be finalising"); if(!hasQuorum(proposalID)){ _finalise(proposalID); } bytes memory _type = bytes(mapPID_type[proposalID]); if (isEqual(_type, 'GRANT')){ grantFunds(proposalID); } else if (isEqual(_type, 'UTILS')){ moveUtils(proposalID); } else if (isEqual(_type, 'REWARD')){ moveRewardAddress(proposalID); } } function completeProposal(uint _proposalID) internal { string memory _typeStr = mapPID_type[_proposalID]; emit FinalisedProposal(msg.sender, _proposalID, mapPID_votes[_proposalID], iVAULT(VAULT).totalWeight(), _typeStr); mapPID_votes[_proposalID] = 0; mapPID_finalised[_proposalID] = true; mapPID_finalising[_proposalID] = false; } function grantFunds(uint _proposalID) internal { GrantDetails memory _grant = mapPID_grant[_proposalID]; require(_grant.amount <= iERC20(USDV).balanceOf(VAULT) / 10, "Not more than 10%"); completeProposal(_proposalID); iVAULT(VAULT).grant(_grant.recipient, _grant.amount); } function moveUtils(uint _proposalID) internal { address _proposedAddress = mapPID_address[_proposalID]; require(_proposedAddress != address(0), "No address proposed"); iVADER(VADER).changeUTILS(_proposedAddress); completeProposal(_proposalID); } function moveRewardAddress(uint _proposalID) internal { address _proposedAddress = mapPID_address[_proposalID]; require(_proposedAddress != address(0), "No address proposed"); iVADER(VADER).setRewardAddress(_proposedAddress); completeProposal(_proposalID); } function countMemberVotes(uint _proposalID) internal returns (uint voteWeight){ mapPID_votes[_proposalID] -= mapPIDMember_votes[_proposalID][msg.sender]; voteWeight = iVAULT(VAULT).getMemberWeight(msg.sender); mapPID_votes[_proposalID] += voteWeight; mapPIDMember_votes[_proposalID][msg.sender] = voteWeight; } function hasMajority(uint _proposalID) public view returns (bool){ uint votes = mapPID_votes[_proposalID]; uint consensus = iVAULT(VAULT).totalWeight() / 2; if(votes > consensus){ return true; } else { return false; } } function hasQuorum(uint _proposalID) public view returns (bool){ uint votes = mapPID_votes[_proposalID]; uint consensus = iVAULT(VAULT).totalWeight() / 3; if(votes > consensus){ return true; } else { return false; } } function hasMinority(uint _proposalID) public view returns (bool){ uint votes = mapPID_votes[_proposalID]; uint consensus = iVAULT(VAULT).totalWeight() / 6; if(votes > consensus){ return true; } else { return false; } } function isEqual(bytes memory part1, bytes memory part2) public pure returns (bool){ if(sha256(part1) == sha256(part2)){ return true; } else { return false; } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DAO mutant m1a62b90f - hasQuorum explicit else branch", function () {
+  it("should return false when votes are less than or equal to quorum threshold", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy mock Vault that returns a fixed totalWeight
+    const MockVault = await ethers.getContractFactory("MockVault");
+    const mockVault = await MockVault.deploy();
+    await mockVault.waitForDeployment();
+
+    // Deploy DAO with mock addresses
+    const Factory = await ethers.getContractFactory("DAO");
+    const dao = await Factory.deploy();
+    await dao.waitForDeployment();
+
+    // Initialize DAO with mock addresses
+    const mockVader = ethers.ZeroAddress;
+    const mockUsdv = ethers.ZeroAddress;
+    await dao.init(mockVader, mockUsdv, await mockVault.getAddress());
+
+    // Create a proposal to have a proposalID to test hasQuorum
+    await dao.newAddressProposal(addr1.address, "GRANT");
+
+    // Set totalWeight to a known value via mock
+    const totalWeight = ethers.parseEther("100");
+    await mockVault.setTotalWeight(totalWeight);
+
+    // Calculate quorum threshold: totalWeight / 3
+    const quorumThreshold = totalWeight / 3n;
+
+    // Test case 1: votes equal to quorum threshold should return false
+    // We need to manipulate the internal state to set votes exactly to quorumThreshold
+    // Since we can't directly set votes, we'll simulate by having a voter with weight = quorumThreshold
+    // and then call hasQuorum after voting
+
+    // First, set the member weight for addr1 to exactly quorumThreshold
+    await mockVault.setMemberWeight(addr1.address, quorumThreshold);
+
+    // Vote on proposal 1
+    await dao.connect(addr1).voteProposal(1);
+
+    // Now votes should be quorumThreshold, which is NOT greater than consensus (quorumThreshold)
+    // hasQuorum should return false
+    const result = await dao.hasQuorum(1);
+    expect(result).to.equal(false);
+
+    // Test case 2: votes just above quorum threshold should return true
+    const aboveQuorum = quorumThreshold + 1n;
+    await mockVault.setMemberWeight(addr1.address, aboveQuorum);
+    // Create new proposal
+    await dao.newAddressProposal(addr1.address, "GRANT");
+    await dao.connect(addr1).voteProposal(2);
+    const result2 = await dao.hasQuorum(2);
+    expect(result2).to.equal(true);
+
+    // Test case 3: votes significantly below quorum threshold should return false
+    const belowQuorum = 1n;
+    await mockVault.setMemberWeight(addr1.address, belowQuorum);
+    await dao.newAddressProposal(addr1.address, "GRANT");
+    await dao.connect(addr1).voteProposal(3);
+    const result3 = await dao.hasQuorum(3);
+    expect(result3).to.equal(false);
+  });
+});
+```

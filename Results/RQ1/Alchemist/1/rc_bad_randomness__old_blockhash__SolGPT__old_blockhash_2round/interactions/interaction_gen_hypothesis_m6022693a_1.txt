@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract PredictTheBlockHashChallenge:
+        Contract Code: pragma solidity ^0.8.0; contract PredictTheBlockHashChallenge { struct Guess { uint block; bytes32 guess; } mapping(address => Guess) guesses; constructor() public payable { require(msg.value == 1 ether); } function lockInGuess(bytes32 hash) public payable { require(guesses[msg.sender].block == 0); require(msg.value == 1 ether); guesses[msg.sender].guess = hash; guesses[msg.sender].block = block.number + 1; } function settle() public { require(guesses[msg.sender].block != 0); require(block.number > guesses[msg.sender].block); bytes32 answer = keccak256(abi.encodePacked(blockhash(guesses[msg.sender].block))); guesses[msg.sender].block = 0; if (guesses[msg.sender].guess == answer) { require(address(this).balance >= 2 ether); payable(msg.sender).transfer(2 ether); } } }
+
+    Consider the following mutant of PredictTheBlockHashChallenge:
+        Mutant m6022693a of function settle replaces blockhash(guesses[msg.sender].block) with 0
+        Mutant Diff: ---|         bytes32 answer = keccak256(abi.encodePacked(blockhash(guesses[msg.sender].block))); +++|         bytes32 answer = keccak256(abi.encodePacked(0));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract computes the answer as `keccak256(abi.encodePacked(blockhash(guesses[msg.sender].block)))`, while the mutant replaces `blockhash(guesses[msg.sender].block)` with the constant `0`. This means the mutant will always compare the user's guess against `keccak256(abi.encodePacked(0))`, regardless of the actual block hash.
+
+**Hypothesis:** A test case that locks in a guess equal to `keccak256(abi.encodePacked(0))` and then settles after the target block number has passed, expecting the contract to send 2 ether to the caller, should pass on the original contract only if the actual blockhash of the target block happens to be `0` (which is practically impossible). However, on the mutant, this test will always succeed because the mutant always compares against `keccak256(abi.encodePacked(0))`. Therefore, a test that locks in any guess that is **not** equal to `keccak256(abi.encodePacked(0))` and then settles after the target block, expecting the caller to **not** receive the 2 ether (i.e., the transfer does not happen), will pass on the original contract but fail on the mutant, because the mutant will incorrectly send the ether when the guess does not match the real blockhash.

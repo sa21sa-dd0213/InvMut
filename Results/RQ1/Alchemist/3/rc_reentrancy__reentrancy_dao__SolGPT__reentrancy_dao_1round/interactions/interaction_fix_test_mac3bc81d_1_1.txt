@@ -1,0 +1,48 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("ReentrancyDAO mutant test - mac3bc81d", function () {   it("should detect mutant that changes oCredit > 0 to false", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("ReentrancyDAO");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Deposit 1 ether from addr1     const depositAmount = ethers.parseEther("1");     await instance.connect(addr1).deposit({ value: depositAmount });      // Check initial balance of addr1 in contract     const initialCredit = await instance.credit(addr1.address);     expect(initialCredit).to.equal(depositAmount);      // Call withdrawAll from addr1     const tx = await instance.connect(addr1).withdrawAll();     await tx.wait();      // Verify that the withdrawal did NOT happen (mutant behavior)     // The credit should still be the deposit amount since condition is false     const finalCredit = await instance.credit(addr1.address);     expect(finalCredit).to.equal(depositAmount);      // Also verify contract balance remains unchanged     const contractBalance = await ethers.provider.getBalance(instance.target);     expect(contractBalance).to.equal(depositAmount);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract ReentrancyDAO { mapping (address => uint) credit; uint balance; function withdrawAll() public { uint oCredit = credit[msg.sender]; if (oCredit > 0) { balance -= oCredit; credit[msg.sender] = 0; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); } } function deposit() public payable { credit[msg.sender] += msg.value; balance += msg.value; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ReentrancyDAO mutant test - mac3bc81d", function () {
+  it("should detect mutant that changes oCredit > 0 to false", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("ReentrancyDAO");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deposit 1 ether from addr1
+    const depositAmount = ethers.parseEther("1");
+    await instance.connect(addr1).deposit({ value: depositAmount });
+
+    // Check initial balance of addr1 in contract
+    const initialCredit = await instance.credit(addr1.address);
+    expect(initialCredit).to.equal(depositAmount);
+
+    // Call withdrawAll from addr1
+    const tx = await instance.connect(addr1).withdrawAll();
+    await tx.wait();
+
+    // Verify that the withdrawal did NOT happen (mutant behavior)
+    // The credit should still be the deposit amount since condition is false
+    const finalCredit = await instance.credit(addr1.address);
+    expect(finalCredit).to.equal(depositAmount);
+
+    // Also verify contract balance remains unchanged
+    const contractBalance = await ethers.provider.getBalance(instance.target);
+    expect(contractBalance).to.equal(depositAmount);
+  });
+});
+```

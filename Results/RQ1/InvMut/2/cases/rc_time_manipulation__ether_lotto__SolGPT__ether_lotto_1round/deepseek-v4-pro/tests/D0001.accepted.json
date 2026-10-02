@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "For any sequence of calls to play(), the contract's pot after any call must equal the sum of ticket amounts received minus the amounts transferred on wins, which the reference satisfies and the buggy version violates because it never increments pot on ticket purchase.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Delete the line `pot += msg.value;` so that pot is not increased when a ticket is bought.",
+ "mutated_unit_code": "function play()  public payable {\n        require(msg.value == TICKET_AMOUNT);\n\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n\n        if (random == 0) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    function setUp() public { c = new EtherLotto(); }\n    function testFuzz_property(uint256 n) public {\n        vm.assume(n >= 1 && n <= 5);\n        for (uint256 i = 0; i < n; i++) {\n            address player = address(uint160(uint256(keccak256(abi.encode(i)))));\n            vm.deal(player, 10);\n            vm.prank(player);\n            c.play{value: 10}();\n        }\n        uint256 pot = c.pot();\n        uint256 expectedPot = address(c).balance;\n        assertEq(pot, expectedPot);\n    }\n}\n"
+}

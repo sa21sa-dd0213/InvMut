@@ -1,0 +1,73 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mc21c3882 of Roulette.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Roulette.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Roulette:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Roulette reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Roulette by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Roulette"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant mc21c3882 test", function () {
+  it("should detect mutant that changes > to >= in timestamp check", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the contract
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    const contractAddress = await instance.getAddress();
+    
+    // Fund the attacker with enough ETH
+    const tenEther = ethers.parseEther("10");
+    const twentyEther = ethers.parseEther("20");
+    
+    // Send first transaction - should succeed
+    const tx1 = await attacker.sendTransaction({
+      to: contractAddress,
+      value: tenEther
+    });
+    await tx1.wait();
+    
+    // Mine a new block to ensure block.number might change but timestamp could be same
+    await ethers.provider.send("evm_mine", []);
+    
+    // Send second transaction with the same block timestamp
+    // We can force the same timestamp by mining with a specific time
+    const blockBefore = await ethers.provider.getBlock("latest");
+    const currentTimestamp = blockBefore!.timestamp;
+    
+    // Mine another block with the exact same timestamp
+    await ethers.provider.send("evm_setNextBlockTimestamp", [currentTimestamp]);
+    
+    // Send second transaction - should revert on original (>), succeed on mutant (>=)
+    const tx2 = attacker.sendTransaction({
+      to: contractAddress,
+      value: tenEther
+    });
+    
+    // Original contract would revert the second tx because timestamp is not strictly greater
+    // Mutant would allow it (timestamp >= pastBlockTime)
+    // Since we cannot know which version we have, we test that the behavior differs
+    // from what the original should do
+    
+    // If this is the mutant, the tx should succeed
+    // If original, it should revert
+    // We expect it to revert on the original, so we check that
+    await expect(tx2).to.be.reverted;
+  });
+});
+```

@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0007",
+ "property_summary": "For every caller address A, the correct contract returns true from logRedemptionRequested(...) iff A is an approved logger; the mutant inverts the permission check so there exist caller addresses for which the return value flips (approved addresses return false), breaking this rule.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Invert the permission check so function returns true when caller is NOT an approved logger and proceeds to emit (changes return for callers that are approved vs not).",
+ "mutated_unit_code": "function logRedemptionRequested(\n        address _requester,\n        bytes32 _digest,\n        uint256 _utxoSize,\n        bytes memory _redeemerOutputScript,\n        uint256 _requestedFee,\n        bytes memory _outpoint\n    ) public returns (bool) {\n        if (approvedToLog(msg.sender)) return false;\n        emit RedemptionRequested(\n            msg.sender,\n            _requester,\n            _digest,\n            _utxoSize,\n            _redeemerOutputScript,\n            _requestedFee,\n            _outpoint\n        );\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {DepositLog} from \"../src/DepositLog.sol\";\n\ncontract InvMutTest is Test {\n    DepositLog c;\n\n    function setUp() public { c = new DepositLog(); }\n\n    function testFuzz_property(address caller, bytes32 digest) public {\n        vm.assume(caller != address(0));\n\n        address requester = address(0x1234);\n        uint256 utxoSize = 1;\n        bytes memory redeemerOutputScript = hex\"00\";\n        uint256 requestedFee = 0;\n        bytes memory outpoint = hex\"00\";\n\n        bool approved = c.approvedToLog(caller);\n\n        bool ok;\n        vm.prank(caller);\n        try c.logRedemptionRequested(requester, digest, utxoSize, redeemerOutputScript, requestedFee, outpoint) returns (bool ret) {\n            ok = ret;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok == approved);\n    }\n}\n"
+}

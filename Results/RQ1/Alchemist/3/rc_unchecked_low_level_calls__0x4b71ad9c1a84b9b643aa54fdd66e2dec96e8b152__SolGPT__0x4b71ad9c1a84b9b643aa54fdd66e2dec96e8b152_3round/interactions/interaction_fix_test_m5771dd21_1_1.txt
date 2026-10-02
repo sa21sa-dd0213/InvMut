@@ -1,0 +1,55 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("airPort mutant m5771dd21 test", function () {   it("should revert when calling transfer with sha256 hash instead of keccak256", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy a simple ERC20-like contract that has transferFrom function     const MockTokenFactory = await ethers.getContractFactory("contracts/MockToken.sol:MockToken");     const mockToken = await MockTokenFactory.deploy("Mock", "MCK", 18);     await mockToken.waitForDeployment();          // Deploy the airPort contract (no constructor arguments needed)     const AirPortFactory = await ethers.getContractFactory("airPort");     const airPort = await AirPortFactory.deploy();     await airPort.waitForDeployment();          // Setup: Mint some tokens to owner and approve airPort contract     const mintAmount = ethers.parseEther("100");     await mockToken.mint(owner.address, mintAmount);     await mockToken.approve(airPort.target, mintAmount);          // Test case: Call transfer with valid parameters     // On the original contract this would succeed, on the mutant it should revert     const recipients = [addr1.address, addr2.address];     const transferAmount = ethers.parseEther("10");          // The mutant uses sha256 which produces a different function selector     // This will cause the external call to fail, triggering the require(_s) revert     await expect(       airPort.connect(owner).transfer(         owner.address,         mockToken.target,         recipients,         transferAmount       )     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract airPort{ function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){ require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0; i<_tos.length; i++){ { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); require(_s); } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airPort mutant m5771dd21 test", function () {
+  it("should revert when calling transfer with sha256 hash instead of keccak256", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy a simple ERC20-like contract that has transferFrom function
+    const MockTokenFactory = await ethers.getContractFactory("MockToken");
+    const mockToken = await MockTokenFactory.deploy("Mock", "MCK", 18);
+    await mockToken.waitForDeployment();
+
+    // Deploy the airPort contract (no constructor arguments needed)
+    const AirPortFactory = await ethers.getContractFactory("airPort");
+    const airPort = await AirPortFactory.deploy();
+    await airPort.waitForDeployment();
+
+    // Setup: Mint some tokens to owner and approve airPort contract
+    const mintAmount = ethers.parseEther("100");
+    await mockToken.mint(owner.address, mintAmount);
+    await mockToken.approve(airPort.target, mintAmount);
+
+    // Test case: Call transfer with valid parameters
+    // On the original contract this would succeed, on the mutant it should revert
+    const recipients = [addr1.address, addr2.address];
+    const transferAmount = ethers.parseEther("10");
+
+    // The mutant uses sha256 which produces a different function selector
+    // This will cause the external call to fail, triggering the require(_s) revert
+    await expect(
+      airPort.connect(owner).transfer(
+        owner.address,
+        mockToken.target,
+        recipients,
+        transferAmount
+      )
+    ).to.be.reverted;
+  });
+});
+```

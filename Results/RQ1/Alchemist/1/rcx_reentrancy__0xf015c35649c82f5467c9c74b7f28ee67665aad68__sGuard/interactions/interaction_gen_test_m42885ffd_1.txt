@@ -1,0 +1,100 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m42885ffd of MY_BANK.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test MY_BANK.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for MY_BANK:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("MY_BANK reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy MY_BANK by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("MY_BANK"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK - Reentrancy test for Collect function (mutant m42885ffd)", function () {
+  it("should detect missing nonReentrant modifier by performing a reentrancy attack", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+
+    // Deploy Log contract first (required constructor argument for MY_BANK)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Deploy MY_BANK with Log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+
+    // Deploy a malicious contract that will perform the reentrancy attack
+    const AttackerFactory = await ethers.getContractFactory("ReentrancyAttacker");
+    const attackerContract = await AttackerFactory.deploy(await bank.getAddress());
+    await attackerContract.waitForDeployment();
+
+    // Fund the attacker contract with some ether
+    await owner.sendTransaction({
+      to: await attackerContract.getAddress(),
+      value: ethers.parseEther("10")
+    });
+
+    // Attacker deposits 1 ether to set up their balance
+    await attackerContract.connect(attacker).deposit({ value: ethers.parseEther("1") });
+
+    // Verify attacker's balance is set
+    const initialBalance = await bank.Acc(await attackerContract.getAddress());
+    expect(initialBalance.balance).to.equal(ethers.parseEther("1"));
+
+    // Set the unlock time to allow withdrawal
+    await ethers.provider.send("evm_increaseTime", [3600]); // Increase time by 1 hour
+    await ethers.provider.send("evm_mine");
+
+    // Now trigger the reentrancy attack
+    // The attacker contract will call Collect, and its fallback will re-enter Collect
+    const tx = await attackerContract.connect(attacker).attack({ value: ethers.parseEther("0") });
+
+    // Check if the attack succeeded (mutant) or failed (original)
+    // In the original with nonReentrant, the attack should revert
+    // In the mutant without nonReentrant, the attack should succeed
+    const finalBalance = await bank.Acc(await attackerContract.getAddress());
+    
+    // The attack should have drained more than the initial 1 ether balance
+    // This would only be possible if reentrancy was allowed (mutant)
+    expect(finalBalance.balance).to.be.lt(ethers.parseEther("1"));
+    
+    // Verify the attacker contract received more than 1 ether
+    const attackerContractBalance = await ethers.provider.getBalance(await attackerContract.getAddress());
+    expect(attackerContractBalance).to.be.gt(ethers.parseEther("1"));
+  });
+});
+
+// Malicious contract for reentrancy attack
+contract ReentrancyAttacker {
+    MY_BANK public target;
+    
+    constructor(address _target) {
+        target = MY_BANK(_target);
+    }
+    
+    function deposit() external payable {
+        target.Put(block.timestamp + 1);
+    }
+    
+    function attack() external payable {
+        target.Collect(ethers.parseEther("1"));
+    }
+    
+    receive() external payable {
+        if (address(target).balance >= ethers.parseEther("1")) {
+            target.Collect(ethers.parseEther("1"));
+        }
+    }
+}
+```

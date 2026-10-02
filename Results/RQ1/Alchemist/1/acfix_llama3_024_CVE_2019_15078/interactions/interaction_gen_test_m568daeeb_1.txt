@@ -1,0 +1,56 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m568daeeb of XBORNID.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test XBORNID.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for XBORNID:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("XBORNID reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy XBORNID by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("XBORNID"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("XBORNID mutant detection - getTokens condition reversal", function () {
+    it("should kill mutant m568daeeb by verifying value is capped when it exceeds totalRemaining", async function () {
+        const [owner, investor] = await ethers.getSigners();
+        const Factory = await ethers.getContractFactory("XBORNID");
+        const instance = await Factory.deploy();
+        await instance.waitForDeployment();
+
+        // Initial state: totalRemaining = 300000000e18, value = 1000e18
+        // value (1000e18) < totalRemaining (300000000e18), so condition should NOT trigger in original
+        // In mutant, condition value < totalRemaining IS true, so value would be set to totalRemaining
+        
+        // Get initial balances and state
+        const initialTotalRemaining = await instance.totalRemaining();
+        const initialValue = await instance.value();
+        const investorBalanceBefore = await instance.balanceOf(investor.address);
+        
+        // Investor calls getTokens() - this should distribute `value` (1000e18) tokens
+        // in the original, but in the mutant it would distribute `totalRemaining` (300000000e18)
+        await instance.connect(investor).getTokens();
+        
+        const investorBalanceAfter = await instance.balanceOf(investor.address);
+        const tokensReceived = investorBalanceAfter - investorBalanceBefore;
+        
+        // In the original contract: tokensReceived should equal initialValue (1000e18)
+        // In the mutant: tokensReceived would equal initialTotalRemaining (300000000e18)
+        // The test asserts the original behavior, which will fail on the mutant
+        expect(tokensReceived).to.equal(initialValue);
+        
+        // Also verify the investor is blacklisted (as per getTokens logic when toGive > 0)
+        const isBlacklisted = await instance.blacklist(investor.address);
+        expect(isBlacklisted).to.be.true;
+    });
+});
+```

@@ -1,0 +1,43 @@
+{
+ "difference_id": "N0010",
+ "property_summary": "A Collect call from the caller never reverts if the caller's recorded balance is at least MinSum and at least the requested amount and the lock time is in the past; in that case it reduces the recorded balance by exactly the requested amount and leaves MinSum unchanged.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill:m_no_cex_within_bound",
+ "origin": "primary",
+ "success_route": null,
+ "oracle_origin": null,
+ "kill_entrypoint": null,
+ "property_based_core": null,
+ "standalone_replay": null,
+ "oracle_reach": "proved",
+ "ce_id": null,
+ "source_difference_id": null,
+ "source_property_focus": null,
+ "confirmed_difference": {
+  "validation_level": "reference_validated",
+  "arm": "no_mg",
+  "focus": {
+   "index": 4,
+   "target_id": "T0004",
+   "boundary": "Collect",
+   "category": "explicit_revert",
+   "locus": "C.Collect(uint256)",
+   "state_kind": null,
+   "passes": 2
+  },
+  "thread_focus": "whether a call `Collect(args)` reverts or completes, and on which inputs",
+  "boundary": "Collect",
+  "target_id": "T0004",
+  "test_hash": "5f4694b06ef7522b",
+  "assert_fingerprint": "b300b63b5094855a"
+ },
+ "oracle_asset": null,
+ "change_summary": null,
+ "mutated_unit_code": null,
+ "esbmc_test_source": "contract InvMutTest {\n    C c;\n    constructor() { c = new C(); }\n    function __ESBMC_reverted() internal returns (bool) {}\n    function __ESBMC_assume(bool) internal pure {}\n\n    function run(uint am, uint lockTime) public payable { __ESBMC_assume(address(c).balance >= 1000000000000000000000000); require(address(this).balance >= (am)); require(am <= 1000000000000000000000000000000);\n        require(lockTime > 0);\n\n        c.SetMinSum(0); if (__ESBMC_reverted()) return;\n        c.SetLogFile(address(this)); if (__ESBMC_reverted()) return;\n        c.Initialized(); if (__ESBMC_reverted()) return;\n        c.Put{value: am}(lockTime); if (__ESBMC_reverted()) return;\n\n        (uint unlockTime0, uint balance0) = c.Acc(address(this)); if (__ESBMC_reverted()) return;\n        uint minSum0 = c.MinSum(); if (__ESBMC_reverted()) return;\n\n        bool preCond = (balance0 >= minSum0) && (balance0 >= am) && (block.timestamp > unlockTime0);\n        require(preCond);\n\n        uint balanceBefore = balance0;\n        uint minSumBefore = minSum0;\n\n        bool reverted;\n        c.Collect(am); bool __rev0 = __ESBMC_reverted(); if (__rev0) { reverted = true; } else { reverted = false; }\n\n        (uint unlockTime1, uint balance1) = c.Acc(address(this)); if (__ESBMC_reverted()) return;\n        uint minSum1 = c.MinSum(); if (__ESBMC_reverted()) return;\n\n        assert((!reverted) && minSum1 == minSumBefore && balance1 == balanceBefore - am);\n    }\n\n    receive() external payable {}\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {MONEY_BOX} from \"../src/MONEY_BOX.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    MONEY_BOX c;\n\n    function setUp() public {\n        c = new MONEY_BOX();\n    }\n\n    function _run(uint256 am, uint256 lockTime) internal {\n        am = bound(am, 0, 1000000000000000000000000000000);\n        vm.deal(address(this), VALUE_CAP);\n        vm.deal(address(c), VALUE_CAP);\n        vm.assume(lockTime > 0);\n        try c.SetMinSum(0) {} catch { return; }\n        try c.SetLogFile(address(this)) {} catch { return; }\n        try c.Initialized() {} catch { return; }\n        try c.Put{value: am}(lockTime) {} catch { return; }\n        uint256 unlockTime0;\n        uint256 balance0;\n        try c.Acc(address(this)) returns (uint256 __r0, uint256 __r1) { unlockTime0 = __r0; balance0 = __r1; } catch { return; }\n        uint256 minSum0;\n        try c.MinSum() returns (uint256 __r) { minSum0 = __r; } catch { return; }\n        bool preCond = (balance0 >= minSum0) && (balance0 >= am) && (block.timestamp > unlockTime0);\n        vm.assume(preCond);\n        uint balanceBefore = balance0;\n        uint minSumBefore = minSum0;\n        bool reverted;\n        try c.Collect(am) { reverted = false; } catch { reverted = true; }\n        uint256 unlockTime1;\n        uint256 balance1;\n        try c.Acc(address(this)) returns (uint256 __r0, uint256 __r1) { unlockTime1 = __r0; balance1 = __r1; } catch { return; }\n        uint256 minSum1;\n        try c.MinSum() returns (uint256 __r) { minSum1 = __r; } catch { return; }\n        assertTrue((!reverted) && minSum1 == minSumBefore && balance1 == balanceBefore - am);\n    }\n\n    function testFuzz_run(uint256 am, uint256 lockTime) public {\n        _run(am, lockTime);\n    }\n\n    receive() external payable {}\n}\n",
+ "workspace_P_log": "{\"test/InvMutTest.t.sol:InvMutTest\":{\"duration\":\"203ms 368µs 955ns\",\"test_results\":{\"testFuzz_run(uint256,uint256)\":{\"status\":\"Success\",\"reason\":null,\"counterexample\":null,\"logs\":[],\"decoded_logs\":[],\"kind\":{\"Fuzz\":{\"first_case\":{\"gas\":115096,\"stipend\":21788},\"runs\":10000,\"mean_gas\":91077,\"median_gas\":93308,\"failed_corpus_replays\":0}},\"traces\":[],\"labeled_addresses\":{},\"duration\":\"202ms 635µs 315ns\",\"breakpoints\":{},\"gas_snapshots\":{}}},\"warnings\":[]}}\n",
+ "workspace_M_log": null
+}

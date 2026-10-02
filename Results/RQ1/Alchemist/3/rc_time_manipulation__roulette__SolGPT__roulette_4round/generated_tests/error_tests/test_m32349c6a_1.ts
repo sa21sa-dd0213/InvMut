@@ -1,0 +1,53 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant m32349c6a test", function () {
+  it("should kill mutant by verifying payout only occurs when block.number % 15 == 0", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy({ value: ethers.parseEther("0") });
+    await instance.waitForDeployment();
+
+    // Fund the contract with initial balance
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("100")
+    });
+
+    // Record player's initial balance
+    const initialBalance = await ethers.provider.getBalance(player.address);
+
+    // Find a block where block.number % 15 == 0
+    let targetBlockNumber;
+    const currentBlock = await ethers.provider.getBlock("latest");
+    let blockNumber = currentBlock.number + 1;
+    
+    // Mine blocks until we reach a block where block.number % 15 == 0
+    while (blockNumber % 15 !== 0) {
+      await ethers.provider.send("evm_mine", []);
+      blockNumber++;
+    }
+    
+    targetBlockNumber = blockNumber;
+    
+    // Send exactly 10 ether to the contract in this target block
+    const tx = await player.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    await tx.wait();
+
+    // Check that the payout occurred (original behavior)
+    // In original: when block.number % 15 == 0, the full balance is sent to msg.sender
+    const finalBalance = await ethers.provider.getBalance(player.address);
+    
+    // If mutant is present (pays on != 0), no payout would happen here
+    // Original pays out, so balance should increase by contract balance (minus gas)
+    // We expect balance to increase by at least the 10 ether sent (since payout occurs)
+    expect(finalBalance).to.be.gt(initialBalance);
+    
+    // Additional check: the contract balance should be 0 after payout (or very close)
+    const contractBalance = await ethers.provider.getBalance(await instance.getAddress());
+    expect(contractBalance).to.be.lt(ethers.parseEther("10"));
+  });
+});

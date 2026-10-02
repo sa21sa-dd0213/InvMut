@@ -1,0 +1,58 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("EBU mutant test - sha256 vs keccak256", function () {   it("should kill mutant m69886c07 by verifying transferFrom selector correctness", async function () {     const [owner, from, to] = await ethers.getSigners();          // Deploy a simple ERC20-like contract that tracks transferFrom calls     const TokenFactory = await ethers.getContractFactory("TestToken");     const token = await TokenFactory.deploy();     await token.waitForDeployment();          // Deploy the EBU contract (no constructor arguments needed)     const EBUFactory = await ethers.getContractFactory("EBU");     const ebu = await EBUFactory.deploy();     await ebu.waitForDeployment();          // Mint tokens to 'from' address     const mintAmount = ethers.parseEther("100");     await token.mint(from.address, mintAmount);          // Approve EBU to spend tokens from 'from' address     await token.connect(from).approve(ebu.target, mintAmount);          // Prepare transfer parameters     const tos = [to.address];     const values = [ethers.parseEther("10")];          // Call EBU.transfer - original uses keccak256, mutant uses sha256     const tx = await ebu.connect(owner).transfer(from.address, token.target, tos, values);     await tx.wait();          // Check if the transfer actually happened     const fromBalance = await token.balanceOf(from.address);     const toBalance = await token.balanceOf(to.address);          // In the original, tokens should be transferred     // In the mutant, sha256 produces wrong selector, so no transfer occurs     expect(toBalance).to.equal(ethers.parseEther("10"));     expect(fromBalance).to.equal(ethers.parseEther("90"));   }); });  // Helper contract to track transferFrom calls contract TestToken {     mapping(address => uint256) public balanceOf;     mapping(address => mapping(address => uint256)) public allowance;          function mint(address to, uint256 amount) external {         balanceOf[to] += amount;     }          function approve(address spender, uint256 amount) external returns (bool) {         allowance[msg.sender][spender] = amount;         return true;     }          function transferFrom(address from, address to, uint256 amount) external returns (bool) {         require(allowance[from][msg.sender] >= amount);         allowance[from][msg.sender] -= amount;         balanceOf[from] -= amount;         balanceOf[to] += amount;         return true;     } }
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EBU{ function transfer(address from,address caddress, address[] memory _tos, uint[] memory v)public returns (bool){ require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ caddress.call(abi.encodeWithSelector(id,from,_tos[i],v[i])); } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant test - sha256 vs keccak256", function () {
+  it("should kill mutant m69886c07 by verifying transferFrom selector correctness", async function () {
+    const [owner, from, to] = await ethers.getSigners();
+
+    // Deploy a simple ERC20-like contract that tracks transferFrom calls
+    const TokenFactory = await ethers.getContractFactory("TestToken");
+    const token = await TokenFactory.deploy();
+    await token.waitForDeployment();
+
+    // Deploy the EBU contract (no constructor arguments needed)
+    const EBUFactory = await ethers.getContractFactory("EBU");
+    const ebu = await EBUFactory.deploy();
+    await ebu.waitForDeployment();
+
+    // Mint tokens to 'from' address
+    const mintAmount = ethers.parseEther("100");
+    await token.mint(from.address, mintAmount);
+
+    // Approve EBU to spend tokens from 'from' address
+    await token.connect(from).approve(ebu.target, mintAmount);
+
+    // Prepare transfer parameters
+    const tos = [to.address];
+    const values = [ethers.parseEther("10")];
+
+    // Call EBU.transfer - original uses keccak256, mutant uses sha256
+    const tx = await ebu.connect(owner).transfer(from.address, token.target, tos, values);
+    await tx.wait();
+
+    // Check if the transfer actually happened
+    const fromBalance = await token.balanceOf(from.address);
+    const toBalance = await token.balanceOf(to.address);
+
+    // In the original, tokens should be transferred
+    // In the mutant, sha256 produces wrong selector, so no transfer occurs
+    expect(toBalance).to.equal(ethers.parseEther("10"));
+    expect(fromBalance).to.equal(ethers.parseEther("90"));
+  });
+});
+```

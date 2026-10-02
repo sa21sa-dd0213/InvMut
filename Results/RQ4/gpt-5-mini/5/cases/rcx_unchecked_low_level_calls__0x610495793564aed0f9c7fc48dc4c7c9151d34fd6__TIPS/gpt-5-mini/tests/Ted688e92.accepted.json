@@ -1,0 +1,12 @@
+{
+ "difference_id": "Ted688e92",
+ "property_summary": "For any nonzero amount and a callee that accepts ETH, the correct contract always forwards that amount out (reducing address(c).balance), while the mutant that forces value=0 can leave the contract balance unchanged for some nonzero amounts and an accepting callee.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the low-level call with a call that forwards zero value (overwrites _value to 0) so sendMoney does not transfer ETH and thus leaves balances unchanged.",
+ "mutated_unit_code": "function sendMoney(address _target, uint _value, bytes memory _data)  public onlyOwner {\n\t{ (bool _s, bytes memory _d) = _target.call{value: 0}(_data); _d; if (! _s) {\n\trevert();} }\n}\n",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n    function testFuzz_property(uint256 amount) public {\n        amount = bound(amount, 0, 1e20);\n\n        Receiver r = new Receiver();\n\n        address funder = address(0xF00D);\n        vm.deal(funder, amount);\n        vm.prank(funder);\n        (bool sent, ) = address(c).call{value: amount}(\"\");\n        require(sent);\n\n        uint256 before = address(c).balance;\n\n        vm.assume(amount > 0);\n        vm.assume(before >= amount);\n\n        vm.prank(address(this));\n        bool ok;\n        try c.sendMoney(address(r), amount, \"\") {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        uint256 afterBal = address(c).balance;\n        assertTrue(afterBal + amount == before && ok, \"contract did not forward the full amount as expected\");\n    }\n}\n\ncontract Receiver {\n    receive() external payable {}\n}\n"
+}

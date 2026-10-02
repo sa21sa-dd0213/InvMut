@@ -1,0 +1,109 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("TimelockController mutant m74f8b778 - _beforeCall dependency check", function () {
+  it("should revert when executing dependent operation before predecessor is done, but mutant allows it", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy TimelockController with minimal delay and proposers/executors
+    const minDelay = 0; // Allow immediate execution for testing
+    const proposers = [owner.address];
+    const executors = [owner.address];
+    
+    const Factory = await ethers.getContractFactory("TimelockController");
+    const instance = await Factory.deploy(minDelay, proposers, executors);
+    await instance.waitForDeployment();
+    
+    // Schedule first operation (predecessor = bytes32(0) means no dependency)
+    const target1 = owner.address;
+    const value1 = 0;
+    const data1 = "0x";
+    const salt1 = ethers.keccak256(ethers.toUtf8Bytes("salt1"));
+    const predecessor1 = ethers.ZeroHash; // No predecessor
+    
+    const tx1 = await instance.connect(owner).schedule(
+      target1,
+      value1,
+      data1,
+      predecessor1,
+      salt1,
+      0 // delay
+    );
+    await tx1.wait();
+    
+    // Get operation ID for first operation
+    const id1 = await instance.hashOperation(target1, value1, data1, predecessor1, salt1);
+    
+    // Execute first operation to mark it as done
+    const execTx1 = await instance.connect(owner).execute(
+      target1,
+      value1,
+      data1,
+      predecessor1,
+      salt1,
+      { value: 0 }
+    );
+    await execTx1.wait();
+    
+    // Verify first operation is done
+    expect(await instance.isOperationDone(id1)).to.be.true;
+    
+    // Schedule second operation that depends on first operation (predecessor = id1)
+    const target2 = addr1.address;
+    const value2 = 0;
+    const data2 = "0x";
+    const salt2 = ethers.keccak256(ethers.toUtf8Bytes("salt2"));
+    const predecessor2 = id1; // Depends on first operation
+    
+    const tx2 = await instance.connect(owner).schedule(
+      target2,
+      value2,
+      data2,
+      predecessor2,
+      salt2,
+      0 // delay
+    );
+    await tx2.wait();
+    
+    // Schedule a third operation with a non-done predecessor
+    const target3 = addr1.address;
+    const value3 = 0;
+    const data3 = "0x";
+    const salt3 = ethers.keccak256(ethers.toUtf8Bytes("salt3"));
+    const predecessor3 = ethers.keccak256(ethers.toUtf8Bytes("nonExistentOp")); // Non-existent operation
+    
+    const tx3 = await instance.connect(owner).schedule(
+      target3,
+      value3,
+      data3,
+      ethers.ZeroHash, // No predecessor for scheduling
+      salt3,
+      0
+    );
+    await tx3.wait();
+    
+    // Try to execute third operation - this should revert on original but pass on mutant
+    try {
+      const execTx3 = await instance.connect(owner).execute(
+        target3,
+        value3,
+        data3,
+        predecessor3, // Non-existent predecessor
+        salt3,
+        { value: 0 }
+      );
+      await execTx3.wait();
+      
+      // If we reach here, the mutant allowed execution with non-existent predecessor
+      // This confirms the mutant is vulnerable (dependency check removed)
+      const id3 = await instance.hashOperation(target3, value3, data3, predecessor3, salt3);
+      expect(await instance.isOperationDone(id3)).to.be.true;
+      console.log("Mutant detected: _beforeCall did not revert with non-existent predecessor");
+      
+    } catch (error: any) {
+      // If it reverts, the original behavior is preserved
+      // But we expect this NOT to revert on the mutant
+      expect.fail("Original behavior preserved, mutant not killed");
+    }
+  });
+});

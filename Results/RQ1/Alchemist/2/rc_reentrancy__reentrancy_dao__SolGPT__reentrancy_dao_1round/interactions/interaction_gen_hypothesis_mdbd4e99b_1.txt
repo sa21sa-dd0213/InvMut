@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract ReentrancyDAO:
+        Contract Code: pragma solidity ^0.8.0; contract ReentrancyDAO { mapping (address => uint) credit; uint balance; function withdrawAll() public { uint oCredit = credit[msg.sender]; if (oCredit > 0) { balance -= oCredit; credit[msg.sender] = 0; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); } } function deposit() public payable { credit[msg.sender] += msg.value; balance += msg.value; } }
+
+    Consider the following mutant of ReentrancyDAO:
+        Mutant mdbd4e99b of function deposit replaces msg.value with msg.value+1
+        Mutant Diff: ---|         credit[msg.sender] += msg.value; +++|         credit[msg.sender] += msg.value+1;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant adds 1 to `msg.value` when updating `credit[msg.sender]` during a deposit, meaning the user's credit is recorded as one wei more than the actual amount sent, while the contract's `balance` variable is correctly increased by the real `msg.value`.  
+
+**Hypothesis**: "A test case that deposits a specific amount of ether (e.g., 1 wei), then immediately calls `withdrawAll()` to withdraw the full credited amount, and finally checks the contract's actual ether balance (or the user's final balance) should kill the mutant. In the original contract, the withdrawal will succeed and the contract balance will become zero. In the mutant, the withdrawal will attempt to send 1 wei more than what the contract actually holds, causing the call to fail (revert due to insufficient balance), which will make the test fail."

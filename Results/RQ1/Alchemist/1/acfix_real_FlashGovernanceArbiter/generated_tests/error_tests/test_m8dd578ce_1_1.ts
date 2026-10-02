@@ -1,0 +1,109 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("FlashGovernanceArbiter mutant m8dd578ce detection", function () {
+  it("should detect mutant where > is replaced with >= in enforceToleranceInt for v2 = 0", async function () {
+    // Deploy the contract with a DAO address
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy a mock DAO contract that implements required interface
+    const MockDAO = await ethers.getContractFactory("LimboDAOLike");
+    const mockDAO = await MockDAO.deploy();
+    await mockDAO.waitForDeployment();
+    
+    const Factory = await ethers.getContractFactory("FlashGovernanceArbiter");
+    const instance = await Factory.deploy(await mockDAO.getAddress());
+    await instance.waitForDeployment();
+    
+    // Set up security parameters to make enforceToleranceInt work
+    // First, we need to configure the contract via a successful proposal
+    // For testing purposes, we can directly call configureSecurityParameters
+    // by first making the contract "configured" through endConfiguration
+    
+    // Call endConfiguration to set configured = true
+    await instance.endConfiguration();
+    
+    // Set enforcement for addr1
+    await instance.connect(addr1).setEnforcement(true);
+    
+    // Now test enforceToleranceInt with v2 = 0
+    // Original: v2 > 0 ? v2 : -1 * v2  => for v2=0, goes to else branch: -1 * 0 = 0
+    // Mutant:   v2 >= 0 ? v2 : -1 * v2 => for v2=0, goes to if branch: v2 = 0
+    // Both produce uv2 = 0, so we need to test a case where the branch difference matters
+    // The key insight: the mutant changes execution path for v2 = 0 from else to if branch
+    // This could affect gas usage or internal state in more complex scenarios
+    
+    // Test with v1 = 1, v2 = 0 - both branches produce same mathematical result
+    // But we can verify the function doesn't revert (it should pass)
+    await expect(instance.connect(addr1).enforceToleranceInt(1, 0)).to.not.be.reverted;
+    
+    // Test with v1 = 0, v2 = 1 - symmetric case
+    await expect(instance.connect(addr1).enforceToleranceInt(0, 1)).to.not.be.reverted;
+    
+    // The mutant changes branch logic for v2 = 0, which means:
+    // Original: uses -1 * v2 path
+    // Mutant: uses direct v2 path
+    // While mathematically identical, this changes the execution trace
+    // To definitively detect the mutant, we need a test that fails on the mutant
+    
+    // Actually, since both produce same result for v2 = 0, the mutation is behaviorally equivalent
+    // Let's re-examine: for v2 = 0, original: v2 > 0 is false => -1 * 0 = 0
+    // For v2 = 0, mutant: v2 >= 0 is true => v2 = 0
+    // Both produce uv2 = 0, so no behavioral difference exists for integer inputs
+    
+    // However, the mutant changes the condition from strict greater-than to greater-than-or-equal
+    // This means for v2 = 0, the original goes to the else branch while mutant goes to if branch
+    // The mathematical result is identical, but the execution path differs
+    
+    // To detect this, we can test with a negative value where the behavior differs
+    // For v2 = -1: original: -1 > 0 is false => -1 * -1 = 1
+    // For v2 = -1: mutant: -1 >= 0 is false => -1 * -1 = 1 (same)
+    
+    // Actually, for all negative values, both branches produce the same result
+    // The only difference is for v2 = 0, where the branch changes but result is same
+    // This mutation is effectively neutral for integer inputs
+    
+    // But we can still detect it by checking the execution trace or using assembly
+    // Let's test with a value that would cause different behavior in edge cases
+    
+    // Test with v1 = 0, v2 = 0
+    await expect(instance.connect(addr1).enforceToleranceInt(0, 0)).to.not.be.reverted;
+    
+    // The mutation changes the control flow for v2 = 0, but not the mathematical result
+    // Therefore, a standard functional test cannot distinguish the mutant
+    // However, we can test the internal enforceTolerance function directly
+    
+    // Let's verify the function works for various inputs
+    // Test with v1 = 100, v2 = 50 (normal case)
+    await expect(instance.connect(addr1).enforceToleranceInt(100, 50)).to.not.be.reverted;
+    
+    // Test with v1 = 50, v2 = 100 (reverse order)
+    await expect(instance.connect(addr1).enforceToleranceInt(50, 100)).to.not.be.reverted;
+    
+    // The mutation is semantically equivalent for all integer inputs
+    // But we can detect it by checking if the contract uses the correct branch
+    // This requires access to internal state or gas consumption
+    
+    // Since we cannot directly observe branch selection, we need to acknowledge
+    // that this particular mutation might be undetectable through standard testing
+    
+    // However, let's try one more approach: test with v2 = 0 and v1 = 1
+    // If changeTolerance is set to 0, then original path (using else branch) would compute:
+    // v2 = 0, so v1 > v2 (1 > 0), v2 == 0 => require(v1 <= 1) => 1 <= 1 passes
+    // Mutant path (using if branch): same computation since uv2 = 0 in both cases
+    
+    // Both paths lead to the same require statement, so no difference
+    
+    // Let's verify the function doesn't revert for edge cases
+    await expect(instance.connect(addr1).enforceToleranceInt(0, 0)).to.not.be.reverted;
+    await expect(instance.connect(addr1).enforceToleranceInt(1, 0)).to.not.be.reverted;
+    await expect(instance.connect(addr1).enforceToleranceInt(0, 1)).to.not.be.reverted;
+    
+    // The mutant changes > to >=, which only affects the branch for v2 = 0
+    // Since both branches produce identical results for v2 = 0, the mutation is
+    // behaviorally equivalent and cannot be detected through functional testing
+    
+    // This test will pass on both original and mutant, demonstrating the limitation
+    console.log("Note: This mutation is semantically equivalent for all integer inputs");
+  });
+});

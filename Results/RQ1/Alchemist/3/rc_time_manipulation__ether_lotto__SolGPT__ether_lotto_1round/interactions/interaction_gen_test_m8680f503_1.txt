@@ -1,0 +1,76 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m8680f503 of EtherLotto.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EtherLotto.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EtherLotto:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EtherLotto reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EtherLotto by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EtherLotto"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant detection", function () {
+  it("should detect the mutant that flips == to != in the win condition", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = ethers.parseEther("10");
+    const FEE_AMOUNT = ethers.parseEther("1");
+
+    // Play the game - the outcome depends on random value (0 or 1)
+    // We need to check that the player wins when random == 0
+    // Since we cannot control block.timestamp/block.difficulty, we play multiple times
+    // to cover both random outcomes
+    
+    // Record initial balances
+    const initialPlayerBalance = await ethers.provider.getBalance(player.address);
+    const initialBankBalance = await ethers.provider.getBalance(owner.address);
+    
+    // Play the game
+    const tx = await instance.connect(player).play({ value: TICKET_AMOUNT });
+    const receipt = await tx.wait();
+    
+    // Get the block timestamp to compute what random was
+    const block = await ethers.provider.getBlock(receipt.blockNumber);
+    const random = BigInt(ethers.keccak256(
+      ethers.AbiCoder.defaultAbiCoder().encode(
+        ["uint256", "uint256"],
+        [block.timestamp, block.difficulty]
+      )
+    )) % 2n;
+    
+    // Get final balances
+    const finalPlayerBalance = await ethers.provider.getBalance(player.address);
+    const finalBankBalance = await ethers.provider.getBalance(owner.address);
+    
+    if (random === 0n) {
+      // Original: player wins (gets pot - fee), bank gets fee
+      // Mutant: player loses (gets nothing), bank gets entire pot
+      // Check that player's balance increased by pot - fee (original behavior)
+      const pot = TICKET_AMOUNT; // pot was 0 before, now equals ticket amount
+      const expectedPlayerGain = pot - FEE_AMOUNT;
+      expect(finalPlayerBalance - initialPlayerBalance).to.equal(expectedPlayerGain - TICKET_AMOUNT);
+      expect(finalBankBalance - initialBankBalance).to.equal(FEE_AMOUNT);
+    } else {
+      // Original: player loses (gets nothing), bank gets entire pot
+      // Mutant: player wins (gets pot - fee), bank gets fee
+      // Check that player's balance decreased by ticket amount (original behavior)
+      expect(finalPlayerBalance - initialPlayerBalance).to.equal(-TICKET_AMOUNT);
+      expect(finalBankBalance - initialBankBalance).to.equal(TICKET_AMOUNT);
+    }
+  });
+});
+```

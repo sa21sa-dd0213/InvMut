@@ -1,0 +1,85 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("PoCGame mutant m7490443a test", function () {     it("should kill the mutant when hash modulo difficulty equals 0", async function () {         const [owner, player] = await ethers.getSigners();                  // Deploy with whale address and bet limit         const betLimit = ethers.parseEther("1");         const Factory = await ethers.getContractFactory("PoCGame");         const instance = await Factory.deploy(owner.address, betLimit);         await instance.waitForDeployment();                  // Set difficulty to 10 so we can trigger modulo 0         await instance.AdjustDifficulty(10);                  // Open to public         await instance.OpenToThePublic();                  // Player places a wager         await instance.connect(player).wager({ value: betLimit });                  // Mine blocks to ensure block.number > timestamps[player]         await ethers.provider.send("evm_mine", []);         await ethers.provider.send("evm_mine", []);                  // Get the block number when player wagered (block.number - 2 after mining 2 blocks)         const playerWagerBlock = await ethers.provider.getBlockNumber() - 2;                  // Compute hash to check if modulo 0 condition can be forced         // Since we cannot control msg.sender arbitrarily to force modulo 0,         // we deploy with multiple accounts until we find one where          // uint256(keccak256(abi.encodePacked(blockhash(playerWagerBlock), player.address))) % 10 == 0                  // For deterministic testing, we can use a known address that produces modulo 0         // or we accept that some runs may not hit the condition and skip                  // In practice, we can test by calling play() and expecting revert         // The mutant will revert when modulo = 0 due to underflow (0 - 1)         // Original would not revert                  // Try calling play - if modulo happens to be 0, mutant reverts         // This test will pass (kill mutant) if the condition is met         // We check if transaction reverts - on original it should not revert for valid play         try {             const tx = await instance.connect(player).play();             await tx.wait();             // If we get here, modulo was not 0 or contract is original             // For mutant, if modulo = 0, this would revert         } catch (error: any) {             // If revert, check if it's the expected underflow             expect(error.message).to.include("underflow");         }                  // Alternative: use a different approach - we know the condition         // Deploy with specific player that produces modulo 0 for blockhash         // For simplicity, we test by asserting that if play succeeds,         // the winning number calculation didn't underflow                  // The key assertion: on original, play never reverts for valid state         // On mutant, play reverts when modulo = 0         // So we check that play() either succeeds or reverts with underflow         const playerHasWagered = await instance.hasPlayerWagered(player.address);         if (playerHasWagered) {             // This test will pass if the mutant causes revert for modulo 0             // It will fail on original because original never reverts here         }     }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PoCGame { modifier onlyOwner(){ require(msg.sender == owner); _;} modifier isOpenToPublic(){ require(openToPublic); _;} modifier onlyRealPeople(){ require(msg.sender == tx.origin); _;} modifier onlyPlayers(){ require(wagers[msg.sender] > 0); _;} event Wager(uint256 amount, address depositer); event Win(uint256 amount, address paidTo); event Lose(uint256 amount, address loser); event Donate(uint256 amount, address paidTo, address donator); event DifficultyChanged(uint256 currentDifficulty); event BetLimitChanged(uint256 currentBetLimit); address private whale; uint256 betLimit; uint difficulty; uint private randomSeed; address owner; mapping(address => uint256) timestamps; mapping(address => uint256) wagers; bool openToPublic; uint256 totalDonated; constructor(address whaleAddress, uint256 wagerLimit) onlyRealPeople public { openToPublic = false; owner = payable(msg.sender); whale = whaleAddress; totalDonated = 0; betLimit = wagerLimit; } function OpenToThePublic()  public onlyOwner { openToPublic = true; } function AdjustBetAmounts(uint256 amount)  public onlyOwner { betLimit = amount; emit BetLimitChanged(betLimit); } function AdjustDifficulty(uint256 amount)  public onlyOwner { difficulty = amount; emit DifficultyChanged(difficulty); } fallback() external payable { } function wager()  public isOpenToPublic onlyRealPeople payable { require(msg.value == betLimit); timestamps[msg.sender] = block.number; wagers[msg.sender] = msg.value; emit Wager(msg.value, msg.sender); } function play()  public isOpenToPublic onlyRealPeople onlyPlayers { uint256 blockNumber = timestamps[msg.sender]; if(blockNumber < block.number){ timestamps[msg.sender] = 0; wagers[msg.sender] = 0; uint256 winningNumber = uint256(keccak256(abi.encodePacked(blockhash(blockNumber), msg.sender))) % difficulty + 1; if(winningNumber == difficulty / 2){ payout(msg.sender); } else{ loseWager(betLimit / 2); } } else{ revert(); } } function donate()  public isOpenToPublic payable { donateToWhale(msg.value); } function payout(address winner) internal { uint256 ethToTransfer = address(this).balance / 2; payable(winner).transfer(ethToTransfer); emit Win(ethToTransfer, winner); } function donateToWhale(uint256 amount) internal { payable(whale).transfer(amount); totalDonated += amount; emit Donate(amount, whale, msg.sender); } function loseWager(uint256 amount) internal { payable(whale).transfer(amount); totalDonated += amount; emit Lose(amount, msg.sender); } function ethBalance()  public view returns (uint256) { return address(this).balance; } function currentDifficulty()  public view returns (uint256) { return difficulty; } function currentBetLimit()  public view returns (uint256) { return betLimit; } function hasPlayerWagered(address player)  public view returns (bool) { if(wagers[player] > 0){ return true; } else{ return false; } } function winnersPot()  public view returns (uint256) { return address(this).balance / 2; } function transferAnyERC20Token(address tokenAddress, address tokenOwner, uint tokens)  public onlyOwner returns (bool success) { return ERC20Interface(tokenAddress).transfer(tokenOwner, tokens); } } abstract contract ERC20Interface { function transfer(address to, uint256 tokens) virtual public returns (bool success); }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PoCGame mutant m7490443a test", function () {
+    it("should kill the mutant when hash modulo difficulty equals 0", async function () {
+        const [owner, player] = await ethers.getSigners();
+        
+        // Deploy with whale address and bet limit
+        const betLimit = ethers.parseEther("1");
+        const Factory = await ethers.getContractFactory("PoCGame");
+        const instance = await Factory.deploy(owner.address, betLimit);
+        await instance.waitForDeployment();
+        
+        // Set difficulty to 10 so we can trigger modulo 0
+        await instance.AdjustDifficulty(10);
+        
+        // Open to public
+        await instance.OpenToThePublic();
+        
+        // Player places a wager
+        await instance.connect(player).wager({ value: betLimit });
+        
+        // Mine blocks to ensure block.number > timestamps[player]
+        await ethers.provider.send("evm_mine", []);
+        await ethers.provider.send("evm_mine", []);
+        
+        // Get the block number when player wagered (block.number - 2 after mining 2 blocks)
+        const playerWagerBlock = await ethers.provider.getBlockNumber() - 2;
+        
+        // Compute hash to check if modulo 0 condition can be forced
+        // Since we cannot control msg.sender arbitrarily to force modulo 0,
+        // we deploy with multiple accounts until we find one where 
+        // uint256(keccak256(abi.encodePacked(blockhash(playerWagerBlock), player.address))) % 10 == 0
+        
+        // For deterministic testing, we can use a known address that produces modulo 0
+        // or we accept that some runs may not hit the condition and skip
+        
+        // In practice, we can test by calling play() and expecting revert
+        // The mutant will revert when modulo = 0 due to underflow (0 - 1)
+        // Original would not revert
+        
+        // Try calling play - if modulo happens to be 0, mutant reverts
+        // This test will pass (kill mutant) if the condition is met
+        // We check if transaction reverts - on original it should not revert for valid state
+        try {
+            const tx = await instance.connect(player).play();
+            await tx.wait();
+            // If we get here, modulo was not 0 or contract is original
+            // For mutant, if modulo = 0, this would revert
+        } catch (error: any) {
+            // If revert, check if it's the expected underflow
+            expect(error.message).to.include("underflow");
+        }
+        
+        // Alternative: use a different approach - we know the condition
+        // Deploy with specific player that produces modulo 0 for blockhash
+        // For simplicity, we test by asserting that if play succeeds,
+        // the winning number calculation didn't underflow
+        
+        // The key assertion: on original, play never reverts for valid state
+        // On mutant, play reverts when modulo = 0
+        // So we check that play() either succeeds or reverts with underflow
+        const playerHasWagered = await instance.hasPlayerWagered(player.address);
+        if (playerHasWagered) {
+            // This test will pass if the mutant causes revert for modulo 0
+            // It will fail on original because original never reverts here
+        }
+    });
+});
+```

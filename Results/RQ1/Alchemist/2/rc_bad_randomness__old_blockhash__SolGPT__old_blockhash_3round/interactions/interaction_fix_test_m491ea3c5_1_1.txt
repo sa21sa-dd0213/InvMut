@@ -1,0 +1,69 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PredictTheBlockHashChallenge mutant detection", function () {   it("should kill mutant m491ea3c5 by detecting hardcoded zero blockhash", async function () {     const [owner, attacker] = await ethers.getSigners();          // Deploy contract with 1 ether     const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge");     const instance = await Factory.deploy({ value: ethers.parseEther("1") });     await instance.waitForDeployment();          // Attacker locks in the constant hash that the mutant would always use     const constantAnswer = ethers.keccak256(ethers.toUtf8Bytes(""));     // Actually we need keccak256(abi.encodePacked(0)) which is keccak256 of 32 zero bytes     const zeroBytes = "0x" + "00".repeat(32);     const expectedHash = ethers.keccak256(zeroBytes);          // Lock in guess with 1 ether     await instance.connect(attacker).lockInGuess(expectedHash, { value: ethers.parseEther("1") });          // Mine blocks until the target block is in the past     const currentBlock = await ethers.provider.getBlockNumber();     const targetBlock = currentBlock + 1;     // Wait for at least targetBlock + 1 to pass     while ((await ethers.provider.getBlockNumber()) <= targetBlock) {       await ethers.provider.send("evm_mine", []);     }          // Get the actual blockhash for the target block     const actualBlockHash = (await ethers.provider.getBlock(targetBlock)).hash;     const actualAnswer = ethers.keccak256(actualBlockHash);          // On original: answer would be actualAnswer (almost certainly != expectedHash), so settle would NOT transfer 2 ether     // On mutant: answer is always expectedHash, so settle WOULD transfer 2 ether          // Record attacker's balance before settle     const balanceBefore = await ethers.provider.getBalance(attacker.address);          // Execute settle     const tx = await instance.connect(attacker).settle();     const receipt = await tx.wait();          // Check balance after settle     const balanceAfter = await ethers.provider.getBalance(attacker.address);     const balanceChange = balanceAfter - balanceBefore;          // If mutant is present, attacker received 2 ether (minus gas costs)     // If original, attacker did NOT receive 2 ether     // The test kills the mutant by checking that the balance change is NOT approximately 2 ether     // (i.e., the original behavior - no transfer occurred)     expect(balanceChange).to.be.lessThan(ethers.parseEther("1.9")); // Not 2 ether transfer   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PredictTheBlockHashChallenge { struct Guess { uint block; bytes32 guess; } mapping(address => Guess) guesses; constructor() public payable { require(msg.value == 1 ether); } function lockInGuess(bytes32 hash) public payable { require(guesses[msg.sender].block == 0); require(msg.value == 1 ether); guesses[msg.sender].guess = hash; guesses[msg.sender].block = block.number + 1; } function settle() public { require(guesses[msg.sender].block != 0); require(block.number > guesses[msg.sender].block); bytes32 answer = keccak256(abi.encodePacked(blockhash(guesses[msg.sender].block))); guesses[msg.sender].block = 0; if (guesses[msg.sender].guess == answer) { payable(msg.sender).transfer(2 ether); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PredictTheBlockHashChallenge mutant detection", function () {
+  it("should kill mutant m491ea3c5 by detecting hardcoded zero blockhash", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+
+    // Deploy contract with 1 ether
+    const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge");
+    const instance = await Factory.deploy({ value: ethers.parseEther("1") });
+    await instance.waitForDeployment();
+
+    // Attacker locks in the constant hash that the mutant would always use
+    // keccak256(abi.encodePacked(0)) which is keccak256 of 32 zero bytes
+    const zeroBytes = "0x" + "00".repeat(32);
+    const expectedHash = ethers.keccak256(zeroBytes);
+
+    // Lock in guess with 1 ether
+    await instance.connect(attacker).lockInGuess(expectedHash, { value: ethers.parseEther("1") });
+
+    // Mine blocks until the target block is in the past
+    const currentBlock = await ethers.provider.getBlockNumber();
+    const targetBlock = currentBlock + 1;
+    // Wait for at least targetBlock + 1 to pass
+    while ((await ethers.provider.getBlockNumber()) <= targetBlock) {
+      await ethers.provider.send("evm_mine", []);
+    }
+
+    // Get the actual blockhash for the target block
+    const actualBlockHash = (await ethers.provider.getBlock(targetBlock)).hash;
+    const actualAnswer = ethers.keccak256(actualBlockHash);
+
+    // On original: answer would be actualAnswer (almost certainly != expectedHash), so settle would NOT transfer 2 ether
+    // On mutant: answer is always expectedHash, so settle WOULD transfer 2 ether
+
+    // Record attacker's balance before settle
+    const balanceBefore = await ethers.provider.getBalance(attacker.address);
+
+    // Execute settle
+    const tx = await instance.connect(attacker).settle();
+    const receipt = await tx.wait();
+
+    // Check balance after settle
+    const balanceAfter = await ethers.provider.getBalance(attacker.address);
+    const balanceChange = balanceAfter - balanceBefore;
+
+    // If mutant is present, attacker received 2 ether (minus gas costs)
+    // If original, attacker did NOT receive 2 ether
+    // The test kills the mutant by checking that the balance change is NOT approximately 2 ether
+    // (i.e., the original behavior - no transfer occurred)
+    expect(balanceChange).to.be.lessThan(ethers.parseEther("1.9")); // Not 2 ether transfer
+  });
+});
+```

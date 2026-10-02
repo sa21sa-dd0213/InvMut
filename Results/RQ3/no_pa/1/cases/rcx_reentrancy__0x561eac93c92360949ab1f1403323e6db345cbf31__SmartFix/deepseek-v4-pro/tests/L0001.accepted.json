@@ -1,0 +1,11 @@
+{
+ "difference_id": "L0001",
+ "property_summary": "After Alice deposits 1000 wei, MinSum is set to 0, and Bob calls Collect(100), the reference contract subtracts 100 from Bob's balance (resulting in 0) while the buggy one adds 100 (resulting in 200), making balances[Bob] diverge.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "change_summary": "Replace the subtraction operator with addition in the balance update statement inside Collect.",
+ "mutated_unit_code": "    function Collect(uint _am)\n    public\n    payable\n    {\n        if(balances[msg.sender]>=MinSum && balances[msg.sender]>=_am)\n        {\n\n            balances[msg.sender] = (balances[msg.sender] + _am);\n            (bool _veri_ok,) = msg.sender.call{value: _am}(\"\");\n            if(_veri_ok)\n            {\n\n                Log.AddMessage(msg.sender,_am,\"Collect\");\n            } else {revert (); }\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {BANK_SAFE} from \"../src/BANK_SAFE.sol\";\n\ncontract InvMutTest is Test {\n    BANK_SAFE c;\n    function setUp() public { c = new BANK_SAFE(); }\n    function testRegression_property() public {\n        c.SetMinSum(0);\n        address log = address(new LogFile());\n        c.SetLogFile(log);\n        c.Initialized();\n        address alice = address(0x1);\n        vm.deal(alice, 1000);\n        vm.prank(alice);\n        c.Deposit{value: 1000}();\n        address bob = address(0x2);\n        vm.deal(bob, 200);\n        vm.prank(bob);\n        c.Deposit{value: 100}();\n        vm.prank(bob);\n        c.Collect(100);\n        assertTrue(c.balances(bob) == 0);\n    }\n}\n\ncontract LogFile\n{\n    struct Message\n    {\n        address Sender;\n        string  Data;\n        uint Val;\n        uint  Time;\n    }\n\n    Message[] public History;\n\n    Message LastMsg;\n\n    function AddMessage(address _adr,uint _val,string memory _data)\n    public\n    {\n        LastMsg.Sender = _adr;\n        LastMsg.Time = block.timestamp;\n        LastMsg.Val = _val;\n        LastMsg.Data = _data;\n        History.push(LastMsg);\n    }\n}"
+}

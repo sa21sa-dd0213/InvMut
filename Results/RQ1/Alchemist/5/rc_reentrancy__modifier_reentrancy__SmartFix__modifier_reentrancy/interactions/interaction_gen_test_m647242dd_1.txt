@@ -1,0 +1,58 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m647242dd of ModifierEntrancy.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test ModifierEntrancy.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for ModifierEntrancy:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("ModifierEntrancy reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy ModifierEntrancy by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("ModifierEntrancy"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ModifierEntrancy mutant test - supportsToken modifier removal", function () {
+  it("should revert when called from an EOA without supportsToken interface in the original, but succeed in mutant", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the ModifierEntrancy contract (no constructor arguments needed)
+    const ModifierEntrancy = await ethers.getContractFactory("ModifierEntrancy");
+    const instance = await ModifierEntrancy.deploy();
+    await instance.waitForDeployment();
+    
+    // Deploy a Bank contract that the attacker can use to satisfy supportsToken
+    const Bank = await ethers.getContractFactory("Bank");
+    const bank = await Bank.deploy();
+    await bank.waitForDeployment();
+    
+    // Test: An EOA (attacker) directly calling airDrop should revert in original
+    // because the supportsToken modifier requires msg.sender to be a contract
+    // with the correct supportsToken() function. In the mutant, this check is removed.
+    await expect(
+      instance.connect(attacker).airDrop()
+    ).to.be.reverted;
+    
+    // Alternative: Test that calling from the Bank contract address works
+    // This shows the original would work with a proper contract caller
+    // We need to simulate the Bank contract calling airDrop
+    // Since Bank doesn't have a function to call airDrop, we use a different approach:
+    // The attacker deploys a simple attacker contract that implements supportsToken
+    const AttackerContract = await ethers.getContractFactory("Bank");
+    const attackerContract = await AttackerContract.deploy();
+    await attackerContract.waitForDeployment();
+    
+    // Now call from the attacker contract's perspective - this should work in both
+    // original and mutant (if attacker contract had a way to call airDrop)
+    // But the key test is the EOA call above which should revert in original
+  });
+});
+```

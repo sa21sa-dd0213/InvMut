@@ -1,0 +1,12 @@
+{
+ "difference_id": "T2bd3771f",
+ "property_summary": "For any caller and any timestamp, the reference contract never allows two successful payable fallback calls in the same block to both update pastBlockTime (the second call in the same block must revert due to block.timestamp > pastBlockTime); the mutant using >= can allow a second call in the same block to succeed and thus break this invariant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change the time comparison from > to >= so calls in the same block timestamp can update pastBlockTime and potentially trigger transfers differently.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp >= pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n\n    function setUp() public { c = new Roulette(); }\n\n    function testFuzz_property(address caller, uint256 warpTime) public {\n        vm.assume(caller != address(0));\n\n        warpTime = bound(warpTime, 1, type(uint32).max);\n\n        vm.deal(caller, 20 ether);\n\n        vm.warp(warpTime);\n        vm.prank(caller);\n        (bool ok1, ) = address(c).call{value: 10 ether}(\"\");\n\n        uint256 after1 = c.pastBlockTime();\n\n        vm.prank(caller);\n        (bool ok2, ) = address(c).call{value: 10 ether}(\"\");\n\n        assertTrue(!(ok1 && ok2));\n    }\n}\n"
+}

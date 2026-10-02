@@ -1,0 +1,53 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PRIVATE_ETH_CELL mutant kill test - mcf48bc58", function () {   it("should kill mutant where Collect condition uses <= instead of >=", async function () {     const [owner, user] = await ethers.getSigners();          // Deploy LogFile first (needed by PRIVATE_ETH_CELL)     const LogFileFactory = await ethers.getContractFactory("LogFile");     const logFile = await LogFileFactory.deploy();     await logFile.waitForDeployment();          // Deploy PRIVATE_ETH_CELL (no constructor arguments needed)     const Factory = await ethers.getContractFactory("PRIVATE_ETH_CELL");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Initialize the contract     await instance.connect(owner).SetLogFile(await logFile.getAddress());     await instance.connect(owner).SetMinSum(ethers.parseEther("10"));     await instance.connect(owner).Initialized();          // User deposits 5 ETH (less than MinSum of 10)     await instance.connect(user).Deposit({ value: ethers.parseEther("5") });          // Verify balance is 5 ETH     expect(await instance.balances(user.address)).to.equal(ethers.parseEther("5"));          // In the ORIGINAL contract, this Collect call would revert because     // balances[user] (5) < MinSum (10), so the >= condition fails.     // In the MUTANT, the condition becomes <=, which is true (5 <= 10),     // so the transaction would succeed - killing the mutant.     await expect(       instance.connect(user).Collect(ethers.parseEther("3"))     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PRIVATE_ETH_CELL { mapping (address=>uint256) public balances; uint public MinSum; LogFile Log; bool intitalized; function SetMinSum(uint _val) public { require(!intitalized); MinSum = _val; } function SetLogFile(address _log) public { require(!intitalized); Log = LogFile(_log); } function Initialized() public { intitalized = true; } function Deposit() public payable { require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); balances[msg.sender]+= msg.value; Log.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { if(balances[msg.sender]>=MinSum && balances[msg.sender]>=_am) { balances[msg.sender] = (balances[msg.sender] - _am); (bool _veri_ok,) = msg.sender.call{value: _am}(""); if(_veri_ok) { Log.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } receive() external payable { Deposit(); } } contract LogFile { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val,string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PRIVATE_ETH_CELL mutant kill test - mcf48bc58", function () {
+  it("should kill mutant where Collect condition uses <= instead of >=", async function () {
+    const [owner, user] = await ethers.getSigners();
+
+    // Deploy LogFile first (needed by PRIVATE_ETH_CELL)
+    const LogFileFactory = await ethers.getContractFactory("LogFile");
+    const logFile = await LogFileFactory.deploy();
+    await logFile.waitForDeployment();
+
+    // Deploy PRIVATE_ETH_CELL (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("PRIVATE_ETH_CELL");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Initialize the contract
+    await instance.connect(owner).SetLogFile(await logFile.getAddress());
+    await instance.connect(owner).SetMinSum(ethers.parseEther("10"));
+    await instance.connect(owner).Initialized();
+
+    // User deposits 5 ETH (less than MinSum of 10)
+    await instance.connect(user).Deposit({ value: ethers.parseEther("5") });
+
+    // Verify balance is 5 ETH
+    expect(await instance.balances(user.address)).to.equal(ethers.parseEther("5"));
+
+    // In the ORIGINAL contract, this Collect call would revert because
+    // balances[user] (5) < MinSum (10), so the >= condition fails.
+    // In the MUTANT, the condition becomes <=, which is true (5 <= 10),
+    // so the transaction would succeed - killing the mutant.
+    await expect(
+      instance.connect(user).Collect(ethers.parseEther("3"))
+    ).to.be.reverted;
+  });
+});
+```

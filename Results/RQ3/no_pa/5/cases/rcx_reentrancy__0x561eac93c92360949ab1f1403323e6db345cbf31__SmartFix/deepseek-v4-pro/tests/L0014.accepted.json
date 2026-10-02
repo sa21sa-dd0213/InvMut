@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0014",
+ "property_summary": "After a user deposits 1 wei and the contract is initialized with MinSum=0, calling Collect(1) on the reference contract logs a 'Collect' message and transfers ether, whereas the buggy version reverts the call (since it inverts the success check) and thus no message is logged and no ether is transferred — observable via c.Log History and address(c).balance.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "-if(_veri_ok); +if(!_veri_ok)",
+ "mutated_unit_code": "function Collect(uint _am)\n    public\n    payable\n    {\n        if(balances[msg.sender]>=MinSum && balances[msg.sender]>=_am)\n        {\n            \n            balances[msg.sender] = (balances[msg.sender] - _am);\n            (bool _veri_ok,) = msg.sender.call{value: _am}(\"\");\n            if(!_veri_ok)\n            {\n                \n                Log.AddMessage(msg.sender,_am,\"Collect\");\n            } else {revert (); }\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {BANK_SAFE} from \"../src/BANK_SAFE.sol\";\n\ncontract InvMutTest is Test {\n    BANK_SAFE c;\n    function setUp() public { c = new BANK_SAFE(); }\n    function testRegression_property() public {\n        vm.deal(address(this), 10 ether);\n        vm.startPrank(address(this));\n        LogFile log = new LogFile();\n        c.SetLogFile(address(log));\n        c.SetMinSum(0);\n        c.Initialized();\n        vm.stopPrank();\n\n        address user = address(0x1);\n        vm.deal(user, 1 wei);\n        vm.prank(user);\n        c.Deposit{value: 1 wei}();\n\n        vm.prank(user);\n        (bool ok,) = address(c).call(abi.encodeWithSignature(\"Collect(uint256)\", 1));\n\n        assertTrue(ok);\n    }\n}\n\ncontract LogFile {\n    struct Message {\n        address Sender;\n        string  Data;\n        uint Val;\n        uint  Time;\n    }\n    Message[] public History;\n    Message LastMsg;\n\n    function AddMessage(address _adr,uint _val,string memory _data) public {\n        LastMsg.Sender = _adr;\n        LastMsg.Time = block.timestamp;\n        LastMsg.Val = _val;\n        LastMsg.Data = _data;\n        History.push(LastMsg);\n    }\n}"
+}

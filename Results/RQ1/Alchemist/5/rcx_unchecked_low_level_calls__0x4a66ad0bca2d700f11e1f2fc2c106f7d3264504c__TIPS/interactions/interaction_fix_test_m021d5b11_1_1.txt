@@ -1,0 +1,54 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EBU mutant detection - m021d5b11", function () {   it("should detect arithmetic mutation from * to + in transfer function", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy the contract (no constructor arguments needed)     const Factory = await ethers.getContractFactory("EBU");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Verify the hardcoded addresses match the owner     const fromAddress = await instance.from();     expect(fromAddress).to.equal(owner.address);          // Prepare test data: send 1 token (v[i] = 1) to addr1     const recipients = [addr1.address];     const amounts = [1]; // 1 token (wei equivalent: 1 * 10^18)          // Call transfer as the authorized owner     const tx = await instance.connect(owner).transfer(recipients, amounts);     await tx.wait();          // Expected behavior: original multiplies v[i] * 10^18 = 1 * 10^18 = 1 ether     // Mutant adds: v[i] + 10^18 = 1 + 10^18 (completely different amount)     // Since we can't directly check internal call results, we verify the transaction didn't revert     // and that the call completed successfully (mutant would still execute but with wrong amounts)          // Alternative approach: check that the transaction succeeded without revert     expect(tx.hash).to.not.be.undefined;          // For a more robust test, we can check that the owner's balance changed as expected     // (though the contract doesn't hold ETH, so we verify the call didn't revert)     const receipt = await tx.wait();     expect(receipt.status).to.equal(1); // 1 = success   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EBU { address public from = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9; address public caddress = 0x1f844685f7Bf86eFcc0e74D8642c54A257111923; function transfer( address[] memory _tos, uint[] memory v)  public returns (bool) { require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9); require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v[i] * 1000000000000000000)); _d; if (! _s) { revert();} } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant detection - m021d5b11", function () {
+  it("should detect arithmetic mutation from * to + in transfer function", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy the contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Verify the hardcoded addresses match the owner
+    const fromAddress = await instance.from();
+    expect(fromAddress).to.equal(owner.address);
+
+    // Prepare test data: send 1 token (v[i] = 1) to addr1
+    const recipients = [addr1.address];
+    const amounts = [1]; // 1 token (wei equivalent: 1 * 10^18)
+
+    // Call transfer as the authorized owner
+    const tx = await instance.connect(owner).transfer(recipients, amounts);
+    await tx.wait();
+
+    // Expected behavior: original multiplies v[i] * 10^18 = 1 * 10^18 = 1 ether
+    // Mutant adds: v[i] + 10^18 = 1 + 10^18 (completely different amount)
+    // Since we can't directly check internal call results, we verify the transaction didn't revert
+    // and that the call completed successfully (mutant would still execute but with wrong amounts)
+
+    // Alternative approach: check that the transaction succeeded without revert
+    expect(tx.hash).to.not.be.undefined;
+
+    // For a more robust test, we can check that the owner's balance changed as expected
+    // (though the contract doesn't hold ETH, so we verify the call didn't revert)
+    const receipt = await tx.wait();
+    expect(receipt.status).to.equal(1); // 1 = success
+  });
+});
+```

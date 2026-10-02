@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0007",
+ "property_summary": "With _tos array of length 4, reference transfers to indices 0,1,2,3; mutant i+=2 skips indices 1 and 3, so _tos[1] balance differs after the call.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Replace the for loop increment i++ with i+=2; so the loop processes every other element.",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0; i<_tos.length; i+=2){\n            { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); require(_s); }\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airPort} from \"../src/airPort.sol\";\n\ncontract InvMutTest is Test {\n    airPort c;\n    function setUp() public { c = new airPort(); }\n    function testRegression_property() public {\n        address[] memory tos = new address[](4);\n        tos[0] = address(0x100);\n        tos[1] = address(0x200);\n        tos[2] = address(0x300);\n        tos[3] = address(0x400);\n        Token token = new Token();\n        token.mint(address(this), 1000);\n        token.approve(address(c), 1000);\n        c.transfer(address(this), address(token), tos, 10);\n        uint256 balanceOfIndex1 = token.balanceOf(tos[1]);\n        assertTrue(balanceOfIndex1 == 10, \"Index 1 should have received tokens\");\n    }\n}\n\ncontract Token {\n    mapping(address => uint256) public balanceOf;\n    mapping(address => mapping(address => uint256)) public allowance;\n\n    function mint(address to, uint256 amount) public {\n        balanceOf[to] += amount;\n    }\n\n    function approve(address spender, uint256 amount) public returns (bool) {\n        allowance[msg.sender][spender] = amount;\n        return true;\n    }\n\n    function transferFrom(address from, address to, uint256 amount) public returns (bool) {\n        require(allowance[from][msg.sender] >= amount);\n        allowance[from][msg.sender] -= amount;\n        balanceOf[from] -= amount;\n        balanceOf[to] += amount;\n        return true;\n    }\n}\n"
+}

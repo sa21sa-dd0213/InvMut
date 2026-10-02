@@ -1,0 +1,12 @@
+{
+ "difference_id": "Te98ab62c",
+ "property_summary": "For any target address and amount, calling sendMoney on the correct contract either forwards the funds successfully (call returns true) or reverts so the caller observes failure; the mutant swallows a failing call and thus can make sendMoney appear successful even when the external call would have failed (i.e., correct contract never silently ignores a failed external call, mutant can).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Remove the revert-on-failure branch by performing the call but ignore the returned success value, allowing failures to be silently ignored (so state after call may differ).",
+ "mutated_unit_code": "function sendMoney(address _target, uint _value)  public onlyOwner {\n    { (bool _s, bytes memory _d) = _target.call{value: _value}(\"\"); _d; /* ignore success */ }\n}\n",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n\n    function testFuzz_property(uint256 amount) public {\n        amount = bound(amount, 0, 1 ether);\n\n        vm.deal(address(c), amount);\n\n        Reverter rev = new Reverter();\n\n        bool ok;\n        try c.sendMoney(address(rev), amount) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(!ok);\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"revert\");\n    }\n    receive() external payable {\n        revert(\"revert\");\n    }\n}\n"
+}

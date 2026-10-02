@@ -1,0 +1,12 @@
+{
+ "difference_id": "T18a7d306",
+ "property_summary": "For any inputs with a non-empty _tos array, the reference contract's transfer call never reverts (always returns/finishes), whereas the mutant with a require on the low-level call can revert if any callee call fails (e.g., a reverting callee); thus the reference always completes but the mutant can fail for some adversarial callee.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Add require on each low-level call success to revert on failure, changing observable reversion behavior.",
+ "mutated_unit_code": "function transfer(address from,address caddress, address[] memory _tos, uint[] memory v)public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0;i<_tos.length;i++){\n\n            (bool ok,) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v[i]));\n            require(ok, \"external transferFrom failed\");\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EBU} from \"../src/EBU.sol\";\n\ncontract InvMutTest is Test {\n    EBU c;\n    function setUp() public { c = new EBU(); }\n\n    function testFuzz_property(address from, uint256 amt) public {\n        address adversary = address(new Reverter());\n\n        address[] memory tos = new address[](1);\n        tos[0] = adversary;\n        uint[] memory vals = new uint[](1);\n        vals[0] = amt;\n\n        bool ok;\n        try c.transfer(from, adversary, tos, vals) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok);\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"revert from adversary\");\n    }\n    receive() external payable {\n        revert(\"revert from adversary\");\n    }\n}"
+}

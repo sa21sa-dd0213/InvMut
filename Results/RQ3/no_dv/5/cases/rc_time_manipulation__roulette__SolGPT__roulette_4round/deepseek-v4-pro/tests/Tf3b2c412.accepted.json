@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tf3b2c412",
+ "property_summary": "After any successful fallback call, the contract balance must be either 0 (if block.number is divisible by 15) or equal to the caller's sent value plus any prior accumulated ether (if not), but the mutant incorrectly zeroes the balance when block.number is divisible by 16 instead of 15.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replace the modulus divisor 15 with 16 in the condition.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        if(block.number % 16 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 sendValue, uint256 blockNum) public {\n        sendValue = bound(sendValue, 10 ether, 10 ether);\n        vm.assume(blockNum > 0);\n        vm.roll(blockNum);\n        vm.warp(1);\n        vm.deal(address(this), sendValue);\n        uint256 beforeBal = address(c).balance;\n        (bool success, ) = address(c).call{value: sendValue}(\"\");\n        if (success) {\n            uint256 afterBal = address(c).balance;\n            bool shouldClear = (blockNum % 15 == 0);\n            if (shouldClear) {\n                assertTrue(afterBal == 0);\n            } else {\n                assertTrue(afterBal == beforeBal + sendValue);\n            }\n        }\n    }\n}"
+}

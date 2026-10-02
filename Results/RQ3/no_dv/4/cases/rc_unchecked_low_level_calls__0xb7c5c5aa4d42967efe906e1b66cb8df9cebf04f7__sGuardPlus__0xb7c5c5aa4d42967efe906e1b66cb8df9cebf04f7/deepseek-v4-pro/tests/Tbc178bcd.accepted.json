@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tbc178bcd",
+ "property_summary": "After two calls to withdraw by distinct actors where the first succeeds, the second must also succeed; the bug prevents the second call by not unlocking, making it revert.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Remove the unlock statement at the end of the modifier, preventing any second call to withdraw even sequentially.",
+ "mutated_unit_code": "modifier __lock_modifier0() {\nrequire(!__lock_modifier0_lock);\n__lock_modifier0_lock = true;\n_;\n\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {keepMyEther} from \"../src/keepMyEther.sol\";\n\ncontract InvMutTest is Test {\n    keepMyEther c;\n    function setUp() public { c = new keepMyEther(); }\n    function testFuzz_property(address a0, address a1, uint256 amt0, uint256 amt1) public {\n        vm.assume(a0 != a1);\n        vm.assume(a0 != address(this) && a1 != address(this));\n        vm.assume(amt0 > 0 && amt1 > 0);\n        vm.assume(amt0 <= type(uint256).max / 2 && amt1 <= type(uint256).max / 2);\n\n        vm.deal(a0, amt0);\n        vm.prank(a0);\n        (bool okDep0,) = address(c).call{value: amt0}(\"\");\n        require(okDep0);\n\n        vm.deal(a1, amt1);\n        vm.prank(a1);\n        (bool okDep1,) = address(c).call{value: amt1}(\"\");\n        require(okDep1);\n\n        vm.prank(a0);\n        c.withdraw();\n\n        vm.prank(a1);\n        bool ok;\n        try c.withdraw() { ok = true; } catch { ok = false; }\n\n        assertTrue(ok);\n    }\n}\n"
+}

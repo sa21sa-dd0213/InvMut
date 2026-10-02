@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0015",
+ "property_summary": "After calling XBornID() which sets balances[owner]=totalDistributed, the reference contract P leaves totalDistributed unchanged (still 200000000e18) because XBornID does not call distr, while the buggy contract M with inverted canDistr condition causes getTokens() to revert when called by an owner not blacklisted, but the immediate assertion is that totalDistributed in P equals 200000000e18 and in M after the same call also equals 200000000e18; however the observable divergence is that a subsequent call to getTokens() by a non-blacklisted user succeeds in P but reverts in M due to the inverted require(distributionFinished) in canDistr, making distributionFinished remain false in P and true in M, so the assertion address(c).balance after a msg.sender sends ether succeeds in P (balance increases) but reverts in M, causing a revert that we detect via try/catch\u2014so the concrete scenario is: owner calls XBornID() then a non-blacklisted user calls getTokens{value: 0}; in P it succeeds, in M it reverts.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Replace require(!distributionFinished) with require(distributionFinished) to invert the condition.",
+ "mutated_unit_code": "    modifier canDistr() {\n        require(distributionFinished);\n        _;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {XBORNID} from \"../src/XBORNID.sol\";\n\ncontract InvMutTest is Test {\n    XBORNID c;\n    function setUp() public { c = new XBORNID(); }\n    function testRegression_property() public {\n        address owner = address(this);\n        vm.prank(owner);\n        c.XBornID();\n\n        address user = address(0x1);\n        vm.deal(user, 1 ether);\n        vm.prank(user);\n        bool success;\n        try c.getTokens() {\n            success = true;\n        } catch {\n            success = false;\n        }\n        assertTrue(success);\n    }\n}\n"
+}

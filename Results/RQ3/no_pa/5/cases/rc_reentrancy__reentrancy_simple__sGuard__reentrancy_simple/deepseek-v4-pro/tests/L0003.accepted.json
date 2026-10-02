@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "After depositing 1 ether and withdrawing, the reference contract retains the user's balance as 0 (set-after-send), while the buggy version erroneously sends 0 ether because it zeroes the balance before the external call, but the reference still has the user's balance set to 0 after the call. The divergence is that both versions end with the same final balance (0), but the buggy version fails to send the ether; the test asserts that the user's balance is 0 after withdrawal, which holds for both, so the actual divergence is that the reference successfully sends the ether (user receives funds) while the buggy version does not. Since the test must catch this via a revert boolean or balance check, we instead compare the recipient's balance after withdrawal: reference sends 1 ether, buggy sends 0. So we assert that after withdrawal, the recipient's address balance is 1 ether (the reference) vs 0 (the buggy).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "+userBalance[msg.sender] = 0;; -userBalance[msg.sender] = 0;",
+ "mutated_unit_code": "function withdrawBalance() public nonReentrant_ {\n         userBalance[msg.sender] = 0;\n         { (bool _s, bytes memory _d) = msg.sender.call{value: userBalance[msg.sender]}(\"\"); _d; if (! _s) {\n             revert();\n         } }\n     }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n    function testRegression_property() public {\n        address user = address(0x1234);\n        vm.deal(user, 1 ether);\n        vm.prank(user);\n        c.addToBalance{value: 1 ether}();\n        uint balanceBefore = address(user).balance;\n        vm.prank(user);\n        bool ok;\n        try c.withdrawBalance() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        assertTrue(ok);\n        uint balanceAfter = address(user).balance;\n        assertEq(balanceAfter, balanceBefore + 1 ether);\n    }\n}\n"
+}

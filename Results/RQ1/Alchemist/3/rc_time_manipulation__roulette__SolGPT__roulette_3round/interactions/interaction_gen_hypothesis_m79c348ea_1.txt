@@ -1,0 +1,22 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Roulette:
+        Contract Code: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp + 1; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+
+    Consider the following mutant of Roulette:
+        Mutant m79c348ea of function fallback replaces block.timestamp with block.prevrandao
+        Mutant Diff: ---|         pastBlockTime = block.timestamp + 1; +++|         pastBlockTime = block.prevrandao + 1;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract uses `block.timestamp` to enforce a one-second delay between calls, while the mutant replaces it with `block.prevrandao`, which is a random value (the randomness beacon from the beacon chain). Unlike `block.timestamp`, `block.prevrandao` does not consistently increase over time and can be the same across consecutive blocks or even decrease.
+
+**Hypothesis:**  
+A test case that makes two sequential calls to the fallback function within the same block (or with a very short time interval) should pass on the original contract because the second call would revert due to the timestamp check (`block.timestamp > pastBlockTime`), but on the mutant the second call would succeed if `block.prevrandao` happens to be greater than or equal to the stored value, thereby bypassing the intended delay and potentially allowing repeated withdrawals.

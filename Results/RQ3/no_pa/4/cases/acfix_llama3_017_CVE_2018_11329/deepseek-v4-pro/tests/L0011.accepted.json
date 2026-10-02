@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0011",
+ "property_summary": "After seedMarket(1 ether) and getFreeKilo, collectDrugs(someReferral), then buyDrugs(1 ether), then sellDrugs(), the reference contract increases marketDrugs by the sold drugs while the buggy version keeps marketDrugs unchanged, causing calculateDrugBuy to return different values.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Change the marketDrugs addition to add 0 instead of hasDrugs, so that the marketDrugs does not increase on sell.",
+ "mutated_unit_code": "    function sellDrugs() public{\n        require(initialized);\n        uint256 hasDrugs=getMyDrugs();\n        uint256 drugValue=calculateDrugSell(hasDrugs);\n        uint256 fee=devFee(drugValue);\n        claimedDrugs[msg.sender]=0;\n        lastCollect[msg.sender]=block.timestamp;\n        marketDrugs=SafeMath.add(marketDrugs,0);\n        payable(ceoAddress).transfer(fee);\n        payable(msg.sender).transfer(SafeMath.sub(drugValue,fee));\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherCartel} from \"../src/EtherCartel.sol\";\n\ncontract InvMutTest is Test {\n    EtherCartel c;\n    function setUp() public { c = new EtherCartel(); }\n    function testRegression_property() public {\n        vm.deal(address(this), 10 ether);\n        vm.prank(address(this));\n        c.seedMarket{value: 1 ether}(1 ether);\n        address userA = makeAddr(\"userA\");\n        vm.prank(userA);\n        c.getFreeKilo();\n        vm.prank(userA);\n        c.collectDrugs(address(this));\n        vm.deal(userA, 10 ether);\n        vm.prank(userA);\n        c.buyDrugs{value: 1 ether}();\n        uint256 marketDrugsBefore = c.marketDrugs();\n        vm.prank(userA);\n        c.sellDrugs();\n        uint256 marketDrugsAfter = c.marketDrugs();\n        assertTrue(marketDrugsAfter > marketDrugsBefore, \"marketDrugs should increase after sell\");\n    }\n}\n"
+}

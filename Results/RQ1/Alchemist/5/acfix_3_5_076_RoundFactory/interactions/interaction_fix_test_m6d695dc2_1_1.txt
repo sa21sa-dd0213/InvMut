@@ -1,0 +1,95 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("RoundFactory - kill mutant m6d695dc2 (event emission removed)", function () {   it("should emit RoundCreated event when create is called", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy RoundFactory     const Factory = await ethers.getContractFactory("RoundFactory");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Initialize the contract     await instance.initialize();          // Set up program operator     await instance.connect(owner).updateAlloSettings(addr1.address);          // Deploy a minimal proxy implementation contract for roundImplementation     // We need a simple contract that implements IRoundImplementation     const MinimalProxy = await ethers.getContractFactory("MinimalProxy");     const roundImpl = await MinimalProxy.deploy();     await roundImpl.waitForDeployment();          // Set roundImplementation     await instance.connect(owner).updateRoundImplementation(roundImpl.target);          // Add owner as program operator     // Note: The contract has programOperators mapping, we need to set it     // Since there's no addProgramOperator function, we'll need to directly set the mapping     // Using storage manipulation or deploy a test helper     // For this test, let's assume we can set the program operator via the contract's storage     // Actually, the contract doesn't have a setter for programOperators, so we'll use a workaround     // Let's deploy a test version that exposes this     const TestFactory = await ethers.getContractFactory("RoundFactory");     const testInstance = await TestFactory.deploy();     await testInstance.waitForDeployment();     await testInstance.initialize();          // Set program operator by directly calling the storage slot     // In ethers v6, we can use the provider to set storage     // But it's easier to create a minimal test helper contract     // For now, let's use a different approach - deploy a modified factory that allows setting program operators          // Actually, the simplest approach: create a minimal test that doesn't require program operator     // Since the original contract requires onlyProgramOperator modifier, we need to set it     // Let's use ethers to set the storage slot directly     const slot = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["address", "uint256"], [owner.address, 0]));     await ethers.provider.send("hardhat_setStorageAt", [       testInstance.target,       slot,       "0x0000000000000000000000000000000000000000000000000000000000000001"     ]);          // Now call create and expect event emission     const encodedParams = ethers.AbiCoder.defaultAbiCoder().encode(       ["address", "uint256"],       [owner.address, 123]     );          // We need to handle the fact that the cloned contract will call initialize on itself     // For testing event emission, we just need the transaction to succeed and emit the event     const tx = await testInstance.connect(owner).create(encodedParams, addr2.address);     const receipt = await tx.wait();          // Check for RoundCreated event     const event = receipt.logs.find(       (log) => log.topics[0] === ethers.id("RoundCreated(address,address,address)")     );          expect(event).to.not.be.undefined;          // Decode the event to verify parameters     const iface = new ethers.Interface([       "event RoundCreated(address indexed roundAddress, address indexed ownedBy, address indexed roundImplementation)"     ]);     const decodedEvent = iface.parseLog({       topics: event.topics,       data: event.data     });          expect(decodedEvent.args.ownedBy).to.equal(addr2.address);     expect(decodedEvent.args.roundImplementation).to.equal(roundImpl.target);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.17; library AddressUpgradeable { function isContract(address account) internal view returns (bool) { return account.code.length > 0; } function sendValue(address payable recipient, uint256 amount) internal { require(address(this).balance >= amount, "Address: insufficient balance"); (bool success, ) = recipient.call{value: amount}(""); require(success, "Address: unable to send value, recipient may have reverted"); } function functionCall(address target, bytes memory data) internal returns (bytes memory) { return functionCallWithValue(target, data, 0, "Address: low-level call failed"); } function functionCall( address target, bytes memory data, string memory errorMessage ) internal returns (bytes memory) { return functionCallWithValue(target, data, 0, errorMessage); } function functionCallWithValue(address target, bytes memory data, uint256 value) internal returns (bytes memory) { return functionCallWithValue(target, data, value, "Address: low-level call with value failed"); } function functionCallWithValue( address target, bytes memory data, uint256 value, string memory errorMessage ) internal returns (bytes memory) { require(address(this).balance >= value, "Address: insufficient balance for call"); (bool success, bytes memory returndata) = target.call{value: value}(data); return verifyCallResultFromTarget(target, success, returndata, errorMessage); } function functionStaticCall(address target, bytes memory data) internal view returns (bytes memory) { return functionStaticCall(target, data, "Address: low-level static call failed"); } function functionStaticCall( address target, bytes memory data, string memory errorMessage ) internal view returns (bytes memory) { (bool success, bytes memory returndata) = target.staticcall(data); return verifyCallResultFromTarget(target, success, returndata, errorMessage); } function functionDelegateCall(address target, bytes memory data) internal returns (bytes memory) { return functionDelegateCall(target, data, "Address: low-level delegate call failed"); } function functionDelegateCall( address target, bytes memory data, string memory errorMessage ) internal returns (bytes memory) { (bool success, bytes memory returndata) = target.delegatecall(data); return verifyCallResultFromTarget(target, success, returndata, errorMessage); } function verifyCallResultFromTarget( address target, bool success, bytes memory returndata, string memory errorMessage ) internal view returns (bytes memory) { if (success) { if (returndata.length == 0) { require(isContract(target), "Address: call to non-contract"); } return returndata; } else { _revert(returndata, errorMessage); } } function verifyCallResult( bool success, bytes memory returndata, string memory errorMessage ) internal pure returns (bytes memory) { if (success) { return returndata; } else { _revert(returndata, errorMessage); } } function _revert(bytes memory returndata, string memory errorMessage) private pure { if (returndata.length > 0) { assembly { let returndata_size := mload(returndata) revert(add(32, returndata), returndata_size) } } else { revert(errorMessage); } } } library ClonesUpgradeable { function clone(address implementation) internal returns (address instance) { assembly { mstore(0x00, or(shr(0xe8, shl(0x60, implementation)), 0x3d602d80600a3d3981f3363d3d373d3d3d363d73000000)) mstore(0x20, or(shl(0x78, implementation), 0x5af43d82803e903d91602b57fd5bf3)) instance := create(0, 0x09, 0x37) } require(instance != address(0), "ERC1167: create failed"); } function cloneDeterministic(address implementation, bytes32 salt) internal returns (address instance) { assembly { mstore(0x00, or(shr(0xe8, shl(0x60, implementation)), 0x3d602d80600a3d3981f3363d3d373d3d3d363d73000000)) mstore(0x20, or(shl(0x78, implementation), 0x5af43d82803e903d91602b57fd5bf3)) instance := create2(0, 0x09, 0x37, salt) } require(instance != address(0), "ERC1167: create2 failed"); } function predictDeterministicAddress( address implementation, bytes32 salt, address deployer ) internal pure returns (address predicted) { assembly { let ptr := mload(0x40) mstore(add(ptr, 0x38), deployer) mstore(add(ptr, 0x24), 0x5af43d82803e903d91602b57fd5bf3ff) mstore(add(ptr, 0x14), implementation) mstore(ptr, 0x3d602d80600a3d3981f3363d3d373d3d3d363d73) mstore(add(ptr, 0x58), salt) mstore(add(ptr, 0x78), keccak256(add(ptr, 0x0c), 0x37)) predicted := keccak256(add(ptr, 0x43), 0x55) } } function predictDeterministicAddress( address implementation, bytes32 salt ) internal view returns (address predicted) { return predictDeterministicAddress(implementation, salt, address(this)); } } abstract contract Initializable { uint8 private _initialized; bool private _initializing; event Initialized(uint8 version); modifier initializer() { bool isTopLevelCall = !_initializing; require( (isTopLevelCall && _initialized < 1) || (!AddressUpgradeable.isContract(address(this)) && _initialized == 1), "Initializable: contract is already initialized" ); _initialized = 1; if (isTopLevelCall) { _initializing = true; } _; if (isTopLevelCall) { _initializing = false; emit Initialized(1); } } modifier reinitializer(uint8 version) { require(!_initializing && _initialized < version, "Initializable: contract is already initialized"); _initialized = version; _initializing = true; _; _initializing = false; emit Initialized(version); } modifier onlyInitializing() { require(_initializing, "Initializable: contract is not initializing"); _; } function _disableInitializers() internal virtual { require(!_initializing, "Initializable: contract is initializing"); if (_initialized != type(uint8).max) { _initialized = type(uint8).max; emit Initialized(type(uint8).max); } } function _getInitializedVersion() internal view returns (uint8) { return _initialized; } function _isInitializing() internal view returns (bool) { return _initializing; } } abstract contract ContextUpgradeable is Initializable { function __Context_init() internal onlyInitializing { } function __Context_init_unchained() internal onlyInitializing { } function _msgSender() internal view virtual returns (address) { return msg.sender; } function _msgData() internal view virtual returns (bytes calldata) { return msg.data; } uint256[50] private __gap_1; } abstract contract OwnableUpgradeable is Initializable, ContextUpgradeable { address private _owner; event OwnershipTransferred(address indexed previousOwner, address indexed newOwner); function __Ownable_init() internal onlyInitializing { __Ownable_init_unchained(); } function __Ownable_init_unchained() internal onlyInitializing { _transferOwnership(_msgSender()); } modifier onlyOwner() { _checkOwner(); _; } function owner() public view virtual returns (address) { return _owner; } function _checkOwner() internal view virtual { require(owner() == _msgSender(), "Ownable: caller is not the owner"); } function renounceOwnership() public virtual onlyOwner { _transferOwnership(address(0)); } function transferOwnership(address newOwner) public virtual onlyOwner { require(newOwner != address(0), "Ownable: new owner is the zero address"); _transferOwnership(newOwner); } function _transferOwnership(address newOwner) internal virtual { address oldOwner = _owner; _owner = newOwner; emit OwnershipTransferred(oldOwner, newOwner); } uint256[49] private __gap_2; } interface IRoundFactory { function create(bytes calldata encodedParameters, address ownedBy) external returns (address); function updateRoundImplementation(address payable newRoundImplementation) external; function updateAlloSettings(address newAlloSettings) external; } interface IRoundImplementation { function initialize(bytes calldata encodedParameters, address alloSettings) external; } struct MetaPtr { uint256 protocol; string pointer; } contract RoundFactory is IRoundFactory, OwnableUpgradeable { string public constant VERSION = "0.2.0"; address public roundImplementation; address public alloSettings; event AlloSettingsUpdated(address alloSettings); event RoundImplementationUpdated(address roundImplementation); event RoundCreated( address indexed roundAddress, address indexed ownedBy, address indexed roundImplementation ); function initialize() external initializer { __Context_init_unchained(); __Ownable_init_unchained(); } function updateAlloSettings(address newAlloSettings) external onlyOwner { alloSettings = newAlloSettings; emit AlloSettingsUpdated(alloSettings); } function updateRoundImplementation(address payable newRoundImplementation) external onlyOwner { require(newRoundImplementation != address(0), "roundImplementation is 0x"); roundImplementation = newRoundImplementation; emit RoundImplementationUpdated(roundImplementation); } function create( bytes calldata encodedParameters, address ownedBy ) external onlyProgramOperator returns (address) { require(roundImplementation != address(0), "roundImplementation is 0x"); require(alloSettings != address(0), "alloSettings is 0x"); address clone = ClonesUpgradeable.clone(roundImplementation); emit RoundCreated(clone, ownedBy, payable(roundImplementation)); IRoundImplementation(payable(clone)).initialize( encodedParameters, alloSettings ); return clone; } mapping(address => bool) public programOperators; modifier onlyProgramOperator() { require(programOperators[msg.sender], "Caller is not a program operator"); _; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("RoundFactory - kill mutant m6d695dc2 (event emission removed)", function () {
+  it("should emit RoundCreated event when create is called", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy RoundFactory
+    const Factory = await ethers.getContractFactory("RoundFactory");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Initialize the contract
+    await instance.initialize();
+
+    // Set up program operator by directly setting the storage slot
+    // The programOperators mapping slot is computed as keccak256(abi.encode(address, uint256))
+    // where uint256 is the mapping slot number (which is 0 for the first mapping after __gap)
+    // But we need to calculate the correct slot. The mapping is declared after __gap variables
+    // which occupy 50 slots for ContextUpgradeable and 49 slots for OwnableUpgradeable
+    // So programOperators is at slot 2 (0: _initialized, 1: _initializing, 2: programOperators)
+    // Actually, let's just compute it properly:
+    // The mapping slot is the position where it's declared in storage
+    // After OwnableUpgradeable's __gap_2 (49 slots), the next slot is for programOperators
+    // So the slot is 2 (0: _initialized, 1: _initializing, 2: programOperators)
+    const slot = ethers.keccak256(
+      ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "uint256"],
+        [owner.address, 2]
+      )
+    );
+    
+    await ethers.provider.send("hardhat_setStorageAt", [
+      instance.target,
+      slot,
+      "0x0000000000000000000000000000000000000000000000000000000000000001"
+    ]);
+
+    // Set roundImplementation
+    // We need a minimal proxy that implements IRoundImplementation
+    // Deploy a simple contract that can be cloned
+    const MinimalProxy = await ethers.getContractFactory("MinimalProxy");
+    const roundImpl = await MinimalProxy.deploy();
+    await roundImpl.waitForDeployment();
+    
+    await instance.connect(owner).updateRoundImplementation(roundImpl.target);
+
+    // Set alloSettings
+    await instance.connect(owner).updateAlloSettings(addr1.address);
+
+    // Now call create and expect event emission
+    const encodedParams = ethers.AbiCoder.defaultAbiCoder().encode(
+      ["address", "uint256"],
+      [owner.address, 123]
+    );
+
+    const tx = await instance.connect(owner).create(encodedParams, addr2.address);
+    const receipt = await tx.wait();
+
+    // Check for RoundCreated event
+    const event = receipt.logs.find(
+      (log) => log.topics[0] === ethers.id("RoundCreated(address,address,address)")
+    );
+
+    expect(event).to.not.be.undefined;
+
+    // Decode the event to verify parameters
+    const iface = new ethers.Interface([
+      "event RoundCreated(address indexed roundAddress, address indexed ownedBy, address indexed roundImplementation)"
+    ]);
+    const decodedEvent = iface.parseLog({
+      topics: event.topics,
+      data: event.data
+    });
+
+    expect(decodedEvent.args.ownedBy).to.equal(addr2.address);
+    expect(decodedEvent.args.roundImplementation).to.equal(roundImpl.target);
+  });
+});
+```

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T11a92b31",
+ "property_summary": "For the reference, whenever multiplicate is called with msg.value strictly less than address(this).balance before the call, the contract's Ether balance never decreases; the unconditional transfer in the buggy version can decrease the balance.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Remove the condition that msg.value be at least address(this).balance, making the transfer unconditional.",
+ "mutated_unit_code": "function multiplicate(address adr)\n    public\n    payable\n    {\n        require(((address(this).balance + msg.value) >= address(this).balance));\n        payable(adr).transfer(address(this).balance+msg.value);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MultiplicatorX3} from \"../src/MultiplicatorX3.sol\";\n\ncontract InvMutTest is Test {\n    MultiplicatorX3 c;\n    function setUp() public { c = new MultiplicatorX3(); }\n    function testFuzz_property(address adr, uint256 callValue, uint256 priorFunding) public {\n        vm.assume(adr != address(0) && adr != address(c));\n        vm.assume(callValue < type(uint256).max / 2);\n        vm.assume(priorFunding < type(uint256).max / 2);\n        vm.assume(callValue < priorFunding);\n\n        vm.deal(address(c), priorFunding);\n        uint256 balBefore = address(c).balance;\n\n        vm.deal(address(this), callValue);\n        try c.multiplicate{value: callValue}(adr) {}\n        catch {}\n\n        uint256 balAfter = address(c).balance;\n        assertTrue(balAfter >= balBefore);\n    }\n}\n"
+}

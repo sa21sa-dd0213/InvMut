@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0008",
+ "property_summary": "After a transfer call, the reference version reverts if the external call fails (due to malicious contract reverting), but the buggy version ignores the return and succeeds; this test triggers a failed external call and asserts that transfer returns true only if the call succeeds, which the buggy version passes incorrectly.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "-{ (bool _s,) = contract_address.call(abi.encodeWithSelector(id, msg.sender, tos[i], vs[i])); require(_s); }; +{ contract_address.call(abi.encodeWithSelector(id, msg.sender, tos[i], vs[i])); }",
+ "mutated_unit_code": "function transfer(address contract_address, address[] memory tos, uint[] memory vs)\n public validAddress(contract_address) returns (bool) {\n\nrequire(tos.length > 0);\nrequire(vs.length > 0);\nrequire(tos.length == vs.length);\nbytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\nfor(uint i = 0 ; i < tos.length; i++){\n\n{ contract_address.call(abi.encodeWithSelector(id, msg.sender, tos[i], vs[i])); }\n}\nreturn true;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {AirDropContract} from \"../src/AirDropContract.sol\";\n\ncontract InvMutTest is Test {\n    AirDropContract c;\n    function setUp() public { c = new AirDropContract(); }\n    function testRegression_property() public {\n        Malicious mal = new Malicious();\n        address malAddr = address(mal);\n        address[] memory tos = new address[](1);\n        tos[0] = address(0xdead);\n        uint[] memory vs = new uint[](1);\n        vs[0] = 100;\n        vm.prank(address(0xbabe));\n        bool ok;\n        try c.transfer(malAddr, tos, vs) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        assertTrue(!ok);\n    }\n}\n\ncontract Malicious {\n    fallback() external payable { revert(\"malicious\"); }\n}"
+}

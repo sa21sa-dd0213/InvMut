@@ -1,0 +1,216 @@
+--- bug.flat.sol
++++ fix.flat.sol
+@@ -1,30 +1,24 @@
+ // SPDX-License-Identifier: UNLICENSED
+ pragma solidity ^0.8.0;
+ 
+-contract PoCGame
+-{
+-
+-    modifier onlyOwner()
+-    {
++contract PoCGame {
++    modifier onlyOwner() {
+         require(msg.sender == owner);
+         _;
+     }
+ 
+-   modifier isOpenToPublic()
+-    {
++    modifier isOpenToPublic() {
+         require(openToPublic);
+         _;
+     }
+ 
+-    modifier onlyRealPeople()
+-    {
+-          require (msg.sender == tx.origin);
++    modifier onlyRealPeople() {
++        require(msg.sender == tx.origin);
+         _;
+     }
+ 
+-    modifier  onlyPlayers()
+-    {
+-        require (wagers[msg.sender] > 0);
++    modifier onlyPlayers() {
++        require(wagers[msg.sender] > 0);
+         _;
+     }
+ 
+@@ -45,44 +39,32 @@
+     bool openToPublic;
+     uint256 totalDonated;
+ 
+-    constructor(address whaleAddress, uint256 wagerLimit)
+-    onlyRealPeople()
+-    public
+-    {
++    constructor(address whaleAddress, uint256 wagerLimit) public {
+         openToPublic = false;
+         owner = payable(msg.sender);
+         whale = whaleAddress;
+         totalDonated = 0;
+         betLimit = wagerLimit;
+-
+     }
+ 
+-    function OpenToThePublic()
+-     public onlyOwner() {
++    function OpenToThePublic()  public onlyOwner() {
+         openToPublic = true;
+     }
+ 
+-    function AdjustBetAmounts(uint256 amount)
+-     public onlyOwner() {
++    function AdjustBetAmounts(uint256 amount)  public onlyOwner() {
+         betLimit = amount;
+-
+         emit BetLimitChanged(betLimit);
+     }
+ 
+-    function AdjustDifficulty(uint256 amount)
+-     public onlyOwner() {
++    function AdjustDifficulty(uint256 amount)  public onlyOwner() {
+         difficulty = amount;
+-
+         emit DifficultyChanged(difficulty);
+     }
+ 
+-    fallback() external payable { }
+-
+-    function wager()
+-     public isOpenToPublic() onlyRealPeople() payable {
++    fallback() external payable {}
+ 
++    function wager()  public isOpenToPublic() onlyRealPeople() payable {
+         require(msg.value == betLimit);
+-
+         require(wagers[msg.sender] == 0);
+ 
+         timestamps[msg.sender] = block.number;
+@@ -90,104 +72,71 @@
+         emit Wager(msg.value, msg.sender);
+     }
+ 
+-    function play()
+-     public isOpenToPublic() onlyRealPeople() onlyPlayers() {
++    function play()  public isOpenToPublic() onlyRealPeople() onlyPlayers() {
+         uint256 blockNumber = timestamps[msg.sender];
+-        if(blockNumber < block.number)
+-        {
++        if (blockNumber < block.number) {
+             timestamps[msg.sender] = 0;
+             wagers[msg.sender] = 0;
+ 
+-            uint256 winningNumber = uint256(keccak256(abi.encodePacked(blockhash(blockNumber),  msg.sender)))%difficulty +1;
++            uint256 winningNumber = uint256(keccak256(abi.encodePacked(blockhash(blockNumber), msg.sender, randomSeed))) % difficulty + 1;
+ 
+-            if(winningNumber == difficulty / 2)
+-            {
++            if (winningNumber == difficulty / 2) {
+                 payout(msg.sender);
+-            }
+-            else
+-            {
+-
++            } else {
+                 loseWager(betLimit / 2);
+             }
+-        }
+-        else
+-        {
++        } else {
+             revert();
+         }
+     }
+ 
+-    function donate()
+-     public isOpenToPublic() payable {
++    function donate()  public isOpenToPublic() payable {
+         donateToWhale(msg.value);
+     }
+ 
+-    function payout(address winner)
+-    internal
+-    {
++    function payout(address winner) internal {
+         uint256 ethToTransfer = address(this).balance / 2;
+-
+         payable(winner).transfer(ethToTransfer);
+         emit Win(ethToTransfer, winner);
+     }
+ 
+-    function donateToWhale(uint256 amount)
+-    internal
+-    {
+-
+-        whale.call{value: amount}(abi.encodeWithSignature("donate()"));
++    function donateToWhale(uint256 amount) internal {
++        { (bool _s,) = whale.call{value: amount}(""); require(_s); }
+         totalDonated += amount;
+         emit Donate(amount, whale, msg.sender);
+     }
+ 
+-    function loseWager(uint256 amount)
+-    internal
+-    {
+-
+-        whale.call{value: amount}(abi.encodeWithSignature("donate()"));
++    function loseWager(uint256 amount) internal {
++        { (bool _s,) = whale.call{value: amount}(""); require(_s); }
+         totalDonated += amount;
+         emit Lose(amount, msg.sender);
+     }
+ 
+-    function ethBalance()
+-     public view returns (uint256) {
++    function ethBalance() public view returns (uint256) {
+         return address(this).balance;
+     }
+ 
+-    function currentDifficulty()
+-     public view returns (uint256) {
++    function currentDifficulty() public view returns (uint256) {
+         return difficulty;
+     }
+ 
+-    function currentBetLimit()
+-     public view returns (uint256) {
++    function currentBetLimit() public view returns (uint256) {
+         return betLimit;
+     }
+ 
+-    function hasPlayerWagered(address player)
+-     public view returns (bool) {
+-        if(wagers[player] > 0)
+-        {
+-            return true;
+-        }
+-        else
+-        {
+-            return false;
+-        }
+-
++    function hasPlayerWagered(address player) public view returns (bool) {
++        return wagers[player] > 0;
+     }
+ 
+-    function winnersPot()
+-     public view returns (uint256) {
++    function winnersPot() public view returns (uint256) {
+         return address(this).balance / 2;
+     }
+ 
+-    function transferAnyERC20Token(address tokenAddress, address tokenOwner, uint tokens)
+-     public onlyOwner() returns (bool success) {
++    function transferAnyERC20Token(address tokenAddress, address tokenOwner, uint tokens) public onlyOwner() returns (bool success) {
+         return ERC20Interface(tokenAddress).transfer(tokenOwner, tokens);
+     }
+ }
+ 
+-abstract contract ERC20Interface
+-{
++abstract contract ERC20Interface {
+     function transfer(address to, uint256 tokens) virtual public returns (bool success);
+ }

@@ -1,0 +1,32 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EtherLotto:
+        Contract Code: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+
+    Consider the following mutant of EtherLotto:
+        Mutant m58a63c87 of function play replaces block.difficulty with block.prevrandao
+        Mutant Diff: ---|         uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; +++|         uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.prevrandao))) % 2;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+**Step-by-step analysis:**
+
+1. The original contract uses `block.difficulty` to generate a random number. In Solidity 0.8.0, `block.difficulty` returns the difficulty of the current block, which is a value that changes slowly and is somewhat predictable.
+
+2. The mutant replaces `block.difficulty` with `block.prevrandao`. This is a different value introduced in Ethereum's Merge (PoS transition). `block.prevrandao` returns the previous block's RANDAO value, which is a source of randomness from the consensus layer.
+
+3. Both values are different in nature: `block.difficulty` is a mining-related metric that tends to be stable across consecutive blocks, while `block.prevrandao` is a random value that changes unpredictably between blocks.
+
+4. The key insight: Since the two sources of entropy produce different values, the random number generation will produce different results for the same `block.timestamp` value. This means the probability distribution of winning/losing (random == 0 or random == 1) will differ between original and mutant.
+
+5. To detect this mutant, we need a test that relies on the specific behavior of `block.difficulty` vs `block.prevrandao`. The most direct way is to simulate a scenario where we can predict or control the block values and verify the outcome.
+
+**Hypothesis:**  
+The mutant changes the source of randomness from `block.difficulty` to `block.prevrandao`. Therefore, a test case that hardcodes specific block values (e.g., by using a hardhat/ganache snapshot with known `block.difficulty` and `block.prevrandao` values) and calls `play()` multiple times, then asserts that the winner/loser distribution matches the expected results using `block.difficulty` (the original implementation) should fail on the mutant because the mutant will produce different results under the same block conditions.

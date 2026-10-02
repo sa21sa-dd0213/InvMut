@@ -1,0 +1,48 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PredictTheBlockHashChallenge mutant m9e615f4a test", function () {   it("should kill the mutant by proving the stored block is current block instead of next block", async function () {     const [owner, player] = await ethers.getSigners();          // Deploy with 1 ether     const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge");     const instance = await Factory.deploy({ value: ethers.parseEther("1") });     await instance.waitForDeployment();      // Player locks in a guess with 1 ether     // The guess doesn't matter - we're testing that the stored block is wrong     const dummyHash = ethers.keccak256(ethers.toUtf8Bytes("test"));     await instance.connect(player).lockInGuess(dummyHash, { value: ethers.parseEther("1") });      // Mine one block to advance past the stored block (in original contract)     await ethers.provider.send("evm_mine", []);      // Now call settle() - in original, this would use blockhash(block.number + 1)     // In mutant, this uses blockhash(block.number) which is always 0     // The transfer should revert because answer will be 0 in mutant     await expect(       instance.connect(player).settle()     ).to.be.reverted;      // Additional check: player should still have their ether (not transferred)     const contractBalance = await ethers.provider.getBalance(instance.target);     expect(contractBalance).to.equal(ethers.parseEther("2")); // 1 from deploy + 1 from lockInGuess   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PredictTheBlockHashChallenge { struct guess { uint block; bytes32 guess; } mapping(address => guess) guesses; constructor() public payable { require(msg.value == 1 ether); } function lockInGuess(bytes32 hash) public payable { require(guesses[msg.sender].block == 0); require(msg.value == 1 ether); guesses[msg.sender].guess = hash; guesses[msg.sender].block = block.number + 1; } function settle() public { require(guesses[msg.sender].block != 0); require(block.number > guesses[msg.sender].block); bytes32 answer = blockhash(guesses[msg.sender].block); guesses[msg.sender].block = 0; if (answer != 0 && guesses[msg.sender].guess == answer) { payable(msg.sender).transfer(2 ether); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PredictTheBlockHashChallenge mutant m9e615f4a test", function () {
+  it("should kill the mutant by proving the stored block is current block instead of next block", async function () {
+    const [owner, player] = await ethers.getSigners();
+
+    // Deploy with 1 ether
+    const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge");
+    const instance = await Factory.deploy({ value: ethers.parseEther("1") });
+    await instance.waitForDeployment();
+
+    // Player locks in a guess with 1 ether
+    // The guess doesn't matter - we're testing that the stored block is wrong
+    const dummyHash = ethers.keccak256(ethers.toUtf8Bytes("test"));
+    await instance.connect(player).lockInGuess(dummyHash, { value: ethers.parseEther("1") });
+
+    // Mine one block to advance past the stored block (in original contract)
+    await ethers.provider.send("evm_mine", []);
+
+    // Now call settle() - in original, this would use blockhash(block.number + 1)
+    // In mutant, this uses blockhash(block.number) which is always 0
+    // The transfer should revert because answer will be 0 in mutant
+    await expect(
+      instance.connect(player).settle()
+    ).to.be.reverted;
+
+    // Additional check: player should still have their ether (not transferred)
+    const contractBalance = await ethers.provider.getBalance(instance.target);
+    expect(contractBalance).to.equal(ethers.parseEther("2")); // 1 from deploy + 1 from lockInGuess
+  });
+});
+```

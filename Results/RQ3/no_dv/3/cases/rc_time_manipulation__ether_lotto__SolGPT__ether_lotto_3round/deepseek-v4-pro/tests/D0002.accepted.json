@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0002",
+ "property_summary": "After two consecutive valid plays where no winner is drawn, the pot should equal the sum of the two ticket amounts sent, plus the pot before the calls.",
+ "render_status": "rendered",
+ "validation_status": "skipped",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Change pot += msg.value to pot += 1, so the pot accumulates a different amount than the sent ticket amount.",
+ "mutated_unit_code": "function play()  public payable {\n        require(msg.value == TICKET_AMOUNT);\n        pot += 1;\n\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n\n        if (random == 0) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    EtherLotto c;\n\n    function setUp() public {\n        c = new EtherLotto();\n    }\n\n    function _test(uint256 amount1, uint256 amount2) internal {\n        amount1 = bound(amount1, 0, 1000000000000000000000000000000);\n        amount2 = bound(amount2, 0, 1000000000000000000000000000000);\n        vm.deal(address(this), VALUE_CAP + VALUE_CAP);\n        vm.deal(address(c), VALUE_CAP);\n        vm.assume(amount1 == 10);\n        vm.assume(amount2 == 10);\n        vm.assume(address(this).balance >= amount1 + amount2);\n        vm.assume(uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2 != 0);\n        uint256 potBefore;\n        try c.pot() returns (uint256 __r) { potBefore = __r; } catch { return; }\n        try c.play{value: amount1}() {} catch { return; }\n        try c.play{value: amount2}() {} catch { return; }\n        uint256 potAfter;\n        try c.pot() returns (uint256 __r) { potAfter = __r; } catch { return; }\n        assertTrue(potAfter == potBefore + amount1 + amount2);\n    }\n\n    function testFuzz_test(uint256 amount1, uint256 amount2) public {\n        _test(amount1, amount2);\n    }\n\n    receive() external payable {}\n}\n"
+}

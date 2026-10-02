@@ -1,0 +1,57 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mde0a5d2a of BANK_SAFE.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test BANK_SAFE.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for BANK_SAFE:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("BANK_SAFE reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy BANK_SAFE by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("BANK_SAFE"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("BANK_SAFE mutant detection - Deposit log value", function () {
+  it("should detect mutant that logs msg.value-1 instead of msg.value", async function () {
+    const [owner, user] = await ethers.getSigners();
+    
+    // Deploy LogFile first (required by BANK_SAFE)
+    const LogFileFactory = await ethers.getContractFactory("LogFile");
+    const logFile = await LogFileFactory.deploy();
+    await logFile.waitForDeployment();
+    
+    // Deploy BANK_SAFE
+    const BankSafeFactory = await ethers.getContractFactory("BANK_SAFE");
+    const bankSafe = await BankSafeFactory.deploy();
+    await bankSafe.waitForDeployment();
+    
+    // Setup: Set MinSum and LogFile, then initialize
+    await bankSafe.connect(owner).SetMinSum(ethers.parseEther("0.1"));
+    await bankSafe.connect(owner).SetLogFile(await logFile.getAddress());
+    await bankSafe.connect(owner).Initialized();
+    
+    // Deposit exactly 1 wei
+    const depositAmount = 1n;
+    const tx = await bankSafe.connect(user).Deposit({ value: depositAmount });
+    await tx.wait();
+    
+    // Check the logged value in LogFile's History array
+    // The last pushed message should have Val = depositAmount (1 wei)
+    // Mutant logs depositAmount - 1 = 0 wei, which would fail this assertion
+    const historyLength = await logFile.History.length;
+    const lastMessage = await logFile.History(historyLength - 1n);
+    
+    // Assert that the logged value equals the actual deposit amount
+    expect(lastMessage.Val).to.equal(depositAmount);
+  });
+});
+```

@@ -1,0 +1,31 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract X_WALLET:
+        Contract Code: pragma solidity ^0.8.0; contract X_WALLET { function Put(uint _unlockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+
+    Consider the following mutant of X_WALLET:
+        Mutant mbe1a19a1 of function Put replaces >= with <=
+        Mutant Diff: ---|         require(((acc.balance + msg.value) >= acc.balance)); +++|         require(((acc.balance + msg.value) <= acc.balance));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's reason through this step-by-step:
+
+**Original logic**:  
+The `require` statement checks that `(acc.balance + msg.value) >= acc.balance`. This is a no-op overflow guard — it always passes for positive `msg.value` because adding a positive number to a balance will always be greater than or equal to the original balance. It only fails if an overflow occurs (in which case the sum would wrap around and be smaller). So the original check is essentially an overflow check.
+
+**Mutant logic**:  
+The mutant changes `>=` to `<=`, so now it requires `(acc.balance + msg.value) <= acc.balance`. This is only true when `msg.value == 0` (since adding a positive value would make the sum strictly larger). For any positive `msg.value`, this condition will fail and the transaction will revert.
+
+**Kill condition**:  
+The mutant breaks all deposits with non-zero value. A test that successfully deposits any positive amount of ether into the contract should pass on the original but revert on the mutant.
+
+**Hypothesis**:  
+"A test case that sends a non-zero amount of ether to the `Put` function and expects the transaction to succeed (i.e., the balance to increase) should kill the mutant, because the mutant’s `<=` check will cause a revert for any positive `msg.value`."

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T06bddcc3",
+ "property_summary": "After any play() call, the contract's ETH balance must be exactly pot + FEE_AMOUNT if the payout branch was taken, otherwise balance must equal pot; the mutant shifts the payout condition, so when random != 0, it takes the payout branch and leaves balance == 0 while pot == 0 (breaking the invariant that balance >= pot).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Change the random condition from == 0 to != 0 so the payout logic shifts to the opposite branch.",
+ "mutated_unit_code": "    function play()  public payable {\n        require(msg.value == TICKET_AMOUNT);\n        pot += msg.value;\n\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n\n        if (random != 0) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    function setUp() public { c = new EtherLotto(); }\n    function testFuzz_property(uint88 domainHint) public {\n        vm.assume(domainHint != 0);\n        address player = address(uint160(domainHint));\n        vm.deal(player, 10 ether);\n        vm.startPrank(player);\n        c.play{value: 10}();\n        vm.stopPrank();\n        uint256 pot = c.pot();\n        uint256 balance = address(c).balance;\n        assertTrue(balance == pot || balance == pot + 1);\n    }\n}"
+}

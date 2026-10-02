@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0008",
+ "property_summary": "After any deposit, the contract balance must equal the sum of all user balances (the invariant that funds are accounted for). The bug allows anyone to call migrateTo and drain the balance without updating balances, so after a deposit by a non-creator and a subsequent migrateTo by that non-creator, the balance becomes less than the sum of deposits.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the require statement so anyone can call migrateTo.",
+ "mutated_unit_code": "function migrateTo(address to) public {\n        payable(to).transfer(address(this).balance);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Wallet} from \"../src/Wallet.sol\";\n\ncontract InvMutTest is Test {\n    Wallet c;\n    function setUp() public { c = new Wallet(); }\n    function testFuzz_property(uint256 amount, address actor) public {\n        vm.assume(actor != address(0) && actor != address(this) && actor != address(c));\n        vm.assume(amount > 0 && amount <= address(this).balance);\n\n        vm.deal(actor, amount);\n        vm.prank(actor);\n        c.deposit{value: amount}();\n\n        uint256 balanceBefore = address(c).balance;\n        vm.prank(actor);\n        try c.migrateTo(actor) {} catch {}\n        uint256 balanceAfter = address(c).balance;\n\n        assertTrue(balanceBefore == balanceAfter);\n    }\n}"
+}

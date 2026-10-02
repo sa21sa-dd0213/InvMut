@@ -1,0 +1,75 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DnGmxBatchingManager mutant m4420183e - depositUsdc with userUsdcBalance < 0", function () {
+  it("should kill the mutant by verifying unclaimed shares from previous round are correctly calculated when user deposits in two consecutive rounds", async function () {
+    const [owner, keeper, vault, user] = await ethers.getSigners();
+    
+    // Deploy mock contracts for dependencies
+    const MockERC20 = await ethers.getContractFactory("MockERC20");
+    const sGlp = await MockERC20.deploy("sGLP", "sGLP", 18);
+    const usdc = await MockERC20.deploy("USDC", "USDC", 6);
+    await sGlp.waitForDeployment();
+    await usdc.waitForDeployment();
+    
+    // Mint USDC to user
+    const depositAmount = ethers.parseUnits("1000", 6);
+    await usdc.mint(user.address, depositAmount);
+    
+    // Deploy mock vault, glpManager, rewardRouter
+    const MockDnGmxJuniorVault = await ethers.getContractFactory("MockDnGmxJuniorVault");
+    const mockVault = await MockDnGmxJuniorVault.deploy();
+    await mockVault.waitForDeployment();
+    
+    const MockGlpManager = await ethers.getContractFactory("MockGlpManager");
+    const mockGlpManager = await MockGlpManager.deploy();
+    await mockGlpManager.waitForDeployment();
+    
+    const MockRewardRouter = await ethers.getContractFactory("MockRewardRouterV2");
+    const mockRewardRouter = await MockRewardRouter.deploy();
+    await mockRewardRouter.waitForDeployment();
+    
+    // Deploy main contract
+    const Factory = await ethers.getContractFactory("DnGmxBatchingManager");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Initialize contract
+    await instance.initialize(
+      await sGlp.getAddress(),
+      await usdc.getAddress(),
+      await mockRewardRouter.getAddress(),
+      await mockGlpManager.getAddress(),
+      await mockVault.getAddress(),
+      keeper.address
+    );
+    
+    // Set keeper
+    await instance.setKeeper(keeper.address);
+    
+    // Approve USDC spending for user
+    await usdc.connect(user).approve(await instance.getAddress(), depositAmount);
+    
+    // First deposit in round 1
+    await instance.connect(user).depositUsdc(depositAmount, user.address);
+    
+    // Execute batch stake and deposit to advance to round 2
+    await instance.connect(keeper).executeBatchStake();
+    await instance.connect(keeper).executeBatchDeposit();
+    
+    // User deposits again in round 2
+    const secondDeposit = ethers.parseUnits("500", 6);
+    await usdc.mint(user.address, secondDeposit);
+    await usdc.connect(user).approve(await instance.getAddress(), secondDeposit);
+    await instance.connect(user).depositUsdc(secondDeposit, user.address);
+    
+    // Check that unclaimed shares from round 1 were properly calculated
+    // In the original, the condition userUsdcBalance > 0 triggers conversion of old round USDC to shares
+    // In the mutant, userUsdcBalance < 0 is always false, so no conversion happens
+    const userUnclaimedShares = await instance.unclaimedShares(user.address);
+    
+    // If mutant is active, unclaimedShares will be 0 because the conversion was skipped
+    // If original, unclaimedShares will be > 0 (the converted amount from round 1 deposit)
+    expect(userUnclaimedShares).to.be.gt(0, "Mutant killed: unclaimed shares should be > 0 if original logic executed correctly");
+  });
+});

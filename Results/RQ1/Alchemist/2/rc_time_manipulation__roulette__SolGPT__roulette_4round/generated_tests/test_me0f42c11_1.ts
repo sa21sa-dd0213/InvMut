@@ -1,0 +1,48 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant test - kill me0f42c11 (replace % with /)", function () {
+  it("should kill mutant by triggering fallback when block.number is a multiple of 15", async function () {
+    const [owner, caller] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Fund the contract with some ether for transfer
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("100")
+    });
+
+    // Get the current block number and find the next multiple of 15
+    const currentBlock = await ethers.provider.getBlock("latest");
+    const currentBlockNumber = currentBlock.number;
+    const nextMultipleOf15 = Math.ceil(currentBlockNumber / 15) * 15;
+
+    // Mine blocks to reach the target block number
+    const blocksToMine = nextMultipleOf15 - currentBlockNumber;
+    for (let i = 0; i < blocksToMine; i++) {
+      await ethers.provider.send("evm_mine", []);
+    }
+
+    // Get the caller's balance before the call
+    const callerBalanceBefore = await ethers.provider.getBalance(caller.address);
+
+    // Call fallback with exactly 10 ether
+    const tx = await caller.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10"),
+      gasLimit: 100000
+    });
+    await tx.wait();
+
+    // Check the contract balance after the call
+    const contractBalanceAfter = await ethers.provider.getBalance(await instance.getAddress());
+
+    // On original: contract balance should decrease by 10 ether (transfer happened)
+    // On mutant (with /): no transfer happens, contract balance stays same
+    // We expect the balance to be 100 (initial) + 10 (sent) = 110 if transfer didn't happen (mutant)
+    // or 100 - 10 + 10 = 100 if transfer happened (original)
+    expect(contractBalanceAfter).to.equal(ethers.parseEther("100"));
+  });
+});

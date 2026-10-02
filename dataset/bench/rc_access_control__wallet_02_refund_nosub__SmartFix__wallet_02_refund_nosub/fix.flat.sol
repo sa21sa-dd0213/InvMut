@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.0;
+
+ contract Wallet {
+     address creator;
+
+     mapping(address => uint256) balances;
+
+     constructor() public {
+         creator = payable(msg.sender);
+     }
+
+     function deposit() public payable {
+         assert(balances[msg.sender] + msg.value > balances[msg.sender]);
+         balances[msg.sender] += msg.value;
+     }
+
+     function withdraw(uint256 amount) public {
+         require(amount <= balances[msg.sender]);
+         payable(msg.sender).transfer(amount);
+         balances[msg.sender] -= amount;
+     }
+
+     function refund() public {
+
+         uint256 tmp__1 = balances[msg.sender];
+         balances[msg.sender] = 0;
+         payable(msg.sender).transfer(tmp__1);
+     }
+
+     function migrateTo(address to) public {
+         require(creator == msg.sender);
+         payable(to).transfer(address(this).balance);
+     }
+
+ }

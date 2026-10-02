@@ -1,0 +1,29 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract PrivateBank:
+        Contract Code: pragma solidity ^0.8.0; contract PrivateBank { mapping (address => uint) public balances; uint public MinDeposit = 1 ether; Log TransferLog; constructor(address _log) { TransferLog = Log(_log); } function Deposit() public payable { if(msg.value >= MinDeposit) { require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); balances[msg.sender]+=msg.value; TransferLog.AddMessage(msg.sender,msg.value,"Deposit"); } } function CashOut(uint _am) public { if(_am<=balances[msg.sender]) { balances[msg.sender] = (balances[msg.sender] - _am); (bool _veri_ok,) = msg.sender.call{value: _am}(""); if(_veri_ok) { TransferLog.AddMessage(msg.sender,_am,"CashOut"); } else {revert (); } } } receive() external payable {} } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val,string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+
+    Consider the following mutant of PrivateBank:
+        Mutant m0d6aa744 of function CashOut replaces <= with <
+        Mutant Diff: ---|         if(_am<=balances[msg.sender]) +++|         if(_am <balances[msg.sender])
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's break this down.
+
+The original `CashOut` function uses `if(_am <= balances[msg.sender])`, which allows withdrawing the entire balance (when `_am` equals the balance).  
+The mutant changes `<=` to `<`, meaning a user can no longer withdraw their full balance — they can only withdraw strictly less than their balance.
+
+So if a user deposits exactly 1 ether and tries to withdraw exactly 1 ether:
+- In the original: `1 <= 1` is true → withdrawal succeeds.
+- In the mutant: `1 < 1` is false → withdrawal fails (reverts).
+
+**Hypothesis:**  
+The mutant changes the comparison operator from `<=` to `<` in the `CashOut` function. Therefore, a test case that deposits a specific amount (e.g., 1 ether) and then attempts to withdraw the exact same amount, expecting the transaction to succeed and the final balance to be zero, should kill the mutant — because on the mutant the withdrawal will revert, causing the test to fail.

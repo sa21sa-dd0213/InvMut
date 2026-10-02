@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0012",
+ "property_summary": "After a program operator calls create() with encodedParameters containing a zero-address alloSettings argument, the reference contract's initializer fails because it tries to initialize with a zero alloSettings, while the buggy version's initializer always fails due to _initialized < 0, causing the create() transaction to revert in both cases but the reference's revert reason differs (Address: call to non-contract) vs the bug's (revert due to initializer failure).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Change the require condition from `_initialized < 1` to `_initialized < 0` so that the initializer always fails.",
+ "mutated_unit_code": "    modifier initializer() {\n        bool isTopLevelCall = !_initializing;\n        require(\n            (isTopLevelCall && _initialized < 0) || (!AddressUpgradeable.isContract(address(this)) && _initialized == 1),\n            \"Initializable: contract is already initialized\"\n        );\n        _initialized = 1;\n        if (isTopLevelCall) {\n            _initializing = true;\n        }\n        _;\n        if (isTopLevelCall) {\n            _initializing = false;\n            emit Initialized(1);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.17;\nimport {Test} from \"forge-std/Test.sol\";\nimport {RoundFactory} from \"../src/RoundFactory.sol\";\n\ncontract InvMutTest is Test {\n    RoundFactory c;\n    function setUp() public { c = new RoundFactory(); }\n    function testRegression_property() public {\n        address operator = address(0x1234);\n        vm.prank(operator);\n        c.initialize();\n\n        \n        bool ok;\n        bytes memory encodedParameters = abi.encode(address(0));\n\n        try c.create(encodedParameters, operator) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(!ok);\n    }\n}\n"
+}

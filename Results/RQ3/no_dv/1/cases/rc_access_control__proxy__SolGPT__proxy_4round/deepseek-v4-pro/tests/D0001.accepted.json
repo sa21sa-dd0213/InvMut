@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "After a call to forward(callee, data), the callee's code MUST have been executed, which can be observed by using a callee that writes to a public state variable; in the mutant, no call is made so no write occurs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replace the forward function body with a no-op, so it never calls the callee.",
+ "mutated_unit_code": "function forward(address callee, bytes memory _data) public { }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Proxy} from \"../src/Proxy.sol\";\n\ncontract Callee {\n    uint256 public marker;\n    function receiveBytes(bytes memory) external payable {\n        marker = 1;\n    }\n}\n\ncontract InvMutTest is Test {\n    Proxy c;\n    function setUp() public { c = new Proxy(); }\n    function testFuzz_property(uint256 seed, uint8 dataLen) public {\n        bound(dataLen, 1, 128);\n\n        Callee callee = new Callee();\n\n        bytes memory data = new bytes(dataLen);\n        for (uint256 i = 0; i < dataLen; i++) {\n            data[i] = bytes1(uint8(seed >> (i * 8)));\n        }\n\n        bytes memory payload = abi.encodeWithSelector(Callee.receiveBytes.selector, data);\n\n        c.forward(address(callee), payload);\n\n        uint256 m = callee.marker();\n        assertTrue(m == 1);\n    }\n}"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T5355d601",
+ "property_summary": "For every call to play() with msg.value less than or equal to the ticket amount, the reference contract requires exactly TICKET_AMOUNT, so any call that completes always increases pot by exactly TICKET_AMOUNT when msg.value == TICKET_AMOUNT and never accepts msg.value == 0 — the mutant using >= allows zero-value plays that do not increase pot and can change post-play pot, violating the invariant that after any admissible play the pot either increased by TICKET_AMOUNT or was reset only when a full ticket was paid and winner path executed.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change the required msg.value so play accepts 0 or 10 by using >= instead of ==, which allows calls that don't increase pot and thus can change resulting pot observed after play.",
+ "mutated_unit_code": "function play()  public payable {\n        require(msg.value >= TICKET_AMOUNT);\n        pot += msg.value;\n\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n\n        if (random == 0) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    function setUp() public { c = new EtherLotto(); }\n\n    function testFuzz_property(address player, uint256 sent) public {\n        vm.assume(player != address(0));\n        vm.assume(player != address(this));\n\n        uint256 amount = bound(sent, 0, 100);\n\n        vm.deal(player, amount + 1);\n\n        bool ok;\n        vm.prank(player);\n        try c.play{value: amount}() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(!ok || amount == 10);\n    }\n}\n"
+}

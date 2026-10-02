@@ -1,0 +1,54 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mfd372852 of MultiplicatorX4.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test MultiplicatorX4.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for MultiplicatorX4:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("MultiplicatorX4 reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy MultiplicatorX4 by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("MultiplicatorX4"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MultiplicatorX4 mutant detection", function () {
+  it("should detect mutant mfd372852 by sending more than contract balance", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("MultiplicatorX4");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Fund the contract with 1 ETH
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("1")
+    });
+    
+    const contractBalanceBefore = await ethers.provider.getBalance(await instance.getAddress());
+    const addr2BalanceBefore = await ethers.provider.getBalance(addr2.address);
+    
+    // Send 2 ETH which is strictly greater than the contract balance of 1 ETH
+    const tx = await instance.connect(owner).multiplicate(addr2.address, {
+      value: ethers.parseEther("2")
+    });
+    await tx.wait();
+    
+    const contractBalanceAfter = await ethers.provider.getBalance(await instance.getAddress());
+    const addr2BalanceAfter = await ethers.provider.getBalance(addr2.address);
+    
+    // In the original, the entire balance (1 + 2 = 3 ETH) should be transferred to addr2
+    // In the mutant, the condition msg.value == address(this).balance fails (2 != 1), so no transfer occurs
+    expect(addr2BalanceAfter - addr2BalanceBefore).to.equal(ethers.parseEther("3"));
+    expect(contractBalanceAfter).to.equal(0);
+  });
+});
+```

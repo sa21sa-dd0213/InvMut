@@ -1,0 +1,28 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Reentrancy_bonus:
+        Contract Code: pragma solidity ^0.8.0; contract SmartFix { bool public _locked = false; modifier _nonReentrant() { require(!_locked); _locked = true; _; _locked = false; } } contract Reentrancy_bonus is SmartFix { mapping (address => uint) private userBalances; mapping (address => bool) private claimedBonus; mapping (address => uint) private rewardsForA; function withdrawReward(address recipient)  public _nonReentrant  { uint amountToWithdraw = rewardsForA[recipient]; rewardsForA[recipient] = 0; (bool success, ) = recipient.call{value: amountToWithdraw}(""); require(success); } function getFirstWithdrawalBonus(address recipient) public { require(!claimedBonus[recipient]); rewardsForA[recipient] += 100; withdrawReward(recipient); claimedBonus[recipient] = true; } }
+
+    Consider the following mutant of Reentrancy_bonus:
+        Mutant mc5a86e3b of function getFirstWithdrawalBonus replaces require(!claimedBonus[recipient]); with 
+        Mutant Diff: ---|         require(!claimedBonus[recipient]); +++|
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let’s break this down step-by-step.
+
+**Original contract behavior**:  
+The `getFirstWithdrawalBonus` function has a `require(!claimedBonus[recipient]);` guard. This ensures that a recipient can only claim the bonus once. After the bonus is given and withdrawn, `claimedBonus[recipient]` is set to `true`, so any further attempt to call `getFirstWithdrawalBonus` for the same recipient will revert.
+
+**Mutant change**:  
+The mutant removes the `require(!claimedBonus[recipient]);` line entirely. This means the guard that prevents double claiming is gone. Now, a recipient can call `getFirstWithdrawalBonus` multiple times, and each time they will get an additional 100 wei reward and withdraw it, effectively draining the contract.
+
+**Hypothesis**:  
+The mutant removes the reentrancy guard that prevents claiming the bonus more than once. Therefore, a test case that calls `getFirstWithdrawalBonus` twice with the same recipient and expects the second call to revert should fail on the mutant (because the second call will succeed instead of reverting).

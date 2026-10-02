@@ -1,0 +1,73 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EBU mutant detection test", function () {   it("should detect mutant m95f4bdd6 by verifying token transfer via caddress call", async function () {     // Get signers     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy the EBU contract (no constructor arguments needed as per the original code)     const Factory = await ethers.getContractFactory("EBU");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Get the contract's from address and caddress     const fromAddress = await instance.from();     const caddress = await instance.caddress();          // Verify caddress is the original non-zero address (to confirm we're testing original)     expect(caddress).to.equal("0x1f844685f7Bf86eFcc0e74D8642c54A257111923");          // We need a token contract at caddress to test actual transfer     // Since caddress is a specific contract, we need to deploy a mock ERC20 there     // First, deploy a simple ERC20 that implements transferFrom     const ERC20Factory = await ethers.getContractFactory("MockERC20");     const token = await ERC20Factory.deploy("Test Token", "TST");     await token.waitForDeployment();          // Fund the from address with tokens     await token.mint(fromAddress, ethers.parseEther("100"));          // Approve EBU contract to spend tokens on behalf of from address     await token.connect(await ethers.getImpersonatedSigner(fromAddress)).approve(instance.target, ethers.parseEther("100"));          // Prepare transfer parameters     const recipients = [addr1.address];     const amounts = [ethers.parseEther("1")];          // Execute transfer as owner (who matches from address)     await instance.connect(owner).transfer(recipients, amounts);          // Check that tokens were actually transferred (this will fail on mutant since call goes to address(0))     const balanceAfter = await token.balanceOf(addr1.address);     expect(balanceAfter).to.equal(ethers.parseEther("1"));   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EBU { address public from = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9; address public caddress = 0x1f844685f7Bf86eFcc0e74D8642c54A257111923; function transfer( address[] memory _tos, uint[] memory v)  public returns (bool) { require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9); require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v[i] * 1000000000000000000)); _d; if (! _s) { revert();} } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant detection test", function () {
+  it("should detect mutant m95f4bdd6 by verifying token transfer via caddress call", async function () {
+    // Get signers
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy the EBU contract (no constructor arguments needed as per the original code)
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Get the contract's from address and caddress
+    const fromAddress = await instance.from();
+    const caddress = await instance.caddress();
+    
+    // Verify caddress is the original non-zero address (to confirm we're testing original)
+    expect(caddress).to.equal("0x1f844685f7Bf86eFcc0e74D8642c54A257111923");
+    
+    // We need a token contract at caddress to test actual transfer
+    // Since caddress is a specific contract, we need to deploy a mock ERC20 there
+    // First, deploy a simple ERC20 that implements transferFrom
+    const ERC20Factory = await ethers.getContractFactory("MockERC20");
+    const token = await ERC20Factory.deploy("Test Token", "TST");
+    await token.waitForDeployment();
+    
+    // Fund the from address with tokens
+    await token.mint(fromAddress, ethers.parseEther("100"));
+    
+    // Impersonate the from address to approve tokens
+    await hre.network.provider.request({
+      method: "hardhat_impersonateAccount",
+      params: [fromAddress],
+    });
+    
+    const fromSigner = await ethers.getSigner(fromAddress);
+    await token.connect(fromSigner).approve(instance.target, ethers.parseEther("100"));
+    
+    // Stop impersonating
+    await hre.network.provider.request({
+      method: "hardhat_stopImpersonatingAccount",
+      params: [fromAddress],
+    });
+    
+    // Prepare transfer parameters
+    const recipients = [addr1.address];
+    const amounts = [ethers.parseEther("1")];
+    
+    // Execute transfer as owner (who matches from address)
+    await instance.connect(owner).transfer(recipients, amounts);
+    
+    // Check that tokens were actually transferred (this will fail on mutant since call goes to address(0))
+    const balanceAfter = await token.balanceOf(addr1.address);
+    expect(balanceAfter).to.equal(ethers.parseEther("1"));
+  });
+});
+```

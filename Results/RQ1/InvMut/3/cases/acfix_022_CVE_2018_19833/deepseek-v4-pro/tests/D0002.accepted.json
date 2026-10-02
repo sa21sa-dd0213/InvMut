@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0002",
+ "property_summary": "After any successful burn() call, the owner must still be the address that originally deployed the contract; the buggy modifier lets any caller become owner via owned(), so a non-owner can call owned() then burn(), leaving owner unchanged from the thief rather than the deployer.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Delete the require statement in onlyOwner modifier, allowing owned() to be called by anyone and set owner to caller.",
+ "mutated_unit_code": "    modifier onlyOwner {\n        _;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ERCDDAToken} from \"../src/ERCDDAToken.sol\";\n\ncontract InvMutTest is Test {\n    ERCDDAToken c;\n    address deployer;\n    function setUp() public {\n        deployer = address(this);\n        c = new ERCDDAToken(1000000, \"Token\", \"TKN\");\n    }\n    function testFuzz_property(address thief, uint256 burnAmount) public {\n        vm.assume(thief != address(0));\n        vm.assume(thief != deployer);\n        vm.assume(burnAmount <= 1000000 * 10**uint256(c.decimals()));\n        vm.prank(thief);\n        try c.owned() {} catch {}\n        vm.prank(thief);\n        bool ok = true;\n        try c.burn(burnAmount) { ok = true; } catch { ok = false; }\n        if (ok) {\n            assertEq(c.owner(), deployer);\n        } else {\n            assertTrue(true);\n        }\n    }\n}"
+}

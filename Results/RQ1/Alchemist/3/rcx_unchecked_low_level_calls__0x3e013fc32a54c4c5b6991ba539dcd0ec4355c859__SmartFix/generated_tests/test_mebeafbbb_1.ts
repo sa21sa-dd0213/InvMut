@@ -1,0 +1,43 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MultiplicatorX4 mutant kill test - mebeafbbb", function () {
+  it("should kill mutant by verifying exact transfer amount when contract balance equals msg.value", async function () {
+    const [owner, attacker, recipient] = await ethers.getSigners();
+    
+    // Deploy contract (no constructor arguments needed for this contract)
+    const Factory = await ethers.getContractFactory("MultiplicatorX4");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    const contractAddress = await instance.getAddress();
+    
+    // Fund the contract with exactly 1 wei
+    await owner.sendTransaction({
+      to: contractAddress,
+      value: 1
+    });
+    
+    // Get initial balances
+    const initialRecipientBalance = await ethers.provider.getBalance(recipient.address);
+    const initialContractBalance = await ethers.provider.getBalance(contractAddress);
+    
+    // Call multiplicate with msg.value = 1 wei (matching contract balance)
+    const tx = await instance.connect(owner).multiplicate(recipient.address, {
+      value: 1
+    });
+    await tx.wait();
+    
+    // Get final balances
+    const finalRecipientBalance = await ethers.provider.getBalance(recipient.address);
+    const finalContractBalance = await ethers.provider.getBalance(contractAddress);
+    
+    // Original would send: initialContractBalance + msg.value = 1 + 1 = 2 wei
+    // Mutant would send: initialContractBalance + msg.value - 1 = 1 + 1 - 1 = 1 wei
+    // So recipient should receive exactly 2 wei in original, but only 1 wei in mutant
+    const expectedRecipientIncrease = initialContractBalance + 1n; // 2 wei total
+    
+    expect(finalRecipientBalance - initialRecipientBalance).to.equal(expectedRecipientIncrease);
+    expect(finalContractBalance).to.equal(0n); // All balance should be drained
+  });
+});

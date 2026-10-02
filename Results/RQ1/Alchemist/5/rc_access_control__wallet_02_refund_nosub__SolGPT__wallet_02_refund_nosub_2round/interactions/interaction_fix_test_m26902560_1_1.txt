@@ -1,0 +1,36 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Wallet reference (ethers v6; deploy may require constructor arguments)", function () {   it("should kill mutant m26902560 by depositing 1 wei and then withdrawing the full balance", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Wallet");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Deposit exactly 1 wei from addr1     const depositTx = await instance.connect(addr1).deposit({ value: ethers.parseEther("0.000000000000000001") });     await depositTx.wait();      // Try to withdraw 1 wei - should succeed on original, fail on mutant (balance = 0)     await expect(       instance.connect(addr1).withdraw(ethers.parseEther("0.000000000000000001"))     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Wallet { address creator; mapping(address => uint256) balances; constructor() public { creator = payable(msg.sender); } function deposit() public payable { assert(balances[msg.sender] + msg.value > balances[msg.sender]); balances[msg.sender] += msg.value; } function withdraw(uint256 amount) public { require(amount <= balances[msg.sender]); payable(msg.sender).transfer(amount); balances[msg.sender] -= amount; } function refund() public { payable(msg.sender).transfer(balances[msg.sender]); balances[msg.sender] = 0; } function migrateTo(address to) public { require(creator == msg.sender); payable(to).transfer(address(this).balance); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Wallet reference (ethers v6; deploy may require constructor arguments)", function () {
+  it("should kill mutant m26902560 by depositing 1 wei and then withdrawing the full balance", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Wallet");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deposit exactly 1 wei from addr1
+    const depositTx = await instance.connect(addr1).deposit({ value: 1 });
+    await depositTx.wait();
+
+    // Try to withdraw 1 wei - should succeed on original, fail on mutant (balance = 0)
+    await expect(
+      instance.connect(addr1).withdraw(1)
+    ).to.be.reverted;
+  });
+});
+```

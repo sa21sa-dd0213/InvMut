@@ -1,0 +1,71 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m79c348ea of Roulette.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Roulette.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Roulette:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Roulette reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Roulette by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Roulette"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant test - m79c348ea", function () {
+  it("should detect mutant that uses block.prevrandao instead of block.timestamp", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy({ value: ethers.parseEther("10") });
+    await instance.waitForDeployment();
+
+    // Get the contract's starting balance
+    const startingBalance = await ethers.provider.getBalance(instance.target);
+
+    // First call - should succeed in both original and mutant
+    const tx1 = await owner.sendTransaction({
+      to: instance.target,
+      value: ethers.parseEther("10")
+    });
+    await tx1.wait();
+
+    // Mine a new block to change block.timestamp
+    await ethers.provider.send("evm_mine", []);
+
+    // Get the stored pastBlockTime after first call
+    const pastBlockTimeAfterFirst = await instance.pastBlockTime();
+
+    // Second call - will succeed in mutant if block.prevrandao happens to be >= previous value
+    // but should fail in original because block.timestamp > pastBlockTime (which stores block.timestamp)
+    // We mine another block to ensure block.timestamp increases
+    await ethers.provider.send("evm_mine", []);
+
+    // Attempt second call
+    const tx2 = owner.sendTransaction({
+      to: instance.target,
+      value: ethers.parseEther("10")
+    });
+
+    // In original: should succeed because block.timestamp increased
+    // In mutant: might fail if block.prevrandao <= previous value
+    // We expect the call to succeed (original behavior)
+    await expect(tx2).to.not.be.reverted;
+
+    // Check that pastBlockTime was updated
+    const pastBlockTimeAfterSecond = await instance.pastBlockTime();
+    
+    // In original: pastBlockTime stores block.timestamp (always increasing)
+    // In mutant: pastBlockTime stores block.prevrandao (can be equal or less)
+    // This assertion will fail for mutant if prevrandao didn't increase
+    expect(pastBlockTimeAfterSecond).to.be.gt(pastBlockTimeAfterFirst);
+  });
+});
+```

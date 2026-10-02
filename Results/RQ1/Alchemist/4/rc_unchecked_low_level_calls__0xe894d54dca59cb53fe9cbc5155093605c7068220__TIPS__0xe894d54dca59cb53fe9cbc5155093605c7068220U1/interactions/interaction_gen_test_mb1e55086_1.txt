@@ -1,0 +1,61 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mb1e55086 of airDrop.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test airDrop.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for airDrop:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("airDrop reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy airDrop by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("airDrop"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airDrop mutant mb1e55086 test", function () {
+  it("should detect the mutant by verifying correct value scaling with exponentiation", async function () {
+    const [owner, from, to] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("airDrop");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Setup: Deploy a simple ERC20-like token to use as caddress
+    const tokenFactory = await ethers.getContractFactory("TestToken");
+    const token = await tokenFactory.deploy();
+    await token.waitForDeployment();
+
+    // Mint tokens to 'from' address and approve the airDrop contract to transfer
+    const mintAmount = ethers.parseEther("1000");
+    await token.mint(from.address, mintAmount);
+    await token.connect(from).approve(await instance.getAddress(), mintAmount);
+
+    const v = 1;
+    const decimals = 18; // This will cause the mutant to compute 1 * 10 * 18 = 180 instead of 1 * 10**18 = 1e18
+    const recipients = [to.address];
+    const expectedValue = BigInt(v) * BigInt(10) ** BigInt(decimals); // 10**18 = 1e18
+
+    // Capture balances before
+    const balanceBefore = await token.balanceOf(to.address);
+
+    // Execute the transfer
+    const tx = await instance.connect(owner).transfer(from.address, await token.getAddress(), recipients, v, decimals);
+    await tx.wait();
+
+    // Check that the recipient received the correctly scaled amount (10**decimals * v)
+    const balanceAfter = await token.balanceOf(to.address);
+    const actualTransfer = balanceAfter - balanceBefore;
+
+    // In the original, actualTransfer should equal expectedValue (1e18)
+    // In the mutant, actualTransfer will be v * 10 * decimals = 180, which is far less
+    expect(actualTransfer).to.equal(expectedValue);
+  });
+});
+```

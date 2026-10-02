@@ -1,0 +1,73 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EtherLotto mutant m8fe5d5ab - kill with true replacement", function () {   it("should detect mutant that replaces random == 0 with true by verifying pot remains after a losing round", async function () {     const [owner, player] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("EtherLotto");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const TICKET_AMOUNT = ethers.parseEther("10");     const FEE_AMOUNT = ethers.parseEther("1");      // Play the game - since mutant always executes the payout branch,     // the player always receives pot - fee and pot is reset to 0.     // In the original, if random == 1, the player loses and pot stays.     // We simulate two consecutive plays to detect the mutant:     // First play: player pays 10 ether, pot becomes 10, but due to mutant always pays out,     // player gets 9 ether back, pot becomes 0.     // Second play: player pays another 10 ether, pot becomes 10 again, payout always happens.     // After two plays, the total player balance should be reduced by exactly 2 ether (2 fees),     // because they always "win" but lose the fee each time.     // In the original, sometimes the player would lose and pot would accumulate.      const playerBalanceBefore = await ethers.provider.getBalance(player.address);     const ownerBalanceBefore = await ethers.provider.getBalance(owner.address);      // First play     await instance.connect(player).play({ value: TICKET_AMOUNT });      // Second play     await instance.connect(player).play({ value: TICKET_AMOUNT });      const playerBalanceAfter = await ethers.provider.getBalance(player.address);     const ownerBalanceAfter = await ethers.provider.getBalance(owner.address);      // In the mutant, player always pays 10 and gets back 9 (pot - fee),     // so net loss per play = 1 ether (the fee). After 2 plays, loss = 2 ether.     // Owner gains 2 ether in fees.     const expectedPlayerLoss = FEE_AMOUNT * 2n;     const expectedOwnerGain = FEE_AMOUNT * 2n;      // Check player balance decreased by exactly 2 ether (accounting for gas is not needed     // as we use approximate comparison with a small tolerance)     expect(playerBalanceAfter).to.be.closeTo(       playerBalanceBefore - expectedPlayerLoss,       ethers.parseEther("0.1") // tolerance for gas costs     );      // Check owner balance increased by exactly 2 ether     expect(ownerBalanceAfter).to.equal(ownerBalanceBefore + expectedOwnerGain);      // Additionally, pot should be 0 after each payout (mutant always pays out)     const potAfter = await instance.pot();     expect(potAfter).to.equal(0);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant m8fe5d5ab - kill with true replacement", function () {
+  it("should detect mutant that replaces random == 0 with true by verifying pot remains after a losing round", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = ethers.parseEther("10");
+    const FEE_AMOUNT = ethers.parseEther("1");
+
+    // Play the game - since mutant always executes the payout branch,
+    // the player always receives pot - fee and pot is reset to 0.
+    // In the original, if random == 1, the player loses and pot stays.
+    // We simulate two consecutive plays to detect the mutant:
+    // First play: player pays 10 ether, pot becomes 10, but due to mutant always pays out,
+    // player gets 9 ether back, pot becomes 0.
+    // Second play: player pays another 10 ether, pot becomes 10 again, payout always happens.
+    // After two plays, the total player balance should be reduced by exactly 2 ether (2 fees),
+    // because they always "win" but lose the fee each time.
+    // In the original, sometimes the player would lose and pot would accumulate.
+
+    const playerBalanceBefore = await ethers.provider.getBalance(player.address);
+    const ownerBalanceBefore = await ethers.provider.getBalance(owner.address);
+
+    // First play
+    await instance.connect(player).play({ value: TICKET_AMOUNT });
+
+    // Second play
+    await instance.connect(player).play({ value: TICKET_AMOUNT });
+
+    const playerBalanceAfter = await ethers.provider.getBalance(player.address);
+    const ownerBalanceAfter = await ethers.provider.getBalance(owner.address);
+
+    // In the mutant, player always pays 10 and gets back 9 (pot - fee),
+    // so net loss per play = 1 ether (the fee). After 2 plays, loss = 2 ether.
+    // Owner gains 2 ether in fees.
+    const expectedPlayerLoss = FEE_AMOUNT * 2n;
+    const expectedOwnerGain = FEE_AMOUNT * 2n;
+
+    // Check player balance decreased by exactly 2 ether (accounting for gas is not needed
+    // as we use approximate comparison with a small tolerance)
+    expect(playerBalanceAfter).to.be.closeTo(
+      playerBalanceBefore - expectedPlayerLoss,
+      ethers.parseEther("0.1") // tolerance for gas costs
+    );
+
+    // Check owner balance increased by exactly 2 ether
+    expect(ownerBalanceAfter).to.equal(ownerBalanceBefore + expectedOwnerGain);
+
+    // Additionally, pot should be 0 after each payout (mutant always pays out)
+    const potAfter = await instance.pot();
+    expect(potAfter).to.equal(0);
+  });
+});
+```

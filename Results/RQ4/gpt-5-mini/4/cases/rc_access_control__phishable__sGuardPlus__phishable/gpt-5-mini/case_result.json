@@ -1,0 +1,86 @@
+{
+ "case_id": "rc_access_control__phishable__sGuardPlus__phishable",
+ "config_label": "gpt-5-mini",
+ "target_contract": "Phishable",
+ "modification_kind": "control_flow",
+ "feasible": true,
+ "reason": null,
+ "n_accepted": 5,
+ "n_validated": 5,
+ "n_killing": 2,
+ "success": true,
+ "kills": [
+  {
+   "difference_id": "D0001",
+   "property": "For every caller and recipient and any funded amount, only calls to withdrawAll made by the contract owner can reduce th",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Change the access check to allow anyone to call withdrawAll (removed owner check), allowing different caller to trigger withdrawals which can affect resulting state observed via withdrawal behavior.",
+   "mutated_unit_code": "function withdrawAll (address    _recipient) public  {\n    // require(msg.sender==owner);\n    payable(_recipient).transfer(address(this).balance);\n}",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "D0002",
+   "property": "Only the owner address can successfully call withdrawAll, so calls from non-owner addresses revert.",
+   "render": "rendered",
+   "validation": "skipped",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Invert the access check so only non-owner can call withdrawAll, altering which caller can successfully withdraw and thus the observable state after the call.",
+   "mutated_unit_code": "function withdrawAll (address    _recipient) public  {\n    require(msg.sender!=owner);\n    payable(_recipient).transfer(address(this).balance);\n}",
+   "kill": "bug_no_kill:spurious_callback",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "D0004",
+   "property": "For any caller that is the owner and any initial contract balance, calling withdrawAll transfers the entire contract bal",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Prevent any transfer by commenting out the transfer line, so withdrawAll no longer changes contract balance and observable state differs.",
+   "mutated_unit_code": "function withdrawAll (address    _recipient) public  {\n    require(msg.sender==owner);\n    // payable(_recipient).transfer(address(this).balance);\n}",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  },
+  {
+   "difference_id": "D0005",
+   "property": "For any caller equal to owner and any initial contract balance funded by some sender, after calling withdrawAll(recipien",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Make the function send only half the contract balance to the recipient, changing the post-call contract balance and thus observable behavior.",
+   "mutated_unit_code": "function withdrawAll (address    _recipient) public  {\n    require(msg.sender==owner);\n    uint256 half = address(this).balance / 2;\n    payable(_recipient).transfer(half);\n}",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  },
+  {
+   "difference_id": "D0007",
+   "property": "For any recipient address whose fallback reverts, the correct contract (using transfer) will revert withdrawAll (so call",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Replace transfer with low-level call forwarding all gas and not reverting on failure, changing observable reversion behavior and final balances.",
+   "mutated_unit_code": "function withdrawAll (address    _recipient) public  {\n    require(msg.sender==owner);\n    (bool success, ) = _recipient.call{value: address(this).balance}(\"\");\n    // ignore success to change observable behavior when transfer would have reverted\n}",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  }
+ ],
+ "tokens": {
+  "prompt": 80607,
+  "completion": 23193,
+  "reasoning": 0
+ },
+ "wallclock_s": 432.99424386024475,
+ "infra_error": null
+}

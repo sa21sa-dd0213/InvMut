@@ -1,0 +1,95 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("FlashGovernanceArbiter - kill mutant med7424f7", function () {   it("should detect missing flashDecision event emission", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy a mock DAO contract that implements LimboDAOLike interface     const DAOFactory = await ethers.getContractFactory("LimboDAOLike");     const dao = await DAOFactory.deploy();     await dao.waitForDeployment();          // Deploy FlashGovernanceArbiter with the DAO address     const Factory = await ethers.getContractFactory("FlashGovernanceArbiter");     const instance = await Factory.deploy(await dao.getAddress());     await instance.waitForDeployment();          // Set up governance parameters via successful proposal     // First, configure the DAO to make owner a successful proposer     // (In a real scenario, this would involve governance setup)          // Configure flash governance settings     const assetAddress = addr2.address; // Use a mock ERC20 address     const amount = ethers.parseEther("100");     const unlockTime = 3600; // 1 hour     const assetBurnable = false;          // Mock the successfulProposal check - we need to set up the DAO to return true for owner     // This is simplified - in production you'd need proper DAO setup          // Configure flash governance     await instance.connect(owner).configureFlashGovernance(       assetAddress,       amount,       unlockTime,       assetBurnable     );          // Configure security parameters     await instance.connect(owner).configureSecurityParameters(       10, // maxGovernanceChangePerEpoch       100, // epochSize       50  // changeTolerance     );          // Set the sender as governed     await instance.connect(owner).setGoverned(       [addr1.address],       [true]     );          // Prepare ERC20 token for transfer     // We need a token that will successfully transferFrom     const ERC20Factory = await ethers.getContractFactory("IERC20");     const mockToken = await ERC20Factory.deploy();     await mockToken.waitForDeployment();          // Mint tokens to addr1 and approve the arbiter     // This is simplified - actual ERC20 would need proper implementation          // Attempt to call assertGovernanceApproved and check for event     // The mutant removes the event emission, so we expect the event NOT to be emitted     const tx = await instance.connect(addr1).assertGovernanceApproved(       addr1.address,       instance.target,       false     );     const receipt = await tx.wait();          // Check that flashDecision event was NOT emitted     const event = receipt.logs.find(       (log) => log.eventName === "flashDecision"     );          // The test should fail on the original (event exists) and pass on the mutant (no event)     // We expect the event to be missing, which would kill the mutant     expect(event).to.be.undefined;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; abstract contract Burnable { function burn (uint amount) public virtual; } abstract contract FlashGovernanceArbiterLike { function assertGovernanceApproved(address sender, address target, bool emergency) public virtual; function enforceToleranceInt(int256 v1, int256 v2) public view virtual; function enforceTolerance(uint256 v1, uint256 v2) public view virtual; function burnFlashGovernanceAsset( address targetContract, address user, address asset, uint256 amount ) public virtual; function setEnforcement(bool enforce) public virtual; } interface IERC20 { event Transfer(address indexed from, address indexed to, uint256 value); event Approval(address indexed owner, address indexed spender, uint256 value); function totalSupply() external view returns (uint256); function balanceOf(address account) external view returns (uint256); function transfer(address to, uint256 amount) external returns (bool); function allowance(address owner, address spender) external view returns (uint256); function approve(address spender, uint256 amount) external returns (bool); function transferFrom(address from, address to, uint256 amount) external returns (bool); } abstract contract LimboDAOLike { function approveFlanMintingPower(address minter, bool enabled) public virtual; function makeProposal(address proposal, address proposer) public virtual; function currentProposalState() public view virtual returns ( uint256, uint256, address, uint256, address ); function setProposalConfig( uint256 votingDuration, uint256 requiredFateStake, address proposalFactory ) public virtual; function setApprovedAsset( address asset, bool approved, bool isUniswap, uint256 period ) public virtual; function successfulProposal(address proposal) public view virtual returns (bool); function domainConfig() public virtual returns ( address, address, address, address, bool, address, address ); function getFlashGoverner() external view virtual returns (address); function proposalConfig() public view virtual returns ( uint256, uint256, address ); function setFateToFlan(uint256 rate) public virtual; } abstract contract ProposalFactoryLike { function toggleWhitelistProposal(address proposal) public virtual; function soulUpdateProposal () public  virtual view returns (address); } abstract contract Governable { FlashGovernanceArbiterLike public governer; bool public configured; address public DAO; function endConfiguration() public { configured = true; } modifier onlySuccessfulProposal() { assertSuccessfulProposal(msg.sender); _; } modifier onlySoulUpdateProposal() { assertSoulUpdateProposal(msg.sender); _; } function assertSoulUpdateProposal(address sender) internal view { (, , address proposalFactory) = LimboDAOLike(DAO).proposalConfig(); require(!configured || sender == ProposalFactoryLike(proposalFactory).soulUpdateProposal(), "EJ"); assertSuccessfulProposal(sender); } function _governanceApproved(bool emergency) internal { bool successfulProposal = LimboDAOLike(DAO).successfulProposal(msg.sender); if (successfulProposal) { governer.setEnforcement(false); } else if (configured) { governer.setEnforcement(true); governer.assertGovernanceApproved(msg.sender, address(this), emergency); } } modifier governanceApproved(bool emergency) { _governanceApproved(emergency); _; } function assertSuccessfulProposal(address sender) internal view { require(!configured || LimboDAOLike(DAO).successfulProposal(sender), "EJ"); } constructor(address dao) { setDAO(dao); } function flashGoverner() internal returns (FlashGovernanceArbiterLike) { if (address(governer) == address(0)) governer = FlashGovernanceArbiterLike(LimboDAOLike(DAO).getFlashGoverner()); return governer; } function setDAO(address dao) public { require(DAO == address(0) || msg.sender == DAO || !configured, "EK"); DAO = dao; delete governer; } } abstract contract Configurable { function configured() public view virtual returns (bool); } contract FlashGovernanceArbiter is Governable { event flashDecision(address actor, address deposit_asset, uint256 amount, address target); mapping(address => bool) enforceLimitsActive; constructor(address dao) Governable(dao) {} struct FlashGovernanceConfig { uint256 amount; uint256 unlockTime; address asset; bool assetBurnable; } struct SecurityParameters { uint256 epochSize; uint256 lastFlashGovernanceAct; uint8 maxGovernanceChangePerEpoch; uint8 changeTolerance; } FlashGovernanceConfig public flashGovernanceConfig; SecurityParameters public security; mapping(address => bool) public governed; function setGoverned(address[] calldata governables, bool[] calldata isGoverned) external onlySuccessfulProposal { require(governables.length == isGoverned.length, "LIMBO: length mismatch"); for (uint256 i = 0; i < governables.length; i++) { governed[governables[i]] = isGoverned[i]; } } modifier flashEnabled(){ require(msg.sender == DAO || governed[msg.sender], "LIMBO: EP"); _; } mapping(address => mapping(address => FlashGovernanceConfig)) public pendingFlashDecision; function assertGovernanceApproved( address sender, address target, bool emergency ) public flashEnabled{ if ( IERC20(flashGovernanceConfig.asset).transferFrom(sender, address(this), flashGovernanceConfig.amount) && pendingFlashDecision[target][sender].unlockTime < block.timestamp ) { require( emergency || (block.timestamp - security.lastFlashGovernanceAct > security.epochSize), "LIMBO: flash governance disabled for rest of epoch" ); pendingFlashDecision[target][sender] = flashGovernanceConfig; pendingFlashDecision[target][sender].unlockTime += block.timestamp; security.lastFlashGovernanceAct = block.timestamp; emit flashDecision(sender, flashGovernanceConfig.asset, flashGovernanceConfig.amount, target); } else { revert("LIMBO: governance decision rejected."); } } function configureFlashGovernance( address asset, uint256 amount, uint256 unlockTime, bool assetBurnable ) public virtual onlySuccessfulProposal { flashGovernanceConfig.asset = asset; flashGovernanceConfig.amount = amount; flashGovernanceConfig.unlockTime = unlockTime; flashGovernanceConfig.assetBurnable = assetBurnable; } function configureSecurityParameters( uint8 maxGovernanceChangePerEpoch, uint256 epochSize, uint8 changeTolerance ) public virtual onlySuccessfulProposal { security.maxGovernanceChangePerEpoch = maxGovernanceChangePerEpoch; security.epochSize = epochSize; require(security.changeTolerance < 100, "Limbo: % between 0 and 100"); security.changeTolerance = changeTolerance; } function burnFlashGovernanceAsset( address targetContract, address user, address asset, uint256 amount ) public virtual onlySuccessfulProposal { if (pendingFlashDecision[targetContract][user].assetBurnable) { Burnable(asset).burn(amount); } delete pendingFlashDecision[targetContract][user]; } function withdrawGovernanceAsset(address targetContract, address asset) public virtual { require( pendingFlashDecision[targetContract][msg.sender].asset == asset && pendingFlashDecision[targetContract][msg.sender].amount > 0 && pendingFlashDecision[targetContract][msg.sender].unlockTime < block.timestamp, "Limbo: Flashgovernance decision pending." ); IERC20(pendingFlashDecision[targetContract][msg.sender].asset).transfer( msg.sender, pendingFlashDecision[targetContract][msg.sender].amount ); delete pendingFlashDecision[targetContract][msg.sender]; } function setEnforcement(bool enforce) public { enforceLimitsActive[msg.sender] = enforce; } function enforceToleranceInt(int256 v1, int256 v2) public view { if (!configured) return; uint256 uv1 = uint256(v1 > 0 ? v1 : -1 * v1); uint256 uv2 = uint256(v2 > 0 ? v2 : -1 * v2); enforceTolerance(uv1, uv2); } function enforceTolerance(uint256 v1, uint256 v2) public view { if (!enforceLimitsActive[msg.sender] || !Configurable(msg.sender).configured()) return; if (v1 > v2) { if (v2 == 0) require(v1 <= 1, "FE1"); else require(((v1 - v2) * 100) < security.changeTolerance * v1, "FE1"); } else { if (v1 == 0) require(v2 <= 1, "FE1"); else require(((v2 - v1) * 100) < security.changeTolerance * v1, "FE1"); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("FlashGovernanceArbiter - kill mutant med7424f7", function () {
+  it("should detect missing flashDecision event emission", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy a mock DAO contract that implements LimboDAOLike interface
+    const DAOFactory = await ethers.getContractFactory("LimboDAOLike");
+    const dao = await DAOFactory.deploy();
+    await dao.waitForDeployment();
+
+    // Deploy FlashGovernanceArbiter with the DAO address
+    const Factory = await ethers.getContractFactory("FlashGovernanceArbiter");
+    const instance = await Factory.deploy(await dao.getAddress());
+    await instance.waitForDeployment();
+
+    // Set up governance parameters via successful proposal
+    // First, configure the DAO to make owner a successful proposer
+    // (In a real scenario, this would involve governance setup)
+
+    // Configure flash governance settings
+    const assetAddress = addr2.address; // Use a mock ERC20 address
+    const amount = ethers.parseEther("100");
+    const unlockTime = 3600; // 1 hour
+    const assetBurnable = false;
+
+    // Mock the successfulProposal check - we need to set up the DAO to return true for owner
+    // This is simplified - in production you'd need proper DAO setup
+
+    // Configure flash governance
+    await instance.connect(owner).configureFlashGovernance(
+      assetAddress,
+      amount,
+      unlockTime,
+      assetBurnable
+    );
+
+    // Configure security parameters
+    await instance.connect(owner).configureSecurityParameters(
+      10, // maxGovernanceChangePerEpoch
+      100, // epochSize
+      50  // changeTolerance
+    );
+
+    // Set the sender as governed
+    await instance.connect(owner).setGoverned(
+      [addr1.address],
+      [true]
+    );
+
+    // Prepare ERC20 token for transfer
+    // We need a token that will successfully transferFrom
+    const ERC20Factory = await ethers.getContractFactory("IERC20");
+    const mockToken = await ERC20Factory.deploy();
+    await mockToken.waitForDeployment();
+
+    // Mint tokens to addr1 and approve the arbiter
+    // This is simplified - actual ERC20 would need proper implementation
+
+    // Attempt to call assertGovernanceApproved and check for event
+    // The mutant removes the event emission, so we expect the event NOT to be emitted
+    const tx = await instance.connect(addr1).assertGovernanceApproved(
+      addr1.address,
+      instance.target,
+      false
+    );
+    const receipt = await tx.wait();
+
+    // Check that flashDecision event was NOT emitted
+    const event = receipt.logs.find(
+      (log) => log.eventName === "flashDecision"
+    );
+
+    // The test should fail on the original (event exists) and pass on the mutant (no event)
+    // We expect the event to be missing, which would kill the mutant
+    expect(event).to.be.undefined;
+  });
+});
+```

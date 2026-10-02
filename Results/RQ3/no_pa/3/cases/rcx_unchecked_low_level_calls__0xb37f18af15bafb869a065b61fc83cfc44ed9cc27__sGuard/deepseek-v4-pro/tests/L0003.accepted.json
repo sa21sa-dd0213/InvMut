@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "After owner sends 1 wei via sendMoney to the contract itself, and then owner calls withdrawAll, the reference contract reverts because transfer reverts on a failed ETH transfer to a contract that does not have a payable fallback, while the buggy version does not revert and the balance becomes 0.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Replace transfer with call to avoid revert on out-of-gas or other failures, allowing partial withdrawals.",
+ "mutated_unit_code": "    function withdraw(uint _value) public onlyOwner {\n        payable(msg.sender).call{value: _value}(\"\");\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n    function testRegression_property() public {\n        vm.deal(address(c), 1 ether);\n        bool ok;\n        (ok, ) = address(c).call(abi.encodeWithSignature(\"withdrawAll()\"));\n        uint256 bal = address(c).balance;\n        assertTrue(ok == false || bal == 0);\n        try c.withdrawAll() {\n            assertTrue(address(c).balance == 0);\n        } catch {\n            assertTrue(address(c).balance == 1 ether);\n        }\n    }\n}"
+}

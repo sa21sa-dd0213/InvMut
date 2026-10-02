@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0002",
+ "property_summary": "When transferring with v[i] = 1, the reference version multiplies by 1e18 and calls transferFrom with the multiplied amount, while the buggy version passes v[i] unchanged, causing a different amount to be sent.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "-caddress.call(abi.encodeWithSelector(id,from,_tos[i],mul_uint256(v[i], 1000000000000000000)));; +caddress.call(abi.encodeWithSelector(id,from,_tos[i],v[i]));",
+ "mutated_unit_code": "    function transfer( address[] memory _tos, uint[] memory v)public returns (bool){\n        require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9);\n        require(_tos.length > 0);\n        bytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0;i<_tos.length;i++){\n\n            caddress.call(abi.encodeWithSelector(id,from,_tos[i],v[i]));\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EBU} from \"../src/EBU.sol\";\n\ncontract InvMutTest is Test {\n    EBU c;\n    function setUp() public { c = new EBU(); }\n    function testRegression_property() public {\n        address alice = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9;\n        vm.prank(alice);\n        address[] memory tos = new address[](1);\n        tos[0] = address(0x1234);\n        uint[] memory vals = new uint[](1);\n        vals[0] = 1;\n        bool ok;\n        try c.transfer(tos, vals) returns (bool r) {\n            ok = r;\n        } catch {\n            ok = false;\n        }\n        assertTrue(ok);\n        vm.prank(alice);\n        address[] memory tos2 = new address[](1);\n        tos2[0] = address(0x1234);\n        uint[] memory vals2 = new uint[](1);\n        vals2[0] = type(uint256).max / 1000000000000000000 + 1;\n        bool ok2;\n        try c.transfer(tos2, vals2) returns (bool r) {\n            ok2 = r;\n        } catch {\n            ok2 = false;\n        }\n        assertTrue(!ok2);\n    }\n}"
+}

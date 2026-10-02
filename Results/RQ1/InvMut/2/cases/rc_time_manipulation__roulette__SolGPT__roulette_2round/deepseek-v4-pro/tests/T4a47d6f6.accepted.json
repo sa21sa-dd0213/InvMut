@@ -1,0 +1,12 @@
+{
+ "difference_id": "T4a47d6f6",
+ "property_summary": "The fallback function should never revert when called with 10 ether and a block.timestamp strictly greater than pastBlockTime; the buggy version always reverts because it updates pastBlockTime before checking, causing timestamp <= pastBlockTime.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Move pastBlockTime = block.timestamp before the second require so the timestamp check uses the updated value, allowing repeated calls in the same block.",
+ "mutated_unit_code": "fallback() external payable {\n    require(msg.value == 10 ether);\n\n    pastBlockTime = block.timestamp;\n    require(block.timestamp > pastBlockTime);\n\n    if(block.number % 15 == 0) {\n        payable(msg.sender).transfer(address(this).balance);\n    }\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 blockTime1, uint256 blockTime2) public {\n        vm.assume(blockTime1 < blockTime2);\n        vm.assume(blockTime1 > 0);\n        address sender = address(0x1234);\n        vm.deal(sender, 20 ether);\n\n        vm.warp(blockTime1);\n        vm.prank(sender);\n        (bool ok1,) = address(c).call{value: 10 ether}(\"\");\n        assertTrue(ok1);\n\n        vm.warp(blockTime2);\n        vm.prank(sender);\n        (bool ok2,) = address(c).call{value: 10 ether}(\"\");\n        assertTrue(ok2);\n    }\n}"
+}

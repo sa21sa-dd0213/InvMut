@@ -1,0 +1,29 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract W_WALLET:
+        Contract Code: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } } contract W_WALLET is sGuard { function Put(uint _unlockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); LogFile.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+
+    Consider the following mutant of W_WALLET:
+        Mutant m89d0160d of function Collect replaces _s with false
+        Mutant Diff: ---|             { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { +++|             { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (false) {
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let’s think through this step-by-step:
+
+1. **Original behavior**: In the `Collect` function, after making an external call with `msg.sender.call{value: _am}("")`, the success of that call is captured in the boolean variable `_s`. The balance is only deducted from the user's account if `_s` is `true` — meaning the transfer actually succeeded.
+
+2. **Mutant behavior**: The mutant changes the condition from `if (_s)` to `if (false)`. This means the balance will **never** be deducted, regardless of whether the external call succeeds.
+
+3. **Impact**: In the original, if the call succeeds, the balance is reduced; if it fails, the balance remains unchanged. In the mutant, even if the call succeeds, the balance is **not** reduced, leaving the user's balance incorrectly inflated.
+
+4. **Test hypothesis**: A test that sends Ether to the contract, waits until the unlock time, then calls `Collect` with an amount that should succeed (the call should return `true`), and then checks that the user's balance has decreased accordingly, will pass on the original but fail on the mutant because the mutant will not deduct the balance.
+
+**Hypothesis**: A test case that deposits funds, waits for the unlock time, successfully collects a valid amount, and then asserts that the user’s stored balance has decreased by exactly the collected amount should kill the mutant.

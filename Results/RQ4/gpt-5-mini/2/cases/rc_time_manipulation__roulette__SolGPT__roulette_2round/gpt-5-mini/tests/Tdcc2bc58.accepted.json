@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tdcc2bc58",
+ "property_summary": "For any caller sending exactly 10 ether when block.timestamp > pastBlockTime, the reference contract sets pastBlockTime equal to the current block.timestamp after fallback completes; the mutant sometimes sets pastBlockTime to block.timestamp + 1, violating that equality.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Insert an extra update setting pastBlockTime to block.timestamp + 1, changing the stored value after fallback and thus observable state.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        // additional adjustment\n        pastBlockTime = block.timestamp + 1;\n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n\n    function setUp() public { c = new Roulette(); }\n\n    function testFuzz_property(address caller, uint256 ts) public {\n        vm.assume(caller != address(0));\n        ts = bound(ts, 1, type(uint64).max);\n\n        vm.warp(ts);\n\n        uint256 sendAmt = 10 ether;\n        vm.deal(caller, sendAmt);\n\n        vm.prank(caller);\n        (bool ok, ) = address(c).call{value: sendAmt}(\"\");\n        require(ok, \"fallback call failed\");\n\n        assertTrue(c.pastBlockTime() == block.timestamp);\n    }\n}\n"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0002",
+ "property_summary": "With from=alice, caddress=a deployed ERC20-like token that expects transferFrom selector, tos=[bob], v=1, the reference uses transferFrom and succeeds, the bug uses transfer and reverts because transfer expects a different signature (address,uint256) not (address,address,uint256).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Change the function selector from transferFrom to transfer so that the call behaves differently.",
+ "mutated_unit_code": "function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){\nrequire(_tos.length > 0);\nbytes4 id=bytes4(keccak256(\"transfer(address,address,uint256)\"));\nfor(uint i=0;i<_tos.length;i++){\n\n{ (bool _s,) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v)); require(_s); }\n}\nreturn true;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airdrop} from \"../src/airdrop.sol\";\n\ncontract InvMutTest is Test {\n    airdrop c;\n    function setUp() public { c = new airdrop(); }\n    function testRegression_property() public {\n        TokenMock token = new TokenMock();\n        address alice = address(0x1234);\n        address bob = address(0x5678);\n        vm.deal(alice, 1 ether);\n        vm.prank(alice);\n        token.approve(address(c), 100);\n        address[] memory tos = new address[](1);\n        tos[0] = bob;\n        bool ok;\n        vm.prank(alice);\n        try c.transfer(alice, address(token), tos, 1) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        assertTrue(ok == true);\n    }\n}\n\ncontract TokenMock {\n    mapping(address => mapping(address => uint256)) public allowance;\n    function approve(address spender, uint256 amount) external returns (bool) {\n        allowance[msg.sender][spender] = amount;\n        return true;\n    }\n    function transferFrom(address from, address to, uint256 value) external pure returns (bool) {\n        return true;\n    }\n    fallback() external payable { revert(); }\n}"
+}

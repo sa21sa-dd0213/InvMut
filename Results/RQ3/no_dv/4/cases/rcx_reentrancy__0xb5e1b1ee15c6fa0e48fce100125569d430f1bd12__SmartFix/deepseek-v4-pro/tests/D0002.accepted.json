@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0002",
+ "property_summary": "Deposit adds msg.value to the sender's existing balance rather than overwriting it",
+ "render_status": "rendered",
+ "validation_status": "skipped",
+ "validation_error": null,
+ "kill": "bug_no_kill:holds_on_modified",
+ "origin": "primary",
+ "change_summary": "Replace the statement balances[msg.sender]+=msg.value with balances[msg.sender] = msg.value, so instead of adding to the balance, it overwrites it.",
+ "mutated_unit_code": "    function Deposit()\n    public\n    payable\n    {\n        if(msg.value > MinDeposit)\n        {\n            require(((balances[msg.sender] + msg.value) >= balances[msg.sender]));\n            balances[msg.sender] = msg.value;\n            TransferLog.AddMessage(msg.sender,msg.value,\"Deposit\");\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {Private_Bank} from \"../src/Private_Bank.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    Private_Bank c;\n\n    function setUp() public {\n        c = new Private_Bank(address(this));\n    }\n\n    function _run(uint256 amount1, uint256 amount2) internal {\n        amount1 = bound(amount1, 0, 1000000000000000000000000000000);\n        amount2 = bound(amount2, 0, 1000000000000000000000000000000);\n        vm.deal(address(this), VALUE_CAP + VALUE_CAP);\n        vm.deal(address(c), VALUE_CAP);\n        vm.assume(amount1 > c.MinDeposit() && amount2 > c.MinDeposit());\n        vm.assume(address(this).balance >= amount1 + amount2);\n        try c.Deposit{value: amount1}() {} catch { return; }\n        try c.Deposit{value: amount2}() {} catch { return; }\n        assertTrue(c.balances(address(this)) == amount1 + amount2);\n    }\n\n    function testFuzz_run(uint256 amount1, uint256 amount2) public {\n        _run(amount1, amount2);\n    }\n\n    receive() external payable {}\n}\n"
+}

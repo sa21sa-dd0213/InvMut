@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0009",
+ "property_summary": "When user alice calls collectDrugs(bob) with 100,000 drugs used, bob's claimedDrugs differs because the reference gives 20,000 (div by 5) while the bug gives 10,000 (div by 10).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Replace the referral bonus calculation: change the divisor from 5 to 10, so that the referral gets fewer drugs.",
+ "mutated_unit_code": "    function collectDrugs(address ref) public{\n        require(initialized);\n        if(referrals[msg.sender] == address(0) && referrals[msg.sender]!=msg.sender){\n            referrals[msg.sender]=ref;\n        }\n        uint256 drugsUsed=getMyDrugs();\n        uint256 newKilo=SafeMath.div(drugsUsed,DRUGS_TO_PRODUCE_1KILO);\n        Kilos[msg.sender]=SafeMath.add(Kilos[msg.sender],newKilo);\n        claimedDrugs[msg.sender]=0;\n        lastCollect[msg.sender]=block.timestamp;\n\n        claimedDrugs[referrals[msg.sender]]=SafeMath.add(claimedDrugs[referrals[msg.sender]],SafeMath.div(drugsUsed,10));\n\n        marketDrugs=SafeMath.add(marketDrugs,SafeMath.div(drugsUsed,10));\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherCartel} from \"../src/EtherCartel.sol\";\n\ncontract InvMutTest is Test {\n    EtherCartel c;\n    function setUp() public { c = new EtherCartel(); }\n    function testRegression_property() public {\n        vm.deal(address(0x1), 1 ether);\n        vm.prank(address(0x1));\n        c.seedMarket{value: 0} (1000);\n\n        vm.prank(address(0x2));\n        c.getFreeKilo();\n        vm.warp(block.timestamp + 86400);\n\n        address bob = address(0x3);\n        vm.prank(address(0x2));\n        c.collectDrugs(bob);\n\n        uint256 bobClaimed = c.claimedDrugs(bob);\n        assertTrue(bobClaimed == 5184000, \"Bob should have 5,184,000 claimedDrugs in correct contract\");\n    }\n}\n"
+}

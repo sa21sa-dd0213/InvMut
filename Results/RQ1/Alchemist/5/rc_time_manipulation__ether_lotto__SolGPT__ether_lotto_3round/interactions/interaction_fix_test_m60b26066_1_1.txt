@@ -1,0 +1,53 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("EtherLotto mutant kill test - m60b26066", function () {   it("should kill mutant by verifying pot payout occurs on modulo operation", async function () {     const [owner, player] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("EtherLotto");     const instance = await Factory.deploy();     await instance.waitForDeployment();          const TICKET_AMOUNT = ethers.parseEther("10");     const FEE_AMOUNT = ethers.parseEther("1");          // Play multiple times to increase probability of hitting random == 0     for (let i = 0; i < 20; i++) {       const potBefore = await instance.pot();       const playerBalanceBefore = await ethers.provider.getBalance(player.address);              const tx = await instance.connect(player).play({ value: TICKET_AMOUNT });       const receipt = await tx.wait();              const potAfter = await instance.pot();       const playerBalanceAfter = await ethers.provider.getBalance(player.address);              // If pot was reset to 0 (payout occurred), player should have received pot - fee       if (potAfter === BigInt(0) && potBefore > BigInt(0)) {         const expectedPayout = potBefore - FEE_AMOUNT;         const actualGain = playerBalanceAfter - playerBalanceBefore + TICKET_AMOUNT;         expect(actualGain).to.equal(expectedPayout);         return; // Mutant killed: payout happened (impossible with / operator)       }     }          // If we never saw a payout, mutant survives - fail the test     expect.fail("No payout occurred after 20 plays - mutant likely present");   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant kill test - m60b26066", function () {
+  it("should kill mutant by verifying pot payout occurs on modulo operation", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    const TICKET_AMOUNT = ethers.parseEther("10");
+    const FEE_AMOUNT = ethers.parseEther("1");
+    
+    // Play multiple times to increase probability of hitting random == 0
+    for (let i = 0; i < 20; i++) {
+      const potBefore = await instance.pot();
+      const playerBalanceBefore = await ethers.provider.getBalance(player.address);
+      
+      const tx = await instance.connect(player).play({ value: TICKET_AMOUNT });
+      const receipt = await tx.wait();
+      
+      const potAfter = await instance.pot();
+      const playerBalanceAfter = await ethers.provider.getBalance(player.address);
+      
+      // If pot was reset to 0 (payout occurred), player should have received pot - fee
+      if (potAfter === BigInt(0) && potBefore > BigInt(0)) {
+        const expectedPayout = potBefore - FEE_AMOUNT;
+        const actualGain = playerBalanceAfter - playerBalanceBefore + TICKET_AMOUNT;
+        expect(actualGain).to.equal(expectedPayout);
+        return; // Mutant killed: payout happened (impossible with / operator)
+      }
+    }
+    
+    // If we never saw a payout, mutant survives - fail the test
+    expect.fail("No payout occurred after 20 plays - mutant likely present");
+  });
+});
+```
