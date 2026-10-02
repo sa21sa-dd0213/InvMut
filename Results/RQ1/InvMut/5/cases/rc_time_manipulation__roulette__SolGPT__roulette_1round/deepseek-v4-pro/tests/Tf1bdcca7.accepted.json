@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tf1bdcca7",
+ "property_summary": "After any fallback call with msg.value == 10 ether, if the block number is divisible by 15 the contract balance becomes 0 (reference); the mutant with divisor 14 may leave a non-zero balance when the block number is divisible by 14 but not 15.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Change the divisor in the block number check from 15 to a different number (e.g., 14).",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        if(block.number % 14 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n\n    function testFuzz_property(uint256 blockNum) public {\n        bound(blockNum, 1, 1e6);\n        vm.roll(blockNum);\n        vm.warp(1);\n        address caller = makeAddr(\"caller\");\n        vm.deal(caller, 10 ether);\n        vm.prank(caller);\n        (bool ok,) = address(c).call{value: 10 ether}(\"\");\n        require(ok, \"call failed\");\n\n        if (blockNum % 15 == 0) {\n            assertEq(address(c).balance, 0);\n        } else {\n            assertTrue(address(c).balance > 0);\n        }\n    }\n}\n"
+}

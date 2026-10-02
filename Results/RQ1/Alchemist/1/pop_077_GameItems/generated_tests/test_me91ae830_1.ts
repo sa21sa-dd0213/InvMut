@@ -1,0 +1,66 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("GameItems mutant kill test - me91ae830", function () {
+  it("should detect mutant by verifying daily allowance replenishment logic with block.timestamp", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("GameItems");
+    const instance = await Factory.deploy(owner.address, addr1.address);
+    await instance.waitForDeployment();
+
+    // Create a game item with daily allowance
+    await instance.createGameItem(
+      "TestItem",
+      "ipfs://test",
+      true,    // finiteSupply = true
+      true,    // transferable = true
+      100,     // itemsRemaining
+      ethers.parseEther("10"), // itemPrice
+      5        // dailyAllowance
+    );
+
+    // First, mint tokens to addr2 so they can buy items
+    const NeuronFactory = await ethers.getContractFactory("Neuron");
+    const neuronInstance = await NeuronFactory.deploy(owner.address, addr1.address, addr2.address);
+    await neuronInstance.waitForDeployment();
+    
+    // Give addr2 some NRN tokens for purchase
+    await neuronInstance.connect(owner).addSpender(owner.address);
+    await neuronInstance.connect(owner).approveSpender(addr2.address, ethers.parseEther("1000"));
+    
+    // Set up the GameItems contract with the Neuron address
+    await instance.connect(owner).instantiateNeuronContract(await neuronInstance.getAddress());
+    
+    // Make addr2 an admin to set burning address (needed for mint)
+    await instance.connect(owner).adjustAdminAccess(addr2.address, true);
+    await instance.connect(owner).adjustAdminAccess(owner.address, true);
+    
+    // Buy the item with addr2
+    const price = ethers.parseEther("10");
+    await neuronInstance.connect(addr2).approve(await instance.getAddress(), price);
+    await instance.connect(addr2).mint(0, 1);
+
+    // Check allowance remaining immediately (should be 5 - 1 = 4 since daily allowance is 5 and we bought 1)
+    const remainingAfterPurchase = await instance.getAllowanceRemaining(addr2.address, 0);
+    expect(remainingAfterPurchase).to.equal(4);
+
+    // Now check that the dailyAllowanceReplenishTime is set correctly
+    // The original uses block.timestamp, the mutant uses block.prevrandao
+    // We can verify by checking that allowance doesn't reset until a day passes
+    const replenishTime = await instance.dailyAllowanceReplenishTime(addr2.address, 0);
+    const currentBlock = await ethers.provider.getBlock("latest");
+    
+    // The replenish time should be current timestamp + 1 day
+    // With the mutant using block.prevrandao, this comparison would be wrong
+    expect(replenishTime).to.be.gt(currentBlock.timestamp);
+    expect(replenishTime).to.be.lte(currentBlock.timestamp + 86400);
+
+    // Try to buy another item - should succeed since we have remaining allowance
+    await neuronInstance.connect(addr2).approve(await instance.getAddress(), price);
+    await instance.connect(addr2).mint(0, 1);
+    
+    // Remaining should now be 3
+    const remainingAfterSecondPurchase = await instance.getAllowanceRemaining(addr2.address, 0);
+    expect(remainingAfterSecondPurchase).to.equal(3);
+  });
+});

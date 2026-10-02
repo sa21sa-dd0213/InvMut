@@ -1,0 +1,122 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mfb6568e0 of XBORNID.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test XBORNID.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for XBORNID:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("XBORNID reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy XBORNID by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("XBORNID"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("XBORNID mutant mfb6568e0", function () {
+  it("should detect when distributionFinished is not set to true when totalDistributed equals totalSupply", async function () {
+    const [owner, investor1, investor2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("XBORNID");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Initial setup: owner has totalDistributed tokens (200,000,000e18)
+    // totalRemaining = 300,000,000e18
+    // value = 1000e18 per distribution
+
+    // Calculate how many distributions are needed to reach totalSupply (500,000,000e18)
+    // We need to distribute 300,000,000e18 more tokens (totalRemaining)
+    // Each distribution gives 1000e18 tokens
+    const distributionsNeeded = 300000; // 300,000,000e18 / 1000e18
+
+    // Perform distributions until totalDistributed exactly equals totalSupply
+    for (let i = 0; i < distributionsNeeded - 1; i++) {
+      await instance.connect(investor1).getTokens();
+      // Reset blacklist for next investor (or use different accounts)
+      // For simplicity, we'll use different investors
+      if (i < distributionsNeeded - 2) {
+        // Create new signers for each distribution to avoid blacklist issues
+        const newInvestor = ethers.Wallet.createRandom().connect(ethers.provider);
+        // Fund the new investor with some ETH for gas
+        await owner.sendTransaction({
+          to: newInvestor.address,
+          value: ethers.parseEther("1.0")
+        });
+        // We'll need to adjust the loop to use new investors
+      }
+    }
+
+    // Alternative simpler approach: use multiple pre-funded accounts
+    // Let's create enough accounts to perform the distributions
+    const investors = [];
+    for (let i = 0; i < 10; i++) {
+      const wallet = ethers.Wallet.createRandom().connect(ethers.provider);
+      await owner.sendTransaction({
+        to: wallet.address,
+        value: ethers.parseEther("1.0")
+      });
+      investors.push(wallet);
+    }
+
+    // Distribute tokens using multiple investors
+    for (let i = 0; i < 300000; i++) {
+      const investorIndex = i % 10;
+      const investor = investors[investorIndex];
+      
+      // Check if we've reached exactly totalSupply
+      const totalDistributed = await instance.totalDistributed();
+      const totalSupply = await instance.totalSupply();
+      
+      if (totalDistributed >= totalSupply) {
+        break;
+      }
+      
+      // Get the current value
+      const currentValue = await instance.value();
+      
+      // Check if this distribution would exceed totalSupply
+      if (totalDistributed.add(currentValue) > totalSupply) {
+        // This would be the last distribution
+        break;
+      }
+      
+      try {
+        await instance.connect(investor).getTokens();
+      } catch {
+        break;
+      }
+    }
+
+    // Now check that totalDistributed equals totalSupply
+    const finalTotalDistributed = await instance.totalDistributed();
+    const finalTotalSupply = await instance.totalSupply();
+    
+    expect(finalTotalDistributed).to.equal(finalTotalSupply);
+    
+    // Verify distributionFinished is true
+    expect(await instance.distributionFinished()).to.be.true;
+    
+    // Attempt one more distribution - should fail if mutant is killed
+    // If mutant is present, this distribution will succeed (bug)
+    // If original code, this should revert
+    const newInvestor = ethers.Wallet.createRandom().connect(ethers.provider);
+    await owner.sendTransaction({
+      to: newInvestor.address,
+      value: ethers.parseEther("1.0")
+    });
+    
+    // This should revert in original code (distributionFinished = true)
+    // In mutant, it might succeed because condition is > not >=
+    await expect(
+      instance.connect(newInvestor).getTokens()
+    ).to.be.reverted;
+  });
+});
+```

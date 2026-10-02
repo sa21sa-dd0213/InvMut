@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract ReentrancyDAO:
+        Contract Code: pragma solidity ^0.8.0; contract sGuardPlus { constructor() { __lock_modifier0_lock = false; } bool private __lock_modifier0_lock; modifier __lock_modifier0() { require(!__lock_modifier0_lock); __lock_modifier0_lock = true; _; __lock_modifier0_lock = false; } } contract ReentrancyDAO is sGuardPlus { mapping (address  => uint )    credit; uint     balance; function withdrawAll () public __lock_modifier0  { uint     oCredit = credit[msg.sender]; if (oCredit>0) { balance-=oCredit; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); credit[msg.sender]=0; } } function deposit () public payable { credit[msg.sender]+=msg.value; balance+=msg.value; } }
+
+    Consider the following mutant of ReentrancyDAO:
+        Mutant m72f51d85 of function deposit replaces msg.value with msg.value+1
+        Mutant Diff: ---| balance+=msg.value; +++| balance+=msg.value+1;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the deposit function to add 1 extra wei to the `balance` variable beyond what was actually sent in `msg.value`. This means the contract's internal accounting between `credit[msg.sender]` and `balance` becomes inconsistent.  
+
+**Hypothesis**: A test case that deposits a specific amount of ether, then calls `withdrawAll()` to withdraw the full credited amount, and finally checks that the contract's balance is exactly zero (or that the withdrawal succeeds without reverting) should kill the mutant. On the original contract, the withdrawal will succeed and the contract balance will be zero. On the mutant, the withdrawal will either revert (because the contract's actual ether balance is less than `balance` minus the credit) or leave a stranded 1 wei in the contract, causing the final balance check to fail.

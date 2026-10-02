@@ -1,0 +1,58 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EtherLotto mutant m90b5ca14 test", function () {   it("should detect the mutant that adds 1 extra wei to pot when random != 0", async function () {     const [owner, player] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("EtherLotto");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const ticketAmount = 10n; // TICKET_AMOUNT = 10 wei     const feeAmount = 1n; // FEE_AMOUNT = 1 wei      // Play with exactly 10 wei - we need the random result to be 1 (no payout)     // Since we can't control randomness, we play multiple times until we get a losing round     for (let i = 0; i < 20; i++) {       const potBefore = await instance.pot();              await player.sendTransaction({         to: await instance.getAddress(),         value: ticketAmount       });              // Wait for the transaction to be mined       await new Promise(resolve => setTimeout(resolve, 100));              const potAfter = await instance.pot();              // If random was 1 (no winner), pot should be reset to 0 in both original and mutant       // But in the mutant, the pot was increased by 11 instead of 10 before the check       if (potAfter === 0n) {         // This means random was 0 (winner paid out) - skip this iteration         continue;       }              // Random was 1 (no winner) - pot should be ticketAmount (10) in original       // In mutant it would be 11 (10 + 1 extra from the mutation)       expect(potAfter).to.equal(ticketAmount);       break;     }   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant m90b5ca14 test", function () {
+  it("should detect the mutant that adds 1 extra wei to pot when random != 0", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const ticketAmount = 10n; // TICKET_AMOUNT = 10 wei
+    const feeAmount = 1n; // FEE_AMOUNT = 1 wei
+
+    // Play with exactly 10 wei - we need the random result to be 1 (no payout)
+    // Since we can't control randomness, we play multiple times until we get a losing round
+    for (let i = 0; i < 20; i++) {
+      const potBefore = await instance.pot();
+      
+      await player.sendTransaction({
+        to: await instance.getAddress(),
+        value: ticketAmount
+      });
+      
+      // Wait for the transaction to be mined
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const potAfter = await instance.pot();
+      
+      // If random was 1 (no winner), pot should be reset to 0 in both original and mutant
+      // But in the mutant, the pot was increased by 11 instead of 10 before the check
+      if (potAfter === 0n) {
+        // This means random was 0 (winner paid out) - skip this iteration
+        continue;
+      }
+      
+      // Random was 1 (no winner) - pot should be ticketAmount (10) in original
+      // In mutant it would be 11 (10 + 1 extra from the mutation)
+      expect(potAfter).to.equal(ticketAmount);
+      break;
+    }
+  });
+});
+```

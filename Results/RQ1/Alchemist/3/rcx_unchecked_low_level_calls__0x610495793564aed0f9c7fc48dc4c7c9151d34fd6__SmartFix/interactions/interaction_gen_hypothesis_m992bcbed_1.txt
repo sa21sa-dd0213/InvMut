@@ -1,0 +1,23 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract SimpleWallet:
+        Contract Code: pragma solidity ^0.8.0; contract SimpleWallet { address public owner = msg.sender; uint public depositsCount; modifier onlyOwner { require(msg.sender == owner); _; } receive() external payable { require(((depositsCount + 1) >= depositsCount)); depositsCount++; } function withdrawAll() public onlyOwner { withdraw(address(this).balance); } function withdraw(uint _value) public onlyOwner { payable(msg.sender).transfer(_value); } function sendMoney(address _target, uint _value, bytes memory _data) public onlyOwner { _target.call{value: _value}(_data); } }
+
+    Consider the following mutant of SimpleWallet:
+        Mutant m992bcbed of function receive replaces + with *
+        Mutant Diff: ---|         require(((depositsCount + 1) >= depositsCount)); +++|         require(((depositsCount * 1) >= depositsCount));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract uses `require(((depositsCount + 1) >= depositsCount))` which is a check that will always pass because adding 1 to a non-negative integer always results in a value greater than or equal to the original. The mutant changes `+` to `*`, making the condition `require(((depositsCount * 1) >= depositsCount))`, which is also always true (since multiplying by 1 returns the same value). However, the critical difference is that the original `+ 1` increments depositsCount, while the mutant's `* 1` does not change the value.  
+
+The key vulnerability is that in the mutant, the `require` statement no longer prevents integer overflow. In the original, `depositsCount + 1` could overflow if depositsCount is at its maximum value (e.g., `type(uint).max`), causing the require to fail and revert. In the mutant, `depositsCount * 1` will never overflow regardless of the value, so the require always passes, allowing depositsCount to overflow when it is incremented afterward.  
+
+**Hypothesis**: A test case that first increments `depositsCount` to its maximum possible value (e.g., by repeatedly sending Ether to the contract `type(uint).max` times), then attempts one more deposit, should pass on the original contract (reverting due to the overflow check), but fail on the mutant (allowing the overflow and potentially corrupting the contract state).

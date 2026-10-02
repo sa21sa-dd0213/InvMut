@@ -1,0 +1,52 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("X_WALLET mutant md8e8d016 test", function () {   it("should kill mutant by detecting balance inflation when sending 1 wei", async function () {     const [owner, user] = await ethers.getSigners();          // Deploy the Log contract first (required constructor argument for X_WALLET)     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();          // Deploy X_WALLET with the Log address     const XWalletFactory = await ethers.getContractFactory("X_WALLET");     const wallet = await XWalletFactory.deploy(await log.getAddress());     await wallet.waitForDeployment();          // User sends exactly 1 wei via Put with a future unlock time     const unlockTime = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now     await wallet.connect(user).Put(unlockTime, { value: 1 });          // Advance time past the unlock time     await ethers.provider.send("evm_increaseTime", [3601]);     await ethers.provider.send("evm_mine", []);          // Attempt to collect exactly 1 wei     // In the original contract, this should succeed (balance = 1, am = 1)     // In the mutant, balance is 2 (msg.value+1 = 2), so collecting 1 should succeed     // but the balance will become 1 instead of 0, which we can detect     await wallet.connect(user).Collect(1);          // Check the remaining balance - should be 0 in original, but 1 in mutant     const acc = await wallet.Acc(user.address);     expect(acc.balance).to.equal(0); // This will fail on the mutant, killing it   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } } contract X_WALLET is sGuard { function Put(uint _unlockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); LogFile.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("X_WALLET mutant md8e8d016 test", function () {
+  it("should kill mutant by detecting balance inflation when sending 1 wei", async function () {
+    const [owner, user] = await ethers.getSigners();
+
+    // Deploy the Log contract first (required constructor argument for X_WALLET)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Deploy X_WALLET with the Log address
+    const XWalletFactory = await ethers.getContractFactory("X_WALLET");
+    const wallet = await XWalletFactory.deploy(await log.getAddress());
+    await wallet.waitForDeployment();
+
+    // User sends exactly 1 wei via Put with a future unlock time
+    const unlockTime = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
+    await wallet.connect(user).Put(unlockTime, { value: 1 });
+
+    // Advance time past the unlock time
+    await ethers.provider.send("evm_increaseTime", [3601]);
+    await ethers.provider.send("evm_mine", []);
+
+    // Attempt to collect exactly 1 wei
+    // In the original contract, this should succeed (balance = 1, am = 1)
+    // In the mutant, balance is 2 (msg.value+1 = 2), so collecting 1 should succeed
+    // but the balance will become 1 instead of 0, which we can detect
+    await wallet.connect(user).Collect(1);
+
+    // Check the remaining balance - should be 0 in original, but 1 in mutant
+    const acc = await wallet.Acc(user.address);
+    expect(acc.balance).to.equal(0); // This will fail on the mutant, killing it
+  });
+});
+```

@@ -1,0 +1,12 @@
+{
+ "difference_id": "Td2abfaee",
+ "property_summary": "For any initial contract ETH balance, a user who deposits Ether via addToBalance and then calls withdrawBalance must see their recorded balance become zero after a successful withdrawal; the buggy version fails to zero the balance, violating the invariant that userBalance after a full withdrawal is always zero.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the line that zeroes userBalance[msg.sender] before the external call.",
+ "mutated_unit_code": "function withdrawBalance() public {\n\n         uint256 tmp__1 = userBalance[msg.sender];\n         { (bool _s, bytes memory _d) = msg.sender.call{value: tmp__1}(\"\"); _d; if (! _s) {\n             revert();\n         } }\n\n     }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n    function testFuzz_property(uint256 depositAmount, uint256 withdrawalAmount) public {\n        depositAmount = bound(depositAmount, 1, type(uint256).max / 2);\n        withdrawalAmount = bound(withdrawalAmount, 1, depositAmount);\n\n        address sender = address(0x1234);\n\n        vm.deal(sender, depositAmount);\n        vm.prank(sender);\n        c.addToBalance{value: depositAmount}();\n\n        uint256 balanceBefore = c.getBalance(sender);\n        require(balanceBefore > 0, \"deposit failed\");\n\n        vm.prank(sender);\n        c.withdrawBalance();\n\n        assert(c.getBalance(sender) == 0);\n    }\n}"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0023",
+ "property_summary": "After deploying the contract and calling NETM(), the reference contract's finishDistribution() requires onlyOwner, so it succeeds and sets distributionFinished to true, while the buggy version removes onlyOwner so anyone can call it, but the test calls it from the owner, so both succeed; the divergence is that after NETM(), the reference's distributionFinished is false because onlyOwner modifier prevents non-owner, but the test calls from owner so both true. Actually the difference: after NETM(), the buggy version allows finishDistribution to be called by anyone, but in the test we call from owner, so both set distributionFinished to true. The real divergence is that after NETM(), the buggy version's finishDistribution can be called by a non-owner and succeed, changing distributionFinished to true, while the reference reverts. So we call from a non-owner after NETM() and assert that in the reference the state remains false, in the bug it becomes true.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Remove the onlyOwner modifier so finishDistribution can be called by any user.",
+ "mutated_unit_code": "    function finishDistribution() canDistr public returns (bool) {\n        distributionFinished = true;\n        emit DistrFinished();\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {NewIntelTechMedia} from \"../src/NewIntelTechMedia.sol\";\n\ncontract InvMutTest is Test {\n    NewIntelTechMedia c;\n    function setUp() public { c = new NewIntelTechMedia(); }\n    function testRegression_property() public {\n        c.NETM();\n\n        vm.prank(address(1));\n        (bool success, ) = address(c).call(abi.encodeWithSignature(\"finishDistribution()\"));\n\n        bool distributionFinished = c.distributionFinished();\n\n        assertTrue(!distributionFinished, \"distributionFinished should be false because finishDistribution reverted for non-owner\");\n    }\n}\n"
+}

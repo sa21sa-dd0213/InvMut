@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract demo:
+        Contract Code: pragma solidity ^0.8.0; contract demo{ function transfer(address from, address caddress, address[] memory _tos, uint[] memory v) public returns (bool){ require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0; i<_tos.length; i++){ { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v[i])); require(_s); } } return true; } }
+
+    Consider the following mutant of demo:
+        Mutant m6648f569 of function transfer replaces keccak256 with sha256
+        Mutant Diff: ---|         bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); +++|         bytes4 id = bytes4(sha256("transferFrom(address,address,uint256)"));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant replaces `keccak256` with `sha256` when computing the function selector for `transferFrom`. Since `keccak256` and `sha256` produce completely different hash outputs, the computed `bytes4` function selector will be different, causing the contract to call a non-existent or incorrect function on the target `caddress` contract.
+
+**Hypothesis**: A test case that calls `transfer` with valid parameters (including a `caddress` that correctly implements the `transferFrom(address,address,uint256)` function) and expects the call to succeed should kill the mutant. On the original contract, the correct selector is computed and the external call succeeds. On the mutant, the wrong selector is used, so the call will either revert (if the target contract reverts on unknown function calls) or silently fail without executing the intended logic, causing the `require(_s)` to revert and the transaction to fail.

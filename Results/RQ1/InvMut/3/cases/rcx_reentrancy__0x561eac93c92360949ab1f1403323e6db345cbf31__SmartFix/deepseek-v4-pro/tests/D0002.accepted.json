@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0002",
+ "property_summary": "After Deposit, the sender's balance is exactly the sum of all deposits made by them",
+ "render_status": "rendered",
+ "validation_status": "skipped",
+ "validation_error": null,
+ "kill": "bug_no_kill:spurious_callback",
+ "origin": "primary",
+ "change_summary": "Add a statement before the balance update that sets balances[msg.sender] to 0, preventing accumulation of deposits.",
+ "mutated_unit_code": "function Deposit()\n    public\n    payable\n    {\n        require(((balances[msg.sender] + msg.value) >= balances[msg.sender]));\n        balances[msg.sender] = 0;\n        balances[msg.sender]+= msg.value;\n        Log.AddMessage(msg.sender,msg.value,\"Put\");\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {BANK_SAFE} from \"../src/BANK_SAFE.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    BANK_SAFE c;\n\n    function setUp() public {\n        c = new BANK_SAFE();\n    }\n\n    function _run(uint256 firstAmount, uint256 secondAmount) internal {\n        firstAmount = bound(firstAmount, 0, 1000000000000000000000000000000);\n        secondAmount = bound(secondAmount, 0, 1000000000000000000000000000000);\n        vm.deal(address(this), VALUE_CAP + VALUE_CAP);\n        vm.deal(address(c), VALUE_CAP);\n        vm.assume(firstAmount > 0 && secondAmount > 0);\n        vm.assume(address(this).balance >= firstAmount + secondAmount);\n        try c.Deposit{value: firstAmount}() {} catch { return; }\n        try c.Deposit{value: secondAmount}() {} catch { return; }\n        assertTrue(c.balances(address(this)) == firstAmount + secondAmount);\n    }\n\n    function testFuzz_run(uint256 firstAmount, uint256 secondAmount) public {\n        _run(firstAmount, secondAmount);\n    }\n\n    receive() external payable {}\n}\n"
+}

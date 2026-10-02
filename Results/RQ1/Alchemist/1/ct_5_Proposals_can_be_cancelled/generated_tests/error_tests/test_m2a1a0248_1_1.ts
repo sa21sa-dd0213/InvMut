@@ -1,0 +1,52 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DAO mutant kill test - m2a1a0248", function () {
+  it("should emit ProposalFinalising event when _finalise is called via voteProposal with quorum and majority", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy mock VADER and VAULT contracts for testing
+    const MockVADER = await ethers.getContractFactory("MockVADER");
+    const mockVADER = await MockVADER.deploy();
+    await mockVADER.waitForDeployment();
+
+    const MockVAULT = await ethers.getContractFactory("MockVAULT");
+    const mockVAULT = await MockVAULT.deploy();
+    await mockVAULT.waitForDeployment();
+
+    const MockUSDV = await ethers.getContractFactory("MockUSDV");
+    const mockUSDV = await MockUSDV.deploy();
+    await mockUSDV.waitForDeployment();
+
+    // Deploy DAO contract
+    const DAO = await ethers.getContractFactory("DAO");
+    const dao = await DAO.deploy();
+    await dao.waitForDeployment();
+
+    // Initialize DAO
+    await dao.init(await mockVADER.getAddress(), await mockUSDV.getAddress(), await mockVAULT.getAddress());
+
+    // Create a GRANT proposal to trigger _finalise path
+    await dao.connect(addr1).newGrantProposal(addr2.address, ethers.parseEther("100"));
+
+    // Setup vault to return sufficient weight for quorum and majority
+    // For a single voter with weight 100, quorum needs > totalWeight/3 and majority needs > totalWeight/2
+    // totalWeight = 100, quorum = 33, majority = 50
+    await mockVAULT.setMemberWeight(addr1.address, 100);
+    await mockVAULT.setTotalWeight(100);
+
+    // Vote on proposal 1 - this should trigger _finalise because hasQuorum(1) and hasMajority(1) will be true
+    // and the proposal type is "GRANT" which falls into the else branch of _finalise
+    const tx = await dao.connect(addr1).voteProposal(1);
+    const receipt = await tx.wait();
+
+    // Get the timestamp of the block
+    const block = await ethers.provider.getBlock('latest');
+    const expectedTimestamp = block.timestamp + 1; // coolOffPeriod is 1
+
+    // Check that ProposalFinalising event was emitted
+    await expect(tx)
+      .to.emit(dao, "ProposalFinalising")
+      .withArgs(addr1.address, 1, expectedTimestamp, "GRANT");
+  });
+});

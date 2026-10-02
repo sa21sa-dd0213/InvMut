@@ -1,0 +1,11 @@
+{
+ "difference_id": "L0006",
+ "property_summary": "After Alice deposits 1 ether and calls withdrawBalance on the reference contract her balance becomes 0, but on the buggy mutant her balance remains 1 ether because the balance is not cleared before the external call.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "change_summary": "Replace the line that sets userBalance[msg.sender] = 0 with userBalance[msg.sender] = tmp__1, so the balance is not cleared before the external call.",
+ "mutated_unit_code": "     function withdrawBalance() public{\n\n         uint256 tmp__1 = userBalance[msg.sender];\n         userBalance[msg.sender] = tmp__1;\n         { (bool _s, bytes memory _d) = msg.sender.call{value: tmp__1}(\"\"); _d; if (! _s) {\n             revert();\n         } }\n\n     }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    bool attacking;\n    uint256 got;\n\n    function setUp() public {\n        c = new Reentrance();\n    }\n\n    receive() external payable {\n        got += msg.value;\n        if (attacking && address(c).balance >= 1) {\n            attacking = false;\n            try c.withdrawBalance() {} catch {}\n        }\n    }\n\n    function _run() internal {\n        vm.deal(address(c), 10);\n        vm.deal(address(this), 10);\n        c.addToBalance{value: 1}();\n        attacking = true;\n        c.withdrawBalance();\n        assertTrue(got <= 1);\n    }\n\n    function testFuzz_run() public {\n        _run();\n    }\n}\n"
+}

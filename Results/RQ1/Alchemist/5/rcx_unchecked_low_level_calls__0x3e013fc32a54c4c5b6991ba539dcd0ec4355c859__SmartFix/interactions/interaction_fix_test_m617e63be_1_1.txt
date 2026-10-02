@@ -1,0 +1,56 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MultiplicatorX4 reference (ethers v6)", function () {   it("should kill mutant m617e63be by testing msg.value > address(this).balance scenario", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("MultiplicatorX4");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Fund the contract with some initial balance     await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10")     });          const initialBalance = await ethers.provider.getBalance(await instance.getAddress());     expect(initialBalance).to.equal(ethers.parseEther("10"));          // Send value GREATER than contract balance (should work in original, fail in mutant)     const sendValue = ethers.parseEther("15"); // 15 > 10     const addr1BalanceBefore = await ethers.provider.getBalance(addr1.address);          await instance.connect(owner).multiplicate(addr1.address, { value: sendValue });          // In original: condition msg.value >= address(this).balance is true (15 >= 10)     // Contract sends its entire balance (10 + 15 = 25) to addr1     // In mutant: condition msg.value <= address(this).balance is false (15 <= 10 is false)     // So addr1 should NOT receive the funds in mutant          const addr1BalanceAfter = await ethers.provider.getBalance(addr1.address);     const contractBalanceAfter = await ethers.provider.getBalance(await instance.getAddress());          // In original: addr1 received 25 ETH, contract balance becomes 0     // In mutant: addr1 received nothing, contract balance remains 25 (original 10 + sent 15)     // This assertion kills the mutant because it will fail when mutant is active     expect(addr1BalanceAfter.sub(addr1BalanceBefore)).to.equal(ethers.parseEther("25"));     expect(contractBalanceAfter).to.equal(0);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract MultiplicatorX4 { address public Owner = msg.sender; receive() external payable {} function withdraw() payable public { require(msg.sender == Owner); payable(Owner).transfer(address(this).balance); } function Command(address adr,bytes memory data) payable public { require(msg.sender == Owner); adr.call{value: msg.value}(data); } function multiplicate(address adr) public payable { if(msg.value>=address(this).balance) { require(((address(this).balance + msg.value) >= address(this).balance)); payable(adr).transfer(address(this).balance+msg.value); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MultiplicatorX4 reference (ethers v6)", function () {
+  it("should kill mutant m617e63be by testing msg.value > address(this).balance scenario", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("MultiplicatorX4");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Fund the contract with some initial balance
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+
+    const initialBalance = await ethers.provider.getBalance(await instance.getAddress());
+    expect(initialBalance).to.equal(ethers.parseEther("10"));
+
+    // Send value GREATER than contract balance (should work in original, fail in mutant)
+    const sendValue = ethers.parseEther("15"); // 15 > 10
+    const addr1BalanceBefore = await ethers.provider.getBalance(addr1.address);
+
+    await instance.connect(owner).multiplicate(addr1.address, { value: sendValue });
+
+    // In original: condition msg.value >= address(this).balance is true (15 >= 10)
+    // Contract sends its entire balance (10 + 15 = 25) to addr1
+    // In mutant: condition msg.value <= address(this).balance is false (15 <= 10 is false)
+    // So addr1 should NOT receive the funds in mutant
+
+    const addr1BalanceAfter = await ethers.provider.getBalance(addr1.address);
+    const contractBalanceAfter = await ethers.provider.getBalance(await instance.getAddress());
+
+    // In original: addr1 received 25 ETH, contract balance becomes 0
+    // In mutant: addr1 received nothing, contract balance remains 25 (original 10 + sent 15)
+    // This assertion kills the mutant because it will fail when mutant is active
+    expect(addr1BalanceAfter - addr1BalanceBefore).to.equal(ethers.parseEther("25"));
+    expect(contractBalanceAfter).to.equal(0n);
+  });
+});
+```

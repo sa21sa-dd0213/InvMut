@@ -1,0 +1,40 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract ACCURAL_DEPOSIT:
+        Contract Code: pragma solidity ^0.8.0; contract ACCURAL_DEPOSIT { mapping (address=>uint256) public balances; uint public MinSum = 1 ether; LogFile Log = LogFile(0x0486cF65A2F2F3A392CBEa398AFB7F5f0B72FF46); bool intitalized; function SetMinSum(uint _val) public { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log) public { if(intitalized)revert(); Log = LogFile(_log); } function Initialized() public { intitalized = true; } function Deposit() public payable { require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); balances[msg.sender]+= msg.value; Log.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { if(balances[msg.sender]>=MinSum && balances[msg.sender]>=_am) { balances[msg.sender] = (balances[msg.sender] - _am); (bool _veri_ok,) = msg.sender.call{value: _am}(""); if(_veri_ok) { Log.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } receive() external payable { Deposit(); } } contract LogFile { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val,string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+
+    Consider the following mutant of ACCURAL_DEPOSIT:
+        Mutant m52a5a51a of function Collect replaces >= with <=
+        Mutant Diff: ---|         if(balances[msg.sender]>=MinSum && balances[msg.sender]>=_am) +++|         if(balances[msg.sender]<=MinSum && balances[msg.sender]>=_am)
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let’s walk through this step by step.
+
+**Original condition:**  
+`if(balances[msg.sender] >= MinSum && balances[msg.sender] >= _am)`  
+This means the user can only collect if their balance is **at least** `MinSum` **and** at least the amount they want to withdraw.
+
+**Mutant condition:**  
+`if(balances[msg.sender] <= MinSum && balances[msg.sender] >= _am)`  
+This changes the first check to: balance is **at most** `MinSum`.
+
+**Effect:**  
+- In the original, a user with a balance *greater* than `MinSum` can still collect.  
+- In the mutant, that same user would be **blocked** because their balance is *not* `<= MinSum`.  
+- Conversely, a user with a balance *less* than `MinSum` could collect in the mutant (if the amount is also ≤ their balance), which the original would have rejected.
+
+**To detect the mutant:**  
+We need a test case where the original allows the collection, but the mutant would revert (or vice versa). The simplest scenario is a user whose balance is **greater than** `MinSum` and who tries to collect an amount less than or equal to that balance.  
+- Original: passes.  
+- Mutant: fails (because `balance > MinSum` fails the `<=` check).
+
+**Hypothesis:**  
+"Hypothesis: The mutant changes the first condition from `>=` to `<=`. Therefore, a test case where a user has a balance greater than `MinSum` and attempts to collect a valid amount should succeed in the original but revert in the mutant, killing it."

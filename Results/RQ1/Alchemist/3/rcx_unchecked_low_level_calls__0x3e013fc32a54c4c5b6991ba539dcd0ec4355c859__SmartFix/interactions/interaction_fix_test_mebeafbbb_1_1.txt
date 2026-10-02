@@ -1,0 +1,59 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MultiplicatorX4 mutant kill test - mebeafbbb", function () {   it("should kill mutant by verifying exact transfer amount when contract balance equals msg.value", async function () {     const [owner, attacker, recipient] = await ethers.getSigners();          // Deploy contract (no constructor arguments needed for this contract)     const Factory = await ethers.getContractFactory("MultiplicatorX4");     const instance = await Factory.deploy();     await instance.waitForDeployment();          const contractAddress = await instance.getAddress();          // Fund the contract with exactly 1 wei     await owner.sendTransaction({       to: contractAddress,       value: 1     });          // Get initial balances     const initialRecipientBalance = await ethers.provider.getBalance(recipient.address);     const initialContractBalance = await ethers.provider.getBalance(contractAddress);          // Call multiplicate with msg.value = 1 wei (matching contract balance)     const tx = await instance.connect(owner).multiplicate(recipient.address, {       value: 1     });     await tx.wait();          // Get final balances     const finalRecipientBalance = await ethers.provider.getBalance(recipient.address);     const finalContractBalance = await ethers.provider.getBalance(contractAddress);          // Original would send: initialContractBalance + msg.value = 1 + 1 = 2 wei     // Mutant would send: initialContractBalance + msg.value - 1 = 1 + 1 - 1 = 1 wei     // So recipient should receive exactly 2 wei in original, but only 1 wei in mutant     const expectedRecipientIncrease = initialContractBalance + 1n; // 2 wei total          expect(finalRecipientBalance - initialRecipientBalance).to.equal(expectedRecipientIncrease);     expect(finalContractBalance).to.equal(0n); // All balance should be drained   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract MultiplicatorX4 { address public Owner = msg.sender; receive() external payable {} function withdraw() payable public { require(msg.sender == Owner); payable(Owner).transfer(address(this).balance); } function Command(address adr,bytes memory data) payable public { require(msg.sender == Owner); adr.call{value: msg.value}(data); } function multiplicate(address adr) public payable { if(msg.value>=address(this).balance) { require(((address(this).balance + msg.value) >= address(this).balance)); payable(adr).transfer(address(this).balance+msg.value); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MultiplicatorX4 mutant kill test - mebeafbbb", function () {
+  it("should kill mutant by verifying exact transfer amount when contract balance equals msg.value", async function () {
+    const [owner, attacker, recipient] = await ethers.getSigners();
+    
+    // Deploy contract (no constructor arguments needed for this contract)
+    const Factory = await ethers.getContractFactory("MultiplicatorX4");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    const contractAddress = await instance.getAddress();
+    
+    // Fund the contract with exactly 1 wei
+    await owner.sendTransaction({
+      to: contractAddress,
+      value: 1
+    });
+    
+    // Get initial balances
+    const initialRecipientBalance = await ethers.provider.getBalance(recipient.address);
+    const initialContractBalance = await ethers.provider.getBalance(contractAddress);
+    
+    // Call multiplicate with msg.value = 1 wei (matching contract balance)
+    const tx = await instance.connect(owner).multiplicate(recipient.address, {
+      value: 1
+    });
+    await tx.wait();
+    
+    // Get final balances
+    const finalRecipientBalance = await ethers.provider.getBalance(recipient.address);
+    const finalContractBalance = await ethers.provider.getBalance(contractAddress);
+    
+    // Original would send: initialContractBalance + msg.value = 1 + 1 = 2 wei
+    // Mutant would send: initialContractBalance + msg.value - 1 = 1 + 1 - 1 = 1 wei
+    // So recipient should receive exactly 2 wei in original, but only 1 wei in mutant
+    const expectedRecipientIncrease = initialContractBalance + 1n; // 2 wei total
+    
+    expect(finalRecipientBalance - initialRecipientBalance).to.equal(expectedRecipientIncrease);
+    expect(finalContractBalance).to.equal(0n); // All balance should be drained
+  });
+});
+```

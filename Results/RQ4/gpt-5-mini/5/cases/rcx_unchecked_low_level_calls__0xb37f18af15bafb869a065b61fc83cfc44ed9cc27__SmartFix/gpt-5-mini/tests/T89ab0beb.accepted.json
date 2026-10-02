@@ -1,0 +1,12 @@
+{
+ "difference_id": "T89ab0beb",
+ "property_summary": "Reference contract C always reverts when a non-owner calls an onlyOwner-protected function (observable as withdrawAll reverting / not transferring funds), whereas the mutant silently returns allowing non-owners to call withdrawAll successfully and potentially change contract balance/state.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Removed the require check in onlyOwner modifier and replaced it with a conditional that silently returns early when msg.sender is not owner, changing permission failure behavior observable by withdrawAll().",
+ "mutated_unit_code": "modifier onlyOwner {\n        if (msg.sender != owner) {\n            return;\n        }\n        _;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n\n    function setUp() public { c = new SimpleWallet(); }\n\n    function testFuzz_property(address caller, uint256 fund) public {\n        fund = bound(fund, 0, 1 ether);\n\n        vm.deal(address(this), fund);\n        if (fund > 0) {\n            (bool s, ) = address(c).call{value: fund}(\"\");\n            require(s);\n        }\n\n        bool ok;\n        vm.deal(caller, 1 wei);\n        vm.prank(caller);\n        try c.withdrawAll() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok == (caller == address(this)));\n    }\n}\n"
+}

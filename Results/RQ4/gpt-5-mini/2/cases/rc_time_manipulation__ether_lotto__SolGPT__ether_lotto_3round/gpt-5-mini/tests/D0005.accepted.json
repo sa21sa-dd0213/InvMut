@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0005",
+ "property_summary": "For any caller sending exactly TICKET_AMOUNT wei to play(), the reference contract always accepts the call (does not revert) and increases pot by TICKET_AMOUNT, whereas the mutant requiring TICKET_AMOUNT+1 will revert (reject) for those calls; the test fuzzes a caller and an amount and asserts that when amount equals the reference ticket price the call succeeds and pot reflects the added ticket (a behavior the mutant breaks for some inputs).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Require different ticket amount (TICKET_AMOUNT + 1) so require may revert or accept different payments, affecting pot after play().",
+ "mutated_unit_code": "function play()  public payable {\n        require(msg.value == TICKET_AMOUNT + 1);\n        pot += msg.value;\n\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n\n        if (random == 0) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    function setUp() public { c = new EtherLotto(); }\n\n    function testFuzz_property(address buyer, uint256 amount) public {\n        vm.assume(buyer != address(0));\n        amount = bound(amount, 0, 1 ether);\n\n        uint256 TICKET = 10;\n\n        vm.deal(buyer, 1 ether);\n\n        if (amount == TICKET) {\n            bool ok;\n            vm.prank(buyer);\n            try c.play{value: amount}() {\n                ok = true;\n            } catch {\n                ok = false;\n            }\n\n            uint256 potAfter = c.pot();\n\n            assertTrue(ok && potAfter >= TICKET);\n        } else {\n            assertTrue(true);\n        }\n    }\n}\n"
+}

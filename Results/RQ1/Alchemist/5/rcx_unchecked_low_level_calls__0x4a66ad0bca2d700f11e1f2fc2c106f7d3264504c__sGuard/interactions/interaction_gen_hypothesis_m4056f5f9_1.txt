@@ -1,0 +1,29 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EBU:
+        Contract Code: pragma solidity ^0.8.0; contract sGuard{ function mul_uint256(uint256 a, uint256 b) internal pure returns (uint256) { if (a == 0) { return 0; } uint256 c = a * b; assert(c / a == b); return c; } } contract EBU is sGuard { address public from = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9; address public caddress = 0x1f844685f7Bf86eFcc0e74D8642c54A257111923; function transfer( address[] memory _tos, uint[] memory v)public returns (bool){ require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9); require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ caddress.call(abi.encodeWithSelector(id,from,_tos[i],mul_uint256(v[i], 1000000000000000000))); } return true; } }
+
+    Consider the following mutant of EBU:
+        Mutant m4056f5f9 of function transfer replaces keccak256 with sha256
+        Mutant Diff: ---|         bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); +++|         bytes4 id=bytes4(sha256("transferFrom(address,address,uint256)"));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+First, let's think step-by-step about the difference.  
+
+The original contract uses `keccak256("transferFrom(address,address,uint256)")` to compute a 4-byte function selector. `keccak256` is the standard Ethereum hashing function used for this purpose — it returns a 32-byte hash from which the first 4 bytes are taken as the function selector.  
+
+The mutant replaces `keccak256` with `sha256`. `sha256` is a different hash function and will produce a completely different 32-byte hash (and thus a different 4-byte selector) for the same input string. This means the `id` in the mutant will not match the actual `transferFrom` function selector on the target contract at `caddress`.  
+
+As a result, the low-level `call` in the mutant will invoke the wrong function (or no function at all) on `caddress`, likely failing silently or not performing the intended token transfer.  
+
+Therefore, a test case that calls `transfer` with valid inputs and then verifies that the token balance of the recipient increased (or that the token transfer actually occurred on the `caddress` contract) should pass on the original but fail on the mutant — because the mutant will not trigger the correct `transferFrom` function.
+
+**Hypothesis:** "The mutant changes the hash function used to compute the function selector, so the wrong function is called on the external contract. Therefore, a test case that calls `transfer` and then checks that the token balance of the recipient has increased (or that a `Transfer` event was emitted by the token contract) should kill the mutant."

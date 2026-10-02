@@ -1,0 +1,70 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m1005cc86 of XBORNID.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test XBORNID.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for XBORNID:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("XBORNID reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy XBORNID by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("XBORNID"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("XBORNID mutant m1005cc86 test", function () {
+  it("should revert when transferFrom amount equals allowance (mutant uses < instead of <=)", async function () {
+    const [owner, from, spender] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("XBORNID");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Owner distributes tokens to 'from' address to have balance
+    // First, get tokens for 'from' by calling getTokens (requires not blacklisted and distribution not finished)
+    // Send ether to trigger getTokens via receive()
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("1")
+    });
+
+    // Alternatively, we can directly use the distr function via owner? No, distr is private.
+    // But owner can call getTokens too. Let's have 'from' call getTokens with some value
+    // Actually, getTokens is public but requires not blacklisted. Let's make 'from' call it.
+    // However, getTokens uses msg.sender. So we need 'from' to call it.
+    // But 'from' needs to send ether? getTokens is payable. Let's send ether from 'from'.
+    await from.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("1")
+    });
+
+    // Now 'from' should have some balance. Let's get the balance.
+    const fromBalance = await instance.balanceOf(from.address);
+    expect(fromBalance).to.be.gt(0);
+
+    // Approve spender to spend exactly the full balance
+    await instance.connect(from).approve(spender.address, fromBalance);
+
+    // Now spender attempts to transferFrom 'from' to another address using exact allowance amount
+    // In original: require(_amount <= allowed) passes when equal
+    // In mutant: require(_amount < allowed) reverts when equal
+    await expect(
+      instance.connect(spender).transferFrom(from.address, owner.address, fromBalance)
+    ).to.be.reverted;
+
+    // Also verify that transfer with slightly less than full balance succeeds in mutant
+    const lessAmount = fromBalance - 1n;
+    await instance.connect(from).approve(spender.address, lessAmount);
+    await expect(
+      instance.connect(spender).transferFrom(from.address, owner.address, lessAmount)
+    ).to.not.be.reverted;
+  });
+});
+```

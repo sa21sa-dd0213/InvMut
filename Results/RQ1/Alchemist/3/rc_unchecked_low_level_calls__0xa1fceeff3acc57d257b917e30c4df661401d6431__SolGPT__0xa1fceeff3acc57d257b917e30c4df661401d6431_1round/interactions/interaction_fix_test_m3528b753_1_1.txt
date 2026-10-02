@@ -1,0 +1,54 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("AirDropContract mutant kill test - m3528b753", function () {   it("should revert when transferFrom call fails (original) but mutant would not revert", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy AirDropContract     const AirDropFactory = await ethers.getContractFactory("AirDropContract");     const airDrop = await AirDropFactory.deploy();     await airDrop.waitForDeployment();          // Deploy a minimal contract that will fail on transferFrom call     // This contract does not implement transferFrom, so the call will succeed at EVM level but return false     const FailContractFactory = await ethers.getContractFactory(       "contracts/FailContract.sol:FailContract"     );     const failContract = await FailContractFactory.deploy();     await failContract.waitForDeployment();          // Prepare arrays for the transfer call     const tos = [addr1.address];     const vs = [ethers.parseEther("1")];          // In the original contract, this call would revert because the external call returns false     // In the mutant, the require(_s) is removed, so it would return true instead of reverting     await expect(       airDrop.connect(owner).transfer(         await failContract.getAddress(),         tos,         vs       )     ).to.be.reverted;          // If we reach here, the test passes (original behavior) - but for mutant it would fail     // because the mutant would not revert, thus killing the mutant   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract AirDropContract{ constructor() public { } modifier validAddress( address addr ) { require(addr != address(0x0)); require(addr != address(this)); _; } function transfer(address contract_address, address[] memory tos, uint[] memory vs) public validAddress(contract_address) returns (bool) { require(tos.length > 0); require(vs.length > 0); require(tos.length == vs.length); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0 ; i < tos.length; i++){ { (bool _s,) = contract_address.call(abi.encodeWithSelector(id, msg.sender, tos[i], vs[i])); require(_s); } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("AirDropContract mutant kill test - m3528b753", function () {
+  it("should revert when transferFrom call fails (original) but mutant would not revert", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy AirDropContract
+    const AirDropFactory = await ethers.getContractFactory("AirDropContract");
+    const airDrop = await AirDropFactory.deploy();
+    await airDrop.waitForDeployment();
+
+    // Deploy a minimal contract that will fail on transferFrom call
+    // This contract does not implement transferFrom, so the call will succeed at EVM level but return false
+    const FailContractFactory = await ethers.getContractFactory(
+      "contracts/FailContract.sol:FailContract"
+    );
+    const failContract = await FailContractFactory.deploy();
+    await failContract.waitForDeployment();
+
+    // Prepare arrays for the transfer call
+    const tos = [addr1.address];
+    const vs = [ethers.parseEther("1")];
+
+    // In the original contract, this call would revert because the external call returns false
+    // In the mutant, the require(_s) is removed, so it would return true instead of reverting
+    await expect(
+      airDrop.connect(owner).transfer(
+        await failContract.getAddress(),
+        tos,
+        vs
+      )
+    ).to.be.reverted;
+
+    // If we reach here, the test passes (original behavior) - but for mutant it would fail
+    // because the mutant would not revert, thus killing the mutant
+  });
+});
+```

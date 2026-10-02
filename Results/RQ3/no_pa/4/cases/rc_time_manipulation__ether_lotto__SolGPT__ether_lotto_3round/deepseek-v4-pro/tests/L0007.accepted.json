@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0007",
+ "property_summary": "After a call to play() by a non-bank caller, the reference contract's balance becomes 0 (if random wins) or msg.value (if random loses), while the buggy contract's balance is always reduced by an extra 1 wei fee, causing a divergence when random == 1 (i.e., no win) because the reference keeps 10 wei and the buggy keeps 9 wei.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "Add a second transfer to bank before the random check, making bank always receive an additional fee.",
+ "mutated_unit_code": "    function play()  public payable {\n        require(msg.value == TICKET_AMOUNT);\n        pot += msg.value;\n        payable(bank).transfer(FEE_AMOUNT);\n\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n\n        if (random == 0) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    function setUp() public { c = new EtherLotto(); }\n    function testRegression_property() public {\n        vm.warp(12345);\n        vm.roll(67890);\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n        vm.warp(12345);\n        vm.roll(67890);\n        if (random == 0) {\n            vm.warp(12346);\n        }\n\n        address player = address(0x1234);\n        vm.deal(player, 10 wei);\n        vm.prank(player);\n        c.play{value: 10 wei}();\n\n        assertTrue(address(c).balance == 10 wei);\n    }\n}\n"
+}

@@ -1,0 +1,151 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mb09dfeac of TimelockController.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test TimelockController.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for TimelockController:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("TimelockController reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy TimelockController by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("TimelockController"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("TimelockController mutant mb09dfeac test", function () {
+  it("should emit MinDelayChange event when updateDelay is called", async function () {
+    const [owner] = await ethers.getSigners();
+    const minDelay = 3600; // 1 hour in seconds
+    const newDelay = 7200; // 2 hours in seconds
+
+    const Factory = await ethers.getContractFactory("TimelockController");
+    const instance = await Factory.deploy(
+      minDelay,
+      [], // no proposers
+      []  // no executors
+    );
+    await instance.waitForDeployment();
+
+    // The timelock contract itself has the TIMELOCK_ADMIN_ROLE, so we need to execute through it
+    // However, for this test we can directly call updateDelay because the contract checks msg.sender == address(this)
+    // We'll use the contract's own execution mechanism via a scheduled and executed call
+    
+    // First, grant PROPOSER_ROLE to owner so we can schedule
+    const timelockAdminRole = await instance.TIMELOCK_ADMIN_ROLE();
+    const proposerRole = await instance.PROPOSER_ROLE();
+    const executorRole = await instance.EXECUTOR_ROLE();
+    
+    // Grant roles to owner through the timelock itself (since timelock has admin role)
+    // We need to schedule and execute a grantRole call
+    const grantProposerData = instance.interface.encodeFunctionData("grantRole", [proposerRole, owner.address]);
+    const grantExecutorData = instance.interface.encodeFunctionData("grantRole", [executorRole, owner.address]);
+    
+    // Schedule grantProposer
+    const salt1 = ethers.randomBytes(32);
+    const id1 = await instance.hashOperation(
+      await instance.getAddress(),
+      0,
+      grantProposerData,
+      ethers.ZeroHash,
+      salt1
+    );
+    
+    await instance.schedule(
+      await instance.getAddress(),
+      0,
+      grantProposerData,
+      ethers.ZeroHash,
+      salt1,
+      minDelay
+    );
+    
+    // Schedule grantExecutor
+    const salt2 = ethers.randomBytes(32);
+    const id2 = await instance.hashOperation(
+      await instance.getAddress(),
+      0,
+      grantExecutorData,
+      ethers.ZeroHash,
+      salt2
+    );
+    
+    await instance.schedule(
+      await instance.getAddress(),
+      0,
+      grantExecutorData,
+      ethers.ZeroHash,
+      salt2,
+      minDelay
+    );
+    
+    // Fast forward time
+    await ethers.provider.send("evm_increaseTime", [minDelay]);
+    await ethers.provider.send("evm_mine");
+    
+    // Execute both grants
+    await instance.execute(
+      await instance.getAddress(),
+      0,
+      grantProposerData,
+      ethers.ZeroHash,
+      salt1,
+      { value: 0 }
+    );
+    
+    await instance.execute(
+      await instance.getAddress(),
+      0,
+      grantExecutorData,
+      ethers.ZeroHash,
+      salt2,
+      { value: 0 }
+    );
+    
+    // Now we can schedule the updateDelay call through the timelock
+    const updateDelayData = instance.interface.encodeFunctionData("updateDelay", [newDelay]);
+    const salt3 = ethers.randomBytes(32);
+    const id3 = await instance.hashOperation(
+      await instance.getAddress(),
+      0,
+      updateDelayData,
+      ethers.ZeroHash,
+      salt3
+    );
+    
+    // Schedule updateDelay
+    await instance.schedule(
+      await instance.getAddress(),
+      0,
+      updateDelayData,
+      ethers.ZeroHash,
+      salt3,
+      minDelay
+    );
+    
+    // Fast forward time again
+    await ethers.provider.send("evm_increaseTime", [minDelay]);
+    await ethers.provider.send("evm_mine");
+    
+    // Execute updateDelay and expect the event
+    await expect(
+      instance.execute(
+        await instance.getAddress(),
+        0,
+        updateDelayData,
+        ethers.ZeroHash,
+        salt3,
+        { value: 0 }
+      )
+    ).to.emit(instance, "MinDelayChange")
+     .withArgs(minDelay, newDelay);
+  });
+});
+```

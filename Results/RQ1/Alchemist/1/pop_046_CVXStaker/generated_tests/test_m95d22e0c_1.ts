@@ -1,0 +1,103 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("CVXStaker mutant test - depositAndStake shutdown check", function () {
+  it("should revert or skip deposit when pool is shutdown (mutant removes shutdown check)", async function () {
+    const [owner, operator] = await ethers.getSigners();
+
+    // Deploy mock CLP token
+    const MockToken = await ethers.getContractFactory("IERC20");
+    const clpToken = await MockToken.deploy();
+    await clpToken.waitForDeployment();
+
+    // Deploy mock Booster that returns shutdown=true for poolInfo
+    const MockBooster = await ethers.getContractFactory("ICVXBooster");
+    const booster = await MockBooster.deploy();
+    await booster.waitForDeployment();
+
+    // Deploy mock RewardPool
+    const MockRewardPool = await ethers.getContractFactory("IBaseRewardPool");
+    const rewardsPool = await MockRewardPool.deploy();
+    await rewardsPool.waitForDeployment();
+
+    // Constructor arguments for CVXStaker: _operator, _clpToken, _booster, _rewardTokens
+    const rewardTokens: string[] = [];
+    const cvxStaker = await ethers.deployContract("CVXStaker", [
+      operator.address,
+      await clpToken.getAddress(),
+      await booster.getAddress(),
+      rewardTokens
+    ]);
+    await cvxStaker.waitForDeployment();
+
+    // Setup pool info via owner
+    const pId = 0;
+    const tokenAddr = await clpToken.getAddress();
+    const rewardsAddr = await rewardsPool.getAddress();
+    await cvxStaker.connect(owner).setCvxPoolInfo(pId, tokenAddr, rewardsAddr);
+
+    // Set operator
+    await cvxStaker.connect(owner).setOperator(operator.address);
+
+    // Configure booster mock to return shutdown = true for poolInfo
+    // We need to set up the mock before calling depositAndStake
+    const poolInfo = {
+      lptoken: ethers.ZeroAddress,
+      token: ethers.ZeroAddress,
+      gauge: ethers.ZeroAddress,
+      crvRewards: ethers.ZeroAddress,
+      stash: ethers.ZeroAddress,
+      shutdown: true
+    };
+
+    // We need to encode the return data for poolInfo
+    // The function selector for poolInfo(uint256) is 0x1526fe27
+    const poolInfoAbi = ethers.AbiCoder.defaultAbiCoder().encode(
+      ["address", "address", "address", "address", "address", "bool"],
+      [poolInfo.lptoken, poolInfo.token, poolInfo.gauge, poolInfo.crvRewards, poolInfo.stash, poolInfo.shutdown]
+    );
+
+    // Set up the booster mock to return the poolInfo
+    // Using ethers v6 pattern for mocking
+    await ethers.provider.send("hardhat_setCode", [
+      await booster.getAddress(),
+      "0x" // Reset to empty - we'll use a different approach
+    ]);
+
+    // Alternative approach: deploy a simple mock contract
+    const MockBoosterFactory = await ethers.getContractFactory("contracts/mocks/MockBooster.sol:MockBooster");
+    const mockBooster = await MockBoosterFactory.deploy();
+    await mockBooster.waitForDeployment();
+
+    // Redeploy CVXStaker with the mock booster
+    const cvxStaker2 = await ethers.deployContract("CVXStaker", [
+      operator.address,
+      await clpToken.getAddress(),
+      await mockBooster.getAddress(),
+      rewardTokens
+    ]);
+    await cvxStaker2.waitForDeployment();
+
+    await cvxStaker2.connect(owner).setCvxPoolInfo(pId, tokenAddr, rewardsAddr);
+    await cvxStaker2.connect(owner).setOperator(operator.address);
+
+    // Set mock booster to return shutdown = true
+    await mockBooster.setShutdown(true);
+
+    // Get some CLP tokens for the operator to deposit
+    const depositAmount = ethers.parseEther("100");
+    await clpToken.transfer(operator.address, depositAmount);
+    await clpToken.connect(operator).approve(await cvxStaker2.getAddress(), depositAmount);
+
+    // Try to depositAndStake - original would skip, mutant would try to proceed
+    // If mutant tries to proceed, it will fail because the booster is shutdown
+    // The booster.deposit() call should revert when shutdown is true
+    await expect(
+      cvxStaker2.connect(operator).depositAndStake(depositAmount)
+    ).to.be.reverted;
+
+    // Verify that no tokens were transferred to booster
+    const boosterBalance = await clpToken.balanceOf(await mockBooster.getAddress());
+    expect(boosterBalance).to.equal(0);
+  });
+});

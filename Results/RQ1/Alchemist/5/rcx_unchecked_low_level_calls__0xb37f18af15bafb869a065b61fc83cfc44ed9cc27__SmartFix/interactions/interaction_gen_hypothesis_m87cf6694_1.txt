@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract SimpleWallet:
+        Contract Code: pragma solidity ^0.8.0; contract SimpleWallet { address public owner = msg.sender; uint public depositsCount; modifier onlyOwner { require(msg.sender == owner); _; } receive() external payable { require(((depositsCount + 1) >= depositsCount)); depositsCount++; } function withdrawAll() public onlyOwner { withdraw(address(this).balance); } function withdraw(uint _value) public onlyOwner { payable(msg.sender).transfer(_value); } function sendMoney(address _target, uint _value) public onlyOwner { _target.call{value: _value}(""); } }
+
+    Consider the following mutant of SimpleWallet:
+        Mutant m87cf6694 of function receive replaces require(((depositsCount + 1) >= depositsCount)); with 
+        Mutant Diff: ---|         require(((depositsCount + 1) >= depositsCount)); +++|
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant removes the require statement that checks for arithmetic overflow in the `depositsCount` variable. In the original contract, the require ensures that `depositsCount + 1` does not overflow (since `depositsCount` is a `uint`). Without this check, a test case that sends enough Ether to the contract to cause `depositsCount` to overflow (i.e., reach the maximum uint value and then wrap around to zero) would behave differently: the original would revert when overflow is about to occur, while the mutant would silently wrap and continue execution.
+
+**Hypothesis**: A test case that repeatedly sends Ether to the contract until `depositsCount` reaches its maximum value (type(uint256).max), then sends one more Ether, expecting the transaction to revert due to the overflow check, should kill the mutant because the mutant would allow the overflow to happen silently and increment `depositsCount` to zero instead of reverting.

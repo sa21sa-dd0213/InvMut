@@ -1,0 +1,62 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m7520132d of DCF.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test DCF.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for DCF:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("DCF reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy DCF by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("DCF"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DCF mutant kill test - router address mutation", function () {
+  it("should revert when swapping tokens through the mutated router address", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy DCF with a valid liquidity receive address
+    const Factory = await ethers.getContractFactory("DCF");
+    const instance = await Factory.deploy(addr1.address);
+    await instance.waitForDeployment();
+    
+    // Get the router address from the deployed contract
+    const routerAddress = await instance.router();
+    
+    // The mutant sets router = USDT address (0x55d398326f99059fF775485246999027B3197955)
+    // This should not be a valid Uniswap router
+    // Verify the router is set to the USDT address (mutant) not the real router
+    const USDT_ADDRESS = "0x55d398326f99059fF775485246999027B3197955";
+    expect(routerAddress).to.equal(USDT_ADDRESS);
+    
+    // Attempt to trigger a swap - this should fail because USDT is not a router
+    // We need to trigger the swapTokensForUSDT function which is called during _transfer
+    // First, set up white address to bypass checks
+    await instance.setWhite(addr1.address, true);
+    
+    // Transfer some tokens to addr1
+    await instance.transfer(addr1.address, ethers.parseEther("1000"));
+    
+    // Remove addr1 from whitelist to trigger the swap logic on transfer
+    await instance.setWhite(addr1.address, false);
+    
+    // Try to transfer tokens to pair address to trigger swap
+    // This should revert because the router is actually the USDT token address
+    await expect(
+      instance.connect(addr1).transfer(
+        await instance.pairAddress(),
+        ethers.parseEther("100")
+      )
+    ).to.be.reverted;
+  });
+});
+```

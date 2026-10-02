@@ -1,0 +1,63 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MY_BANK mutant kill test - mbb0b5dbb", function () {   it("should detect that Collect incorrectly adds instead of subtracts balance", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy Log contract first (required constructor argument for MY_BANK)     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();          // Deploy MY_BANK with Log address     const BankFactory = await ethers.getContractFactory("MY_BANK");     const bank = await BankFactory.deploy(await log.getAddress());     await bank.waitForDeployment();          const bankAddress = await bank.getAddress();          // Fund addr1 with some ether     const depositAmount = ethers.parseEther("5.0");     const withdrawAmount = ethers.parseEther("2.0");          // Deposit ether into the bank (Put function)     await bank.connect(addr1).Put(0, { value: depositAmount });          // Check initial balance     let holder = await bank.Acc(addr1.address);     const initialBalance = holder.balance;     expect(initialBalance).to.equal(depositAmount);          // Set unlock time to past (0 is fine since block.timestamp > 0)     // The MinSum is 1 ether, and we have 5 ether, so withdraw 2 ether should work          // Execute Collect - in original this subtracts, in mutant it adds     await bank.connect(addr1).Collect(withdrawAmount);          // Check balance after Collect     holder = await bank.Acc(addr1.address);     const finalBalance = holder.balance;          // In original: finalBalance = initialBalance - withdrawAmount = 3 ether     // In mutant: finalBalance = initialBalance + withdrawAmount = 7 ether     // Assert the original behavior to kill the mutant     expect(finalBalance).to.equal(initialBalance - withdrawAmount);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract MY_BANK { function Put(uint _unlockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant kill test - mbb0b5dbb", function () {
+  it("should detect that Collect incorrectly adds instead of subtracts balance", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy Log contract first (required constructor argument for MY_BANK)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy MY_BANK with Log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+    
+    const bankAddress = await bank.getAddress();
+    
+    // Fund addr1 with some ether
+    const depositAmount = ethers.parseEther("5.0");
+    const withdrawAmount = ethers.parseEther("2.0");
+    
+    // Deposit ether into the bank (Put function)
+    await bank.connect(addr1).Put(0, { value: depositAmount });
+    
+    // Check initial balance
+    let holder = await bank.Acc(addr1.address);
+    const initialBalance = holder.balance;
+    expect(initialBalance).to.equal(depositAmount);
+    
+    // Set unlock time to past (0 is fine since block.timestamp > 0)
+    // The MinSum is 1 ether, and we have 5 ether, so withdraw 2 ether should work
+    
+    // Execute Collect - in original this subtracts, in mutant it adds
+    await bank.connect(addr1).Collect(withdrawAmount);
+    
+    // Check balance after Collect
+    holder = await bank.Acc(addr1.address);
+    const finalBalance = holder.balance;
+    
+    // In original: finalBalance = initialBalance - withdrawAmount = 3 ether
+    // In mutant: finalBalance = initialBalance + withdrawAmount = 7 ether
+    // Assert the original behavior to kill the mutant
+    expect(finalBalance).to.equal(initialBalance - withdrawAmount);
+  });
+});
+```

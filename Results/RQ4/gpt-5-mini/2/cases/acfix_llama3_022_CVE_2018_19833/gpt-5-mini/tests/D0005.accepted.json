@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0005",
+ "property_summary": "In the reference, only the owner can reduce balances and totalSupply via burn; the mutant removes that restriction so some non-owner caller can successfully reduce their own balance and totalSupply, violating the owner-only burn invariant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Removed the onlyOwner modifier requirement from burn so any caller can burn their own balance, altering balances after burn calls from non-owners.",
+ "mutated_unit_code": "function burn(uint256 _value)  public returns (bool success) {\n        require(balanceOf[msg.sender] >= _value);\n        balanceOf[msg.sender] -= _value;\n        totalSupply -= _value;\n        emit Burn(msg.sender, _value);\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ERCDDAToken} from \"../src/ERCDDAToken.sol\";\n\ncontract InvMutTest is Test {\n    ERCDDAToken c;\n    function setUp() public { c = new ERCDDAToken(0, string(abi.encodePacked(\"\")), string(abi.encodePacked(\"\"))); }\n\n    function testFuzz_property(address actor, uint256 amount) public {\n        vm.assume(actor != address(0));\n\n        uint256 initialOwnerBalance = c.balanceOf(address(this));\n        uint256 initialTotal = c.totalSupply();\n\n        uint256 mintAmount = bound(amount, 0, type(uint256).max / 2);\n        if (mintAmount > 0) {\n            c.mintToken(actor, mintAmount);\n        }\n\n        uint256 beforeTotal = c.totalSupply();\n        uint256 beforeActorBal = c.balanceOf(actor);\n\n        bool ok;\n        vm.prank(actor);\n        try c.burn(mintAmount) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        uint256 afterTotal = c.totalSupply();\n        uint256 afterActorBal = c.balanceOf(actor);\n\n        if (actor != address(this)) {\n            assertTrue(afterTotal == beforeTotal);\n        } else {\n            assertTrue(true);\n        }\n    }\n}\n"
+}

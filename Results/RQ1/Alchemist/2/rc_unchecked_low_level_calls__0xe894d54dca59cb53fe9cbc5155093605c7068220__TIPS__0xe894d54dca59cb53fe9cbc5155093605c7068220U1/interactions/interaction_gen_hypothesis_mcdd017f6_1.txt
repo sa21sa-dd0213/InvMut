@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract airDrop:
+        Contract Code: pragma solidity ^0.8.0; contract airDrop { function transfer(address from, address caddress, address[] memory _tos, uint v, uint _decimals)  public returns (bool) { require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); uint _value = v * 10 ** _decimals; for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], _value)); _d; if (! _s) { revert();} } } return true; } }
+
+    Consider the following mutant of airDrop:
+        Mutant mcdd017f6 of function transfer replaces < with >
+        Mutant Diff: ---| 	for(uint i = 0;i < _tos.length;i++){ +++| 	for(uint i = 0;i > _tos.length;i++){
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract loops through the `_tos` array with `for(uint i = 0; i < _tos.length; i++)`, meaning it executes the transfer for each recipient as long as the index is less than the array length. The mutant changes the condition to `i > _tos.length`, which is false from the start (since 0 is not greater than the length), so the loop body never executes.
+
+**Hypothesis**: "The mutant changes the loop condition from `i < _tos.length` to `i > _tos.length`, causing the loop to never execute. Therefore, a test case that calls the `transfer` function with a non-empty `_tos` array and valid parameters, then checks that the token transfer actually occurred (e.g., by verifying the recipient's balance increased), should pass on the original but fail on the mutant, because the mutant will skip all transfers and leave balances unchanged."

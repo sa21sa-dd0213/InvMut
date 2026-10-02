@@ -1,0 +1,60 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Roulette mutant kill test - m257374c1", function () {   it("should not transfer balance when block.number % 15 != 0 (mutant incorrectly transfers)", async function () {     const [owner] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Roulette");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Send 10 ether to the contract     const tx = await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10")     });     await tx.wait();      // Get current block number and ensure it's NOT a multiple of 15     const blockNum = await ethers.provider.getBlockNumber();     if (blockNum % 15 === 0) {       // Mine one more block to avoid the edge case where block.number % 15 == 0       await ethers.provider.send("evm_mine", []);     }      // Record contract balance     const balanceBefore = await ethers.provider.getBalance(await instance.getAddress());      // Trigger fallback again with 10 ether (this will also set pastBlockTime)     const tx2 = await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10")     });     await tx2.wait();      // Get balance after     const balanceAfter = await ethers.provider.getBalance(await instance.getAddress());      // In the original contract, no transfer should happen because block.number % 15 != 0     // The mutant incorrectly transfers, so the balance would drop to near zero     // We assert that balanceAfter >= balanceBefore (original behavior) - mutant will fail here     expect(balanceAfter).to.equal(balanceBefore + ethers.parseEther("10"));   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp + 1; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant kill test - m257374c1", function () {
+  it("should not transfer balance when block.number % 15 != 0 (mutant incorrectly transfers)", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Send 10 ether to the contract
+    const tx = await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    await tx.wait();
+
+    // Get current block number and ensure it's NOT a multiple of 15
+    let blockNum = await ethers.provider.getBlockNumber();
+    if (blockNum % 15 === 0) {
+      // Mine one more block to avoid the edge case where block.number % 15 == 0
+      await ethers.provider.send("evm_mine", []);
+      blockNum = await ethers.provider.getBlockNumber();
+    }
+
+    // Record contract balance
+    const balanceBefore = await ethers.provider.getBalance(await instance.getAddress());
+
+    // Trigger fallback again with 10 ether (this will also set pastBlockTime)
+    const tx2 = await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    await tx2.wait();
+
+    // Get balance after
+    const balanceAfter = await ethers.provider.getBalance(await instance.getAddress());
+
+    // In the original contract, no transfer should happen because block.number % 15 != 0
+    // The mutant incorrectly transfers, so the balance would drop to near zero
+    // We assert that balanceAfter >= balanceBefore (original behavior) - mutant will fail here
+    expect(balanceAfter).to.equal(balanceBefore + ethers.parseEther("10"));
+  });
+});
+```

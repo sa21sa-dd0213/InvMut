@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0002",
+ "property_summary": "When the stolen NFT oracle is enabled and buy() is called with token IDs that have weights, the sumWeightsAndValidateProof function is triggered, but the key divergence is actually in availableForFlashLoan: after minting an NFT to the contract, calling availableForFlashLoan on that token returns false in the buggy version because the internal onERC721Received used by ERC721.safeTransferFrom returns 0x12345678 instead of the expected selector, causing the safeTransferFrom to revert silently (though in this scenario we instead test directly that the availableForFlashLoan returns true for the original and false for the bug).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Change return value to a different valid selector (0x12345678) to observe difference.",
+ "mutated_unit_code": "    function onERC721Received(\n        address,\n        address,\n        uint256,\n        bytes calldata\n    ) external virtual returns (bytes4) {\n        return 0x12345678;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {PrivatePool} from \"../src/PrivatePool.sol\";\n\ncontract InvMutTest is Test {\n    PrivatePool c;\n    function setUp() public { c = new PrivatePool(address(this), address(this), address(this)); }\n    function testRegression_property() public {\n        c.initialize(address(0), address(1), 100e18, 10e18, 100, 100, bytes32(0), false, false);\n        (bool successOrig, bytes memory retOrig) = address(c).call(abi.encodeWithSignature(\"onERC721Received(address,address,uint256,bytes)\", address(0), address(0), 0, \"\"));\n        require(successOrig, \"call failed\");\n        bytes4 retVal = abi.decode(retOrig, (bytes4));\n        assertTrue(retVal == 0x150b7a02, \"Original should return ERC721TokenReceiver selector\");\n    }\n}\n"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T81a0f2c8",
+ "property_summary": "For every caller address, calling setOwner(...) on the reference contract returns true only when the call completes (i.e., does not revert) and, crucially, the reference only allows the admin (deployer) to successfully call setOwner such that non-admin callers will revert (so try-call success is true iff caller==admin); the mutant removes the admin check so some non-admin callers will succeed where the reference would revert, violating this rule.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Modify onlyAdmin modifier to allow anyone (no revert), thus setOwner can be called by non-admin and still returns true; changes who can call and thus may change return observable for certain callers but kept to not revert here — returns true for all callers in original but admin-only in P (this changes callability but preserves completion); however to affect return while still completing, change to return immediately (no require) — kept as replacement of modifier body.",
+ "mutated_unit_code": "modifier onlyAdmin() {\n    // removed admin check: allow all callers\n    _;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Owned} from \"../src/Owned.sol\";\n\ncontract InvMutTest is Test {\n    Owned c;\n    function setUp() public { c = new Owned(); }\n\n    function testFuzz_property(address candidate) public {\n        vm.assume(candidate != address(0));\n\n        bool ok;\n        vm.prank(candidate);\n        try c.setOwner(candidate) returns (bool res) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        bool expectedOk = (candidate == address(this));\n        assertTrue(ok == expectedOk);\n    }\n}\n"
+}

@@ -1,0 +1,75 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m2b29755b of TimelockController.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test TimelockController.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for TimelockController:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("TimelockController reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy TimelockController by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("TimelockController"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("TimelockController mutant detection - block.timestamp vs block.prevrandao", function () {
+  it("should kill mutant that uses block.prevrandao instead of block.timestamp in _schedule", async function () {
+    const [owner, proposer, executor] = await ethers.getSigners();
+    
+    // Deploy with minimal delay of 1 second
+    const minDelay = 1;
+    const proposers = [proposer.address];
+    const executors = [executor.address];
+    
+    const Factory = await ethers.getContractFactory("TimelockController");
+    const timelock = await Factory.deploy(minDelay, proposers, executors);
+    await timelock.waitForDeployment();
+    
+    // Grant PROPOSER_ROLE to proposer and EXECUTOR_ROLE to executor
+    const PROPOSER_ROLE = await timelock.PROPOSER_ROLE();
+    const EXECUTOR_ROLE = await timelock.EXECUTOR_ROLE();
+    
+    // Setup: proposer schedules a simple ETH transfer to addr1
+    const target = owner.address;
+    const value = ethers.parseEther("1");
+    const data = "0x";
+    const predecessor = ethers.ZeroHash;
+    const salt = ethers.randomBytes(32);
+    const delay = minDelay;
+    
+    // Schedule the operation as proposer
+    await timelock.connect(proposer).schedule(target, value, data, predecessor, salt, delay);
+    
+    // Get the operation ID
+    const id = await timelock.hashOperation(target, value, data, predecessor, salt);
+    
+    // Verify operation is pending (not ready yet)
+    expect(await timelock.isOperationPending(id)).to.be.true;
+    expect(await timelock.isOperationReady(id)).to.be.false;
+    
+    // Advance time by the delay period (1 second) to make operation ready
+    await ethers.provider.send("evm_increaseTime", [delay]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // Now the operation should be ready on the original contract
+    // On the mutant using block.prevrandao, the timestamp calculation will be wrong
+    // and the operation may not be ready yet, causing execute to fail
+    
+    // Attempt to execute as executor
+    await expect(
+      timelock.connect(executor).execute(target, value, data, predecessor, salt, { value: value })
+    ).to.not.be.reverted;
+    
+    // Verify operation is marked as done after successful execution
+    expect(await timelock.isOperationDone(id)).to.be.true;
+  });
+});
+```

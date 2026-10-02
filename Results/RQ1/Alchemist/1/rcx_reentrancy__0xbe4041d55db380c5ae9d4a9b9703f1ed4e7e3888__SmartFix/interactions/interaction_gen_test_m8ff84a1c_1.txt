@@ -1,0 +1,85 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m8ff84a1c of MONEY_BOX.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test MONEY_BOX.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for MONEY_BOX:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("MONEY_BOX reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy MONEY_BOX by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("MONEY_BOX"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("MONEY_BOX mutant test - m8ff84a1c", function () {
+  it("should detect mutant by showing unlock time is updated when it should not be", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy MONEY_BOX (no constructor arguments)
+    const Factory = await ethers.getContractFactory("MONEY_BOX");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // First, initialize the contract
+    await instance.connect(owner).Initialized();
+    
+    // Set minimum sum to 0 to simplify
+    await instance.connect(owner).SetMinSum(0);
+    
+    // Set a log file address (can be any address, even zero address since we don't test logging)
+    await instance.connect(owner).SetLogFile(ethers.ZeroAddress);
+    
+    // First Put call: set an initial unlock time
+    // We'll use a lock time of 100 seconds from now
+    const initialLockTime = 100;
+    const putAmount = ethers.parseEther("1");
+    const tx1 = await instance.connect(addr1).Put(initialLockTime, { value: putAmount });
+    await tx1.wait();
+    
+    // Get the current block timestamp and compute expected unlock time
+    const block1 = await ethers.provider.getBlock(tx1.blockNumber);
+    const expectedUnlockTime1 = block1.timestamp + initialLockTime;
+    
+    // Get the actual unlock time from storage
+    const acc1 = await instance.Acc(addr1.address);
+    expect(acc1.unlockTime).to.equal(expectedUnlockTime1);
+    
+    // Now, call Put again with a lock time that would produce the EXACT SAME unlock time
+    // We need to wait enough blocks so that block.timestamp + newLockTime == acc.unlockTime
+    // The simplest approach: use a lock time of 0, which gives block.timestamp + 0 = current timestamp
+    // But we need the new timestamp to equal the old unlock time exactly
+    
+    // Instead, let's mine blocks until we reach a timestamp equal to the expected unlock time
+    // Then call Put with lockTime=0 so that new unlock = current timestamp = old unlock time
+    
+    // Fast forward to the exact unlock time
+    await ethers.provider.send("evm_setNextBlockTimestamp", [expectedUnlockTime1]);
+    
+    // Call Put with lockTime=0, which should produce new unlock = expectedUnlockTime1 (same as old)
+    const tx2 = await instance.connect(addr1).Put(0, { value: ethers.parseEther("0.5") });
+    await tx2.wait();
+    
+    // Get the stored unlock time after the second call
+    const accAfter = await instance.Acc(addr1.address);
+    
+    // In the ORIGINAL contract: unlockTime should NOT change (strictly greater check)
+    // In the MUTANT: unlockTime WILL be updated (greater-or-equal check) - same value but state change
+    
+    // The test asserts that unlock time remains exactly the same as before
+    // This passes on original (no change) but fails on mutant (state change detected)
+    expect(accAfter.unlockTime).to.equal(expectedUnlockTime1);
+    
+    // Additional verification: check that the balance was properly updated (should work in both)
+    expect(accAfter.balance).to.equal(putAmount + ethers.parseEther("0.5"));
+  });
+});
+```

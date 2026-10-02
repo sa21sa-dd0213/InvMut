@@ -1,0 +1,63 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m2f3097d7 of PRIVATE_ETH_CELL.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PRIVATE_ETH_CELL.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PRIVATE_ETH_CELL:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PRIVATE_ETH_CELL reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PRIVATE_ETH_CELL by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PRIVATE_ETH_CELL"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PRIVATE_ETH_CELL mutant kill test - m2f3097d7", function () {
+  it("should detect mutant that replaces _veri_ok with false in Collect function", async function () {
+    const [owner, user] = await ethers.getSigners();
+    
+    // Deploy LogFile first (no constructor arguments)
+    const LogFileFactory = await ethers.getContractFactory("LogFile");
+    const logFile = await LogFileFactory.deploy();
+    await logFile.waitForDeployment();
+    
+    // Deploy PRIVATE_ETH_CELL (no constructor arguments)
+    const CellFactory = await ethers.getContractFactory("PRIVATE_ETH_CELL");
+    const cell = await CellFactory.deploy();
+    await cell.waitForDeployment();
+    
+    // Set up the contract
+    await cell.connect(owner).SetLogFile(await logFile.getAddress());
+    await cell.connect(owner).SetMinSum(ethers.parseEther("0.1"));
+    await cell.connect(owner).Initialized();
+    
+    // Deposit funds for user
+    const depositAmount = ethers.parseEther("1");
+    await cell.connect(user).Deposit({ value: depositAmount });
+    
+    // Verify deposit
+    const balance = await cell.balances(user.address);
+    expect(balance).to.equal(depositAmount);
+    
+    // Attempt Collect - should succeed in original, revert in mutant
+    const collectAmount = ethers.parseEther("0.5");
+    
+    // In original: Collect should succeed and add message to LogFile
+    // In mutant: Collect will always revert because if(false) causes revert()
+    await expect(
+      cell.connect(user).Collect(collectAmount)
+    ).to.be.reverted;
+    
+    // If the mutant is present, the revert is expected (fails the test because original doesn't revert)
+    // If no revert happens, the mutant is killed (test passes meaning original behavior)
+  });
+});
+```

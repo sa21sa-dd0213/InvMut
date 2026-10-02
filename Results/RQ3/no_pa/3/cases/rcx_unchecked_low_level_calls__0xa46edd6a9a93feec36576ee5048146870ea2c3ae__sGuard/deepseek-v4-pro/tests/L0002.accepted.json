@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0002",
+ "property_summary": "With _tos length 2, the reference performs two transfers (i=0,1) while the bug performs only one (i=0), so after a call to transfer, state variable 'transfer' (the return value of the function) is true for both, but we can observe the difference by checking that the reference's second transfer actually executes (which would affect some external state) while the bug's does not. For simplicity, we check that the reference's call returns true while the bug's call to an external token fails silently for the second recipient. Here we use a mock contract that records whether transferFrom was called exactly twice; the bug only calls it once.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "Replace the loop ending condition with i<_tos.length-1 to skip the last iteration, altering which transfers happen.",
+ "mutated_unit_code": "    function transfer(address from,address caddress, address[] memory _tos, uint[] memory v)public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0;i<_tos.length-1;i++){\n\n            caddress.call(abi.encodeWithSelector(id,from,_tos[i],v[i]));\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EBU} from \"../src/EBU.sol\";\n\ncontract InvMutTest is Test {\n    EBU c;\n    function setUp() public { c = new EBU(); }\n    function testRegression_property() public {\n        TokenMock token = new TokenMock();\n        address[] memory tos = new address[](2);\n        tos[0] = address(0x1);\n        tos[1] = address(0x2);\n        uint[] memory vals = new uint[](2);\n        vals[0] = 100;\n        vals[1] = 200;\n        bool success;\n        try c.transfer(address(this), address(token), tos, vals) {\n            success = true;\n        } catch {\n            success = false;\n        }\n        assertTrue(token.callCount() == 2);\n    }\n}\n\ncontract TokenMock {\n    uint public callCount;\n    function transferFrom(address, address, uint) external returns (bool) {\n        callCount++;\n        return true;\n    }\n}"
+}

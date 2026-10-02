@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0002",
+ "property_summary": "In the correct contract, any call to Command by a non-owner reverts; in the buggy contract where the owner check is removed, a non-owner call to Command that forwards value to an address that does not accept Ether will succeed without reverting.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Remove the owner check `require(msg.sender == Owner);` so anyone can call Command.",
+ "mutated_unit_code": "function Command(address adr,bytes memory data)\n    payable\n    public\n    {\n        adr.call{value: msg.value}(data);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MultiplicatorX3} from \"../src/MultiplicatorX3.sol\";\n\ncontract InvMutTest is Test {\n    MultiplicatorX3 c;\n    function setUp() public { c = new MultiplicatorX3(); }\n    function testFuzz_property(uint256 amount, bytes calldata data) public {\n        vm.assume(amount <= type(uint96).max);\n        Rejecter rej = new Rejecter();\n        address nonOwner = makeAddr(\"nonOwner\");\n        vm.deal(nonOwner, amount);\n        vm.prank(nonOwner);\n        bool ok = false;\n        try c.Command{value: amount}(address(rej), data) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        assertTrue(!ok, \"Non-owner Command to rejecter must revert\");\n    }\n}\n\ncontract Rejecter {\n    fallback() external payable { revert(); }\n    receive() external payable { revert(); }\n}\n"
+}

@@ -1,0 +1,66 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m956baa31 of W_WALLET.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test W_WALLET.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for W_WALLET:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("W_WALLET reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy W_WALLET by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("W_WALLET"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("W_WALLET mutant m956baa31 detection", function () {
+  it("should detect the * operator mutant in Put's require statement", async function () {
+    const [owner] = await ethers.getSigners();
+    
+    // Deploy Log contract first (required by W_WALLET constructor)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy W_WALLET with Log address
+    const Factory = await ethers.getContractFactory("W_WALLET");
+    const instance = await Factory.deploy(await log.getAddress());
+    await instance.waitForDeployment();
+    
+    const wallet = await instance.getAddress();
+    
+    // Step 1: Deposit some ether first to create a positive balance
+    const depositAmount = ethers.parseEther("1.0");
+    await owner.sendTransaction({
+      to: wallet,
+      value: depositAmount
+    });
+    
+    // Verify balance is positive
+    const holder = await instance.Acc(owner.address);
+    expect(holder.balance).to.equal(depositAmount);
+    
+    // Step 2: Now call Put with msg.value = 0
+    // On original: (balance * 0) >= balance → (1 ether * 0) >= 1 ether → 0 >= 1 ether → false → REVERT
+    // On mutant: (balance * 0) >= balance → same as above → will revert
+    // Wait - the hypothesis says this should succeed on original but fail on mutant
+    // Let's reconsider: the mutant uses * instead of +, so:
+    // Original: (balance + 0) >= balance → (1 ether + 0) >= 1 ether → true → succeeds
+    // Mutant: (balance * 0) >= balance → (1 ether * 0) >= 1 ether → 0 >= 1 ether → false → reverts
+    await expect(
+      instance.connect(owner).Put(0, { value: 0 })
+    ).to.be.reverted;
+    
+    // Note: On the original contract, this call would succeed, but on the mutant it reverts.
+    // The test passes (detects the mutant) because we assert revert.
+    // If the original were deployed, this test would fail because no revert occurs.
+  });
+});
+```

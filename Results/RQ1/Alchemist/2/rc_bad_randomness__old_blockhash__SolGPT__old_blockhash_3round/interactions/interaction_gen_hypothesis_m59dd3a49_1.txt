@@ -1,0 +1,28 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract PredictTheBlockHashChallenge:
+        Contract Code: pragma solidity ^0.8.0; contract PredictTheBlockHashChallenge { struct Guess { uint block; bytes32 guess; } mapping(address => Guess) guesses; constructor() public payable { require(msg.value == 1 ether); } function lockInGuess(bytes32 hash) public payable { require(guesses[msg.sender].block == 0); require(msg.value == 1 ether); guesses[msg.sender].guess = hash; guesses[msg.sender].block = block.number + 1; } function settle() public { require(guesses[msg.sender].block != 0); require(block.number > guesses[msg.sender].block); bytes32 answer = keccak256(abi.encodePacked(blockhash(guesses[msg.sender].block))); guesses[msg.sender].block = 0; if (guesses[msg.sender].guess == answer) { payable(msg.sender).transfer(2 ether); } } }
+
+    Consider the following mutant of PredictTheBlockHashChallenge:
+        Mutant m59dd3a49 of function lockInGuess replaces block.number with block.number+1
+        Mutant Diff: ---|         guesses[msg.sender].block = block.number + 1; +++|         guesses[msg.sender].block = block.number+1 + 1;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+First, let's break down the difference:  
+
+The original line sets `guesses[msg.sender].block` to `block.number + 1`, meaning the user locks in a guess for the **next** block.  
+
+The mutant changes it to `block.number + 1 + 1`, so it now sets the target block to **two blocks ahead** instead of one.  
+
+This means the `settle()` function later will compute the answer using `blockhash()` of a block that is **one block later** than intended. Since `blockhash` only returns the hash of the most recent 256 blocks, and the timing of when the user can settle is off by one block, the answer will almost never match the original guess, causing the payout condition to fail when it should have succeeded.
+
+**Hypothesis:**  
+A test case that locks in a guess for the next block (as intended by the original contract), then mines exactly one block, and immediately calls `settle()` expecting the payout to succeed (because the guessed hash matches the actual blockhash of the just-mined block) should kill the mutant. On the mutant, the target block will be two blocks ahead, so the hash won't match, the payout will not occur, and the test will fail.

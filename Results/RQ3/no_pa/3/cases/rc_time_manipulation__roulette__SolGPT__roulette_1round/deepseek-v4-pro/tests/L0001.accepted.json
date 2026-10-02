@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0001",
+ "property_summary": "After a first fallback call with 10 ether at timestamp 1 (block.number = 1), the reference sets pastBlockTime to 1; that address's balance is reduced by 10 ether. On the mutant, the same call reverts due to require(pastBlockTime == 0) failing because pastBlockTime is already 0 (but the require checks with 0 so it passes \u2014 actually the mutant's inserted require checks pastBlockTime == 0, which passes on first call; we need a scenario where the mutant reverts and the reference doesn't. Actually let's think: the mutant requires pastBlockTime == 0, so the first call should succeed on both? No \u2014 the mutant's require(pastBlockTime == 0) passes on first call since pastBlockTime is 0. The divergence is that after the first call, the reference's pastBlockTime becomes non-zero, so a second call on the reference succeeds (if timestamp larger), but on the mutant the second call reverts because pastBlockTime != 0. So the concrete scenario: two fallback calls, first at block.timestamp=1, second at block.timestamp=2. Reference returns true (no revert) on second call, mutant reverts on second call.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Insert a require statement that reverts if pastBlockTime is not zero, preventing the first call from setting it.",
+ "mutated_unit_code": "    fallback() external payable {\n        require(msg.value == 10 ether);\n        require(pastBlockTime == 0);\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testRegression_property() public {\n        vm.warp(1);\n        vm.deal(address(this), 20 ether);\n\n        (bool ok1, ) = address(c).call{value: 10 ether}(\"\");\n        assertTrue(ok1);\n\n        vm.warp(2);\n        (bool ok2, ) = address(c).call{value: 10 ether}(\"\");\n        assertTrue(ok2);\n    }\n}\n"
+}

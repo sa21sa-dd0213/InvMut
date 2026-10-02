@@ -1,0 +1,54 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("ModifierEntrancy mutant mbe979835 test", function () {   it("should revert when an address with existing balance calls airDrop on original, but succeed on mutant (without hasNoBalance)", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy ModifierEntrancy (no constructor arguments)     const Factory = await ethers.getContractFactory("ModifierEntrancy");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // First airdrop to addr1 - should succeed (balance is 0)     let tx = await instance.connect(addr1).airDrop();     await tx.wait();          // Check balance is now 20     let balance = await instance.tokenBalance(addr1.address);     expect(balance).to.equal(20);          // Second airdrop to same addr1 - on original contract this would revert due to hasNoBalance     // On the mutant (without hasNoBalance), this will succeed because the modifier is removed     tx = await instance.connect(addr1).airDrop();     await tx.wait();          // If the mutant is present, balance will be 40 (20 + 20 more)     balance = await instance.tokenBalance(addr1.address);     expect(balance).to.equal(40); // This assertion fails on original, passes on mutant          // The test kills the mutant because the original would revert on second call     // but the mutant allows it, and we assert the increased balance   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract SmartFix { bool public _locked = false; modifier _nonReentrant() { require(!_locked); _locked = true; _; _locked = false; } } contract ModifierEntrancy is SmartFix { mapping (address => uint) public tokenBalance; string constant name = "Nu Token"; function airDrop()  public _nonReentrant  hasNoBalance supportsToken { require(((tokenBalance[msg.sender] + 20) >= tokenBalance[msg.sender])); tokenBalance[msg.sender] += 20; } modifier supportsToken() { require(keccak256(abi.encodePacked("Nu Token")) == Bank(msg.sender).supportsToken()); _; } modifier hasNoBalance { require(tokenBalance[msg.sender] == 0); _; } } contract Bank{ function supportsToken() external pure returns (bytes32){ return(keccak256(abi.encodePacked("Nu Token"))); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ModifierEntrancy mutant mbe979835 test", function () {
+  it("should revert when an address with existing balance calls airDrop on original, but succeed on mutant (without hasNoBalance)", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy ModifierEntrancy (no constructor arguments)
+    const Factory = await ethers.getContractFactory("ModifierEntrancy");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Deploy a Bank contract for the supportsToken check
+    const BankFactory = await ethers.getContractFactory("Bank");
+    const bank = await BankFactory.deploy();
+    await bank.waitForDeployment();
+    
+    // First airdrop to addr1 - should succeed (balance is 0)
+    let tx = await instance.connect(addr1).airDrop();
+    await tx.wait();
+    
+    // Check balance is now 20
+    let balance = await instance.tokenBalance(addr1.address);
+    expect(balance).to.equal(20);
+    
+    // Second airdrop to same addr1 - on original contract this would revert due to hasNoBalance
+    // On the mutant (without hasNoBalance), this will succeed because the modifier is removed
+    tx = await instance.connect(addr1).airDrop();
+    await tx.wait();
+    
+    // If the mutant is present, balance will be 40 (20 + 20 more)
+    balance = await instance.tokenBalance(addr1.address);
+    expect(balance).to.equal(40); // This assertion fails on original, passes on mutant
+    
+    // The test kills the mutant because the original would revert on second call
+    // but the mutant allows it, and we assert the increased balance
+  });
+});
+```

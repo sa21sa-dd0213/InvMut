@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "When calling transfer with a valid contract address and arrays of length 1, the reference version returns true, but the second version reverts because the modifier adds an extra require(false) after the checks.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "+require(false);",
+ "mutated_unit_code": "modifier validAddress( address addr ) {\nrequire(addr != address(0x0));\nrequire(addr != address(this));\n_;\nrequire(false);}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {AirDropContract} from \"../src/AirDropContract.sol\";\n\ncontract InvMutTest is Test {\n    AirDropContract c;\n    function setUp() public { c = new AirDropContract(); }\n    function testRegression_property() public {\n        address token = address(new SimpleToken());\n        SimpleToken(token).mint(address(this), 100);\n\n        SimpleToken(token).approve(address(c), 100);\n\n        address[] memory tos = new address[](1);\n        tos[0] = address(0x1234);\n        uint[] memory vs = new uint[](1);\n        vs[0] = 50;\n\n        bool success;\n        try c.transfer(token, tos, vs) {\n            success = true;\n        } catch {\n            success = false;\n        }\n        assertTrue(success);\n    }\n}\n\ncontract SimpleToken {\n    mapping(address => uint256) public balanceOf;\n    mapping(address => mapping(address => uint256)) public allowance;\n\n    function mint(address to, uint256 amount) external {\n        balanceOf[to] += amount;\n    }\n\n    function approve(address spender, uint256 amount) external returns (bool) {\n        allowance[msg.sender][spender] = amount;\n        return true;\n    }\n\n    function transferFrom(address from, address to, uint256 amount) external returns (bool) {\n        require(allowance[from][msg.sender] >= amount);\n        require(balanceOf[from] >= amount);\n        allowance[from][msg.sender] -= amount;\n        balanceOf[from] -= amount;\n        balanceOf[to] += amount;\n        return true;\n    }\n}"
+}

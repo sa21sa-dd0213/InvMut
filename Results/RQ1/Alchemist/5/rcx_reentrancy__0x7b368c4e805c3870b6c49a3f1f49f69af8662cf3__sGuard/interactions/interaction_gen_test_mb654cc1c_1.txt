@@ -1,0 +1,108 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mb654cc1c of W_WALLET.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test W_WALLET.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for W_WALLET:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("W_WALLET reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy W_WALLET by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("W_WALLET"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("W_WALLET mutant mb654cc1c - reentrancy test", function () {
+  it("should revert on reentrant Put call when nonReentrant modifier is removed", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the Log contract first (required constructor argument for W_WALLET)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy W_WALLET with Log address
+    const WalletFactory = await ethers.getContractFactory("W_WALLET");
+    const wallet = await WalletFactory.deploy(await log.getAddress());
+    await wallet.waitForDeployment();
+    
+    // Attacker deploys a malicious contract that reenters Put via fallback
+    const AttackerFactory = await ethers.getContractFactory("ReentrancyAttacker");
+    const attackerContract = await AttackerFactory.deploy(await wallet.getAddress());
+    await attackerContract.waitForDeployment();
+    
+    // Fund attacker contract with some ether to perform the attack
+    await attacker.sendTransaction({
+      to: await attackerContract.getAddress(),
+      value: ethers.parseEther("2")
+    });
+    
+    // First, attacker puts ether into wallet normally to have balance
+    await wallet.connect(attacker).Put(
+      Math.floor(Date.now() / 1000) + 1000, // unlock time 1000s in future
+      { value: ethers.parseEther("1") }
+    );
+    
+    // Now perform the reentrancy attack:
+    // The attacker contract calls Collect which sends ether back,
+    // triggering the fallback which calls Put again (reentrancy)
+    await expect(
+      attackerContract.connect(attacker).attack(
+        ethers.parseEther("1"),
+        Math.floor(Date.now() / 1000) + 1000
+      )
+    ).to.be.reverted; // Should revert due to reentrancy lock in original
+  });
+});
+
+// Helper contract for reentrancy attack
+// (This would be deployed as a separate contract in a real test, 
+// but we simulate it inline for this test case)
+```
+
+Note: The above test requires a separate `ReentrancyAttacker` contract to be deployed. Here's the Solidity code for that helper contract (should be placed in a separate file or in the test helpers):
+
+```solidity
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+interface IW_WALLET {
+    function Put(uint _unlockTime) external payable;
+    function Collect(uint _am) external payable;
+    function MinSum() external view returns (uint);
+}
+
+contract ReentrancyAttacker {
+    IW_WALLET public wallet;
+    
+    constructor(address _wallet) {
+        wallet = IW_WALLET(_wallet);
+    }
+    
+    function attack(uint _amount, uint _unlockTime) external payable {
+        // First ensure we have balance and unlock time passed
+        require(address(this).balance >= _amount, "Insufficient balance");
+        
+        // Call Collect - this will send ether back to this contract
+        // triggering fallback which reenters Put
+        wallet.Collect(_amount);
+    }
+    
+    fallback() external payable {
+        // Reenter Put (this would revert in original due to nonReentrant)
+        if (address(wallet).balance > 0) {
+            wallet.Put(block.timestamp + 1000);
+        }
+    }
+    
+    receive() external payable {}
+}
+```

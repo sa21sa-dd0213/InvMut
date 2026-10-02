@@ -1,0 +1,63 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airDrop mutant kill test - m8430d772", function () {
+  it("should kill the mutant by verifying correct value calculation with v > 1", async function () {
+    const [owner, from, to] = await ethers.getSigners();
+    
+    // Deploy the contract (no constructor arguments for this contract)
+    const Factory = await ethers.getContractFactory("airDrop");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Create a simple token contract to test transferFrom call
+    // Since the contract calls transferFrom on an external token, we need a minimal token
+    const tokenFactory = await ethers.getContractFactory("MockToken");
+    const token = await tokenFactory.deploy();
+    await token.waitForDeployment();
+    
+    // Setup: approve the airDrop contract to transfer from 'from' address
+    const approveAmount = ethers.parseEther("1000");
+    await token.connect(from).approve(await instance.getAddress(), approveAmount);
+    
+    // Fund the 'from' address with tokens
+    await token.mint(from.address, approveAmount);
+    
+    // Test parameters: v = 2, _decimals = 2 (so 10**2 = 100)
+    // Original: 2 * 100 = 200 tokens transferred
+    // Mutant: 2 + 100 = 102 tokens transferred
+    const v = 2;
+    const decimals = 2;
+    const expectedValue = v * (10 ** decimals); // 200
+    
+    // Get balances before transfer
+    const balanceBeforeTo = await token.balanceOf(to.address);
+    
+    // Execute the transfer
+    const tx = await instance.connect(owner).transfer(
+      from.address,
+      await token.getAddress(),
+      [to.address],
+      v,
+      decimals
+    );
+    await tx.wait();
+    
+    // Check balance after transfer
+    const balanceAfterTo = await token.balanceOf(to.address);
+    const actualTransfer = balanceAfterTo - balanceBeforeTo;
+    
+    // The mutant will transfer 102 instead of 200, so this assertion will fail for mutant
+    expect(actualTransfer).to.equal(expectedValue);
+  });
+});
+
+// Helper mock token contract (deploy separately)
+// This should be in a separate file or added to the Hardhat setup
+// For completeness, the MockToken contract:
+// pragma solidity ^0.8.0;
+// import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+// contract MockToken is ERC20 {
+//     constructor() ERC20("Mock", "MCK") {}
+//     function mint(address to, uint256 amount) external { _mint(to, amount); }
+// }

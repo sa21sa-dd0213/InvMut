@@ -1,0 +1,53 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Reentrance mutant test - m6dd0e369", function () {   it("should detect the mutant that subtracts 1 from msg.value in addToBalance", async function () {     const [owner, user] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Reentrance");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // User sends exactly 1 wei to addToBalance     const tx = await instance.connect(user).addToBalance({ value: 1 });     await tx.wait();      // Check balance stored for user - should be 1 in original, but 0 in mutant     const balance = await instance.getBalance(user.address);          // Withdraw the balance     const withdrawTx = await instance.connect(user).withdrawBalance();     await withdrawTx.wait();      // After withdrawal, user's balance in contract should be 0     const finalBalance = await instance.getBalance(user.address);     expect(finalBalance).to.equal(0);      // The key assertion: if the mutant stored 0 instead of 1, the withdrawal sent 0 wei     // and user's ether balance after withdrawal should be less than original by 1 wei     // (since the 1 wei sent was never credited back)     const userBalance = await ethers.provider.getBalance(user.address);     // This assertion will pass on original (user gets back 1 wei) but fail on mutant     // because mutant stores 0, sends 0 back, and user lost the 1 wei sent     expect(userBalance).to.be.closeTo(       (await ethers.provider.getBalance(user.address)).toString(),       0     );   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } } contract Reentrance  is sGuard { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public nonReentrant_ payable { userBalance[msg.sender] = add_uint256(userBalance[msg.sender], msg.value); } function withdrawBalance()  public nonReentrant_ { { (bool _s, bytes memory _d) = msg.sender.call{value: userBalance[msg.sender]}(""); _d; if (! _s) { revert(); } } userBalance[msg.sender] = 0; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Reentrance mutant test - m6dd0e369", function () {
+  it("should detect the mutant that subtracts 1 from msg.value in addToBalance", async function () {
+    const [owner, user] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Reentrance");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // User sends exactly 1 wei to addToBalance
+    const tx = await instance.connect(user).addToBalance({ value: 1 });
+    await tx.wait();
+
+    // Check balance stored for user - should be 1 in original, but 0 in mutant
+    const balance = await instance.getBalance(user.address);
+
+    // Withdraw the balance
+    const withdrawTx = await instance.connect(user).withdrawBalance();
+    await withdrawTx.wait();
+
+    // After withdrawal, user's balance in contract should be 0
+    const finalBalance = await instance.getBalance(user.address);
+    expect(finalBalance).to.equal(0);
+
+    // The key assertion: if the mutant stored 0 instead of 1, the withdrawal sent 0 wei
+    // and user's ether balance after withdrawal should be less than original by 1 wei
+    // (since the 1 wei sent was never credited back)
+    const userBalance = await ethers.provider.getBalance(user.address);
+    // This assertion will pass on original (user gets back 1 wei) but fail on mutant
+    // because mutant stores 0, sends 0 back, and user lost the 1 wei sent
+    expect(userBalance).to.be.closeTo(
+      (await ethers.provider.getBalance(user.address)).toString(),
+      0
+    );
+  });
+});
+```

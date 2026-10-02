@@ -1,0 +1,58 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m7fc86598 of Reentrancy_bonus.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Reentrancy_bonus.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Reentrancy_bonus:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Reentrancy_bonus reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Reentrancy_bonus by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Reentrancy_bonus"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Reentrancy_bonus mutant m7fc86598 detection", function () {
+  it("should revert when external call fails due to recipient contract reverting", async function () {
+    const [owner, recipient] = await ethers.getSigners();
+    
+    // Deploy the Reentrancy_bonus contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("Reentrancy_bonus");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Deploy a malicious contract that reverts on receive
+    const MaliciousFactory = await ethers.getContractFactory("MaliciousRecipient");
+    const malicious = await MaliciousFactory.deploy();
+    await malicious.waitForDeployment();
+    
+    // Call getFirstWithdrawalBonus with the malicious contract address
+    // This will trigger withdrawReward which sends ether to malicious
+    // The malicious contract reverts, so the original contract should revert
+    await expect(
+      instance.connect(owner).getFirstWithdrawalBonus(await malicious.getAddress())
+    ).to.be.reverted;
+    
+    // Verify that the reward was NOT credited (state unchanged due to revert)
+    // In the mutant, the require(success) is missing, so the transaction might succeed
+    // and the reward would be zeroed out incorrectly
+    const rewardBalance = await instance.rewardsForA(await malicious.getAddress());
+    expect(rewardBalance).to.equal(0); // Should still be 0 because the reward was never successfully claimed
+  });
+});
+
+// Helper contract that reverts on receive
+contract MaliciousRecipient {
+  receive() external payable {
+    revert("I refuse to accept ETH");
+  }
+}
+```

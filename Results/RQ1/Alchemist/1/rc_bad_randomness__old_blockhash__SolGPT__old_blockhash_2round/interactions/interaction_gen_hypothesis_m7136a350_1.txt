@@ -1,0 +1,26 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract PredictTheBlockHashChallenge:
+        Contract Code: pragma solidity ^0.8.0; contract PredictTheBlockHashChallenge { struct Guess { uint block; bytes32 guess; } mapping(address => Guess) guesses; constructor() public payable { require(msg.value == 1 ether); } function lockInGuess(bytes32 hash) public payable { require(guesses[msg.sender].block == 0); require(msg.value == 1 ether); guesses[msg.sender].guess = hash; guesses[msg.sender].block = block.number + 1; } function settle() public { require(guesses[msg.sender].block != 0); require(block.number > guesses[msg.sender].block); bytes32 answer = keccak256(abi.encodePacked(blockhash(guesses[msg.sender].block))); guesses[msg.sender].block = 0; if (guesses[msg.sender].guess == answer) { require(address(this).balance >= 2 ether); payable(msg.sender).transfer(2 ether); } } }
+
+    Consider the following mutant of PredictTheBlockHashChallenge:
+        Mutant m7136a350 of function settle replaces >= with >
+        Mutant Diff: ---|             require(address(this).balance >= 2 ether); +++|             require(address(this).balance  > 2 ether);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's analyze the difference:
+
+- **Original**: `require(address(this).balance >= 2 ether)` — allows the payout if the contract balance is exactly 2 ether or more.
+- **Mutant**: `require(address(this).balance > 2 ether)` — only allows the payout if the balance is strictly greater than 2 ether.
+
+This means the mutant introduces an **off-by-one** bug: if the contract balance is exactly 2 ether, the original allows the transfer, but the mutant reverts.
+
+**Hypothesis**: A test case that locks in a correct guess and then settles the guess when the contract’s balance is exactly 2 ether should succeed on the original contract (payout occurs) but fail on the mutant (revert due to the stricter balance check).

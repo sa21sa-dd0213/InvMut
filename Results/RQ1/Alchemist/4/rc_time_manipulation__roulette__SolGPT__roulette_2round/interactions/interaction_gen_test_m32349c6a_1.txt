@@ -1,0 +1,71 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m32349c6a of Roulette.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Roulette.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Roulette:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Roulette reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Roulette by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Roulette"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant detection - block.number % 15 == 0 vs != 0", function () {
+  it("should send balance when block.number % 15 == 0 on original, but mutant fails", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Fund the contract with initial balance
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+
+    // Get current block number and calculate how many blocks to wait for next multiple of 15
+    const currentBlock = await ethers.provider.getBlockNumber();
+    const blocksToWait = (15 - (currentBlock % 15)) % 15;
+    
+    // Mine blocks to reach a block where block.number % 15 == 0
+    for (let i = 0; i < blocksToWait; i++) {
+      await ethers.provider.send("evm_mine", []);
+    }
+
+    // Verify we're on a multiple of 15 block
+    const targetBlock = await ethers.provider.getBlockNumber();
+    expect(targetBlock % 15).to.equal(0);
+
+    // Get player balance before
+    const balanceBefore = await ethers.provider.getBalance(player.address);
+    
+    // Player sends exactly 10 ether to trigger fallback
+    const tx = await player.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    await tx.wait();
+
+    // Get player balance after
+    const balanceAfter = await ethers.provider.getBalance(player.address);
+
+    // On original: condition is true (block % 15 == 0), so player gets contract balance
+    // On mutant: condition is false (block % 15 != 0 is false), so player gets nothing
+    // The net balance change for player should be: +contractBalance - 10 ether
+    // Since contract had 10 ether from owner + 10 ether from player = 20 ether,
+    // player should receive 20 ether and lose 10 ether = net +10 ether
+    // On mutant, player only loses 10 ether (net negative)
+    expect(balanceAfter).to.be.gt(balanceBefore);
+  });
+});
+```

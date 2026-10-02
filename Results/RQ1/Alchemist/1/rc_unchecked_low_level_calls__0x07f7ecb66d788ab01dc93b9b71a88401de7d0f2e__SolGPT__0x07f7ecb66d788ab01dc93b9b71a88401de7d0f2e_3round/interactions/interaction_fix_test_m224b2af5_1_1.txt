@@ -1,0 +1,51 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PoCGame mutant m224b2af5 test", function () {   it("should detect removal of require(_s) in donateToWhale by checking that donate reverts when whale is a contract that rejects ETH", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy a contract that rejects ETH to serve as the whale     const RejectingWhaleFactory = await ethers.getContractFactory("RejectingWhale");     const rejectingWhale = await RejectingWhaleFactory.deploy();     await rejectingWhale.waitForDeployment();          // Deploy PoCGame with the rejecting whale address     const betLimit = ethers.parseEther("1");     const Factory = await ethers.getContractFactory("PoCGame");     const instance = await Factory.deploy(await rejectingWhale.getAddress(), betLimit);     await instance.waitForDeployment();          // Open to public     await instance.connect(owner).OpenToThePublic();          // Try to donate - the call should succeed in the mutant (no revert) but fail in the original     // In the original contract, the require(_s) would revert the transaction     // In the mutant, the transaction would succeed (silent failure)     const donateTx = await instance.connect(addr1).donate({ value: ethers.parseEther("0.1") });     const receipt = await donateTx.wait();          // Check that the totalDonated was NOT increased (should be 0 because the call failed silently in mutant)     // This is a proxy to detect the mutant - in original, this test would revert before updating totalDonated     // In mutant, it updates totalDonated despite the failed call     // We check the event emission instead to be more precise     const events = receipt.logs;     const donateEvent = events.find(log => {       try {         const parsed = instance.interface.parseLog(log);         return parsed && parsed.name === "Donate";       } catch {         return false;       }     });          // In the original contract, the donate would revert, so we would never get here     // In the mutant, the Donate event IS emitted even though the ETH transfer failed     // Therefore, if we reach this point and the Donate event exists, it's the mutant     // To properly kill the mutant, we need a different approach:     // We expect the transaction to revert in the original, but succeed in the mutant          // Reset and try again with expect to revert (original behavior)     // For this test, we deploy again and check that the original would revert     // Actually, let's test directly: the mutant will NOT revert, so we expect success     // But we want to kill the mutant, so we need a test that fails on the mutant     // The test should expect a revert (original behavior) - the mutant will pass (no revert) - thus the test "fails" on mutant     // Actually, we want the test to pass on original and fail on mutant     // So we set up the test to expect a revert (original behavior)          // Re-deploy to test properly     const instance2 = await Factory.deploy(await rejectingWhale.getAddress(), betLimit);     await instance2.waitForDeployment();     await instance2.connect(owner).OpenToThePublic();          // This should revert in the original (require(_s) fails), but succeed in the mutant     // So we expect revert - the mutant will NOT revert, making the test fail (killing the mutant)     await expect(       instance2.connect(addr1).donate({ value: ethers.parseEther("0.1") })     ).to.be.reverted;   }); });  // Helper contract that rejects ETH contract RejectingWhale {   receive() external payable {     revert("ETH not accepted");   } }
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PoCGame { modifier onlyOwner() { require(msg.sender == owner); _; } modifier isOpenToPublic() { require(openToPublic); _; } modifier onlyRealPeople() { require(msg.sender == tx.origin); _; } modifier onlyPlayers() { require(wagers[msg.sender] > 0); _; } event Wager(uint256 amount, address depositer); event Win(uint256 amount, address paidTo); event Lose(uint256 amount, address loser); event Donate(uint256 amount, address paidTo, address donator); event DifficultyChanged(uint256 currentDifficulty); event BetLimitChanged(uint256 currentBetLimit); address private whale; uint256 betLimit; uint difficulty; uint private randomSeed; address owner; mapping(address => uint256) timestamps; mapping(address => uint256) wagers; bool openToPublic; uint256 totalDonated; constructor(address whaleAddress, uint256 wagerLimit) public { openToPublic = false; owner = payable(msg.sender); whale = whaleAddress; totalDonated = 0; betLimit = wagerLimit; } function OpenToThePublic()  public onlyOwner() { openToPublic = true; } function AdjustBetAmounts(uint256 amount)  public onlyOwner() { betLimit = amount; emit BetLimitChanged(betLimit); } function AdjustDifficulty(uint256 amount)  public onlyOwner() { difficulty = amount; emit DifficultyChanged(difficulty); } fallback() external payable {} function wager()  public isOpenToPublic() onlyRealPeople() payable { require(msg.value == betLimit); require(wagers[msg.sender] == 0); timestamps[msg.sender] = block.number; wagers[msg.sender] = msg.value; emit Wager(msg.value, msg.sender); } function play()  public isOpenToPublic() onlyRealPeople() onlyPlayers() { uint256 blockNumber = timestamps[msg.sender]; if (blockNumber < block.number) { timestamps[msg.sender] = 0; wagers[msg.sender] = 0; uint256 winningNumber = uint256(keccak256(abi.encodePacked(blockhash(blockNumber), msg.sender, randomSeed))) % difficulty + 1; if (winningNumber == difficulty / 2) { payout(msg.sender); } else { loseWager(betLimit / 2); } } else { revert(); } } function donate()  public isOpenToPublic() payable { donateToWhale(msg.value); } function payout(address winner) internal { uint256 ethToTransfer = address(this).balance / 2; payable(winner).transfer(ethToTransfer); emit Win(ethToTransfer, winner); } function donateToWhale(uint256 amount) internal { { (bool _s,) = whale.call{value: amount}(""); require(_s); } totalDonated += amount; emit Donate(amount, whale, msg.sender); } function loseWager(uint256 amount) internal { { (bool _s,) = whale.call{value: amount}(""); require(_s); } totalDonated += amount; emit Lose(amount, msg.sender); } function ethBalance() public view returns (uint256) { return address(this).balance; } function currentDifficulty() public view returns (uint256) { return difficulty; } function currentBetLimit() public view returns (uint256) { return betLimit; } function hasPlayerWagered(address player) public view returns (bool) { return wagers[player] > 0; } function winnersPot() public view returns (uint256) { return address(this).balance / 2; } function transferAnyERC20Token(address tokenAddress, address tokenOwner, uint tokens) public onlyOwner() returns (bool success) { return ERC20Interface(tokenAddress).transfer(tokenOwner, tokens); } } abstract contract ERC20Interface { function transfer(address to, uint256 tokens) virtual public returns (bool success); }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PoCGame mutant m224b2af5 test", function () {
+  it("should detect removal of require(_s) in donateToWhale by checking that donate reverts when whale is a contract that rejects ETH", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy a contract that rejects ETH to serve as the whale
+    const RejectingWhaleFactory = await ethers.getContractFactory("RejectingWhale");
+    const rejectingWhale = await RejectingWhaleFactory.deploy();
+    await rejectingWhale.waitForDeployment();
+
+    // Deploy PoCGame with the rejecting whale address
+    const betLimit = ethers.parseEther("1");
+    const Factory = await ethers.getContractFactory("PoCGame");
+    const instance = await Factory.deploy(await rejectingWhale.getAddress(), betLimit);
+    await instance.waitForDeployment();
+
+    // Open to public
+    await instance.connect(owner).OpenToThePublic();
+
+    // This should revert in the original (require(_s) fails), but succeed in the mutant
+    // So we expect revert - the mutant will NOT revert, making the test fail (killing the mutant)
+    await expect(
+      instance.connect(addr1).donate({ value: ethers.parseEther("0.1") })
+    ).to.be.reverted;
+  });
+});
+
+// Helper contract that rejects ETH
+contract RejectingWhale {
+  receive() external payable {
+    revert("ETH not accepted");
+  }
+}
+```

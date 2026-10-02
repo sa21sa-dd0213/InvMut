@@ -1,0 +1,22 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Roulette:
+        Contract Code: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+
+    Consider the following mutant of Roulette:
+        Mutant m916b9143 of function fallback replaces block.timestamp with block.prevrandao
+        Mutant Diff: ---|         require(block.timestamp > pastBlockTime); +++|         require(block.prevrandao > pastBlockTime);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant replaces `block.timestamp` with `block.prevrandao` in the require statement. In the original contract, the condition checks that the current block timestamp is greater than the previously recorded timestamp, ensuring at least one second has passed between calls. The mutant instead compares the random beacon value (`block.prevrandao`) against the stored timestamp, which is a meaningless comparison that can pass or fail unpredictably.  
+
+**Hypothesis:**  
+A test case that sends a valid 10 ether transaction to the contract, waits for the next block, and then sends a second valid 10 ether transaction — expecting the second call to succeed because the block timestamp has increased — should kill the mutant. On the original contract, the second call will pass the timestamp check and proceed. On the mutant, the second call may revert because `block.prevrandao` can be less than or equal to the stored timestamp (which is a large number), or it may pass when it shouldn’t, but crucially the mutant’s behavior will differ from the original’s deterministic time-based logic. The test should assert that both calls succeed on the original, while the mutant will fail this assertion due to the semantic mismatch.

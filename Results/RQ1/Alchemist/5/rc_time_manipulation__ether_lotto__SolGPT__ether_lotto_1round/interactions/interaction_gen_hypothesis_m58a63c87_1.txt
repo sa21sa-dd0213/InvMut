@@ -1,0 +1,34 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EtherLotto:
+        Contract Code: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+
+    Consider the following mutant of EtherLotto:
+        Mutant m58a63c87 of function play replaces block.difficulty with block.prevrandao
+        Mutant Diff: ---|         uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; +++|         uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.prevrandao))) % 2;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let’s break this down step-by-step.
+
+**Original code:**  
+The random number is generated using `block.timestamp` and `block.difficulty`.  
+`block.difficulty` was a value that changed with mining difficulty — unpredictable to a degree.
+
+**Mutant code:**  
+Replaces `block.difficulty` with `block.prevrandao`.  
+`block.prevrandao` was introduced after the Ethereum Merge (PoS transition). On a PoS chain, `block.prevrandao` is a pseudo-random value provided by the beacon chain, which is **deterministic for the same block** and known to validators/block proposers.
+
+**Key difference:**  
+In the original, on a PoW chain, `block.difficulty` varies and is not easily manipulated.  
+In the mutant, `block.prevrandao` is **reproducible and known before the transaction is included**, meaning an attacker could predict the outcome of the random draw and choose to play only when they will win.
+
+**Hypothesis:**  
+A test that simulates an attacker who can observe `block.prevrandao` before deciding to call `play()`, and then calls `play()` only when the random result would make them win (i.e., `random != 0`), will detect the mutant because the attacker can win with certainty, whereas in the original contract the outcome is not practically predictable in the same way. Such a test would show that the mutant introduces a predictable randomness vulnerability that can be exploited, whereas the original does not allow this level of manipulation.

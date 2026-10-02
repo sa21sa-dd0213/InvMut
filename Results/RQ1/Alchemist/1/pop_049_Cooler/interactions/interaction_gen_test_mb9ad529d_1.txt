@@ -1,0 +1,84 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mb9ad529d of Cooler.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Cooler.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Cooler:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Cooler reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Cooler by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Cooler"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Cooler mutant mb9ad529d - repayLoan overpayment cap", function () {
+  it("should cap repayment to loan amount when repaying more than owed", async function () {
+    const [owner, lender, borrower] = await ethers.getSigners();
+    
+    // Deploy the factory which deploys the Cooler implementation
+    const Factory = await ethers.getContractFactory("CoolerFactory");
+    const factory = await Factory.deploy();
+    await factory.waitForDeployment();
+    
+    // Deploy mock ERC20 tokens for collateral and debt
+    const ERC20Factory = await ethers.getContractFactory("ERC20");
+    const collateral = await ERC20Factory.deploy("Collateral", "COL", 18);
+    const debt = await ERC20Factory.deploy("Debt", "DEBT", 18);
+    await collateral.waitForDeployment();
+    await debt.waitForDeployment();
+    
+    // Generate a cooler for the owner
+    await factory.connect(owner).generateCooler(await collateral.getAddress(), await debt.getAddress());
+    const coolerAddress = await factory.coolersFor(await collateral.getAddress(), await debt.getAddress(), 0);
+    const cooler = await ethers.getContractAt("Cooler", coolerAddress);
+    
+    // Setup: Owner creates a loan request
+    const amount = ethers.parseEther("100");
+    const interest = ethers.parseEther("10"); // 10% annual interest
+    const loanToCollateral = ethers.parseEther("2"); // 2:1 ratio
+    const duration = 30 * 24 * 60 * 60; // 30 days
+    
+    // Owner needs collateral tokens
+    await collateral.mint(owner.address, ethers.parseEther("1000"));
+    await collateral.connect(owner).approve(coolerAddress, ethers.parseEther("1000"));
+    
+    // Owner requests a loan
+    const collateralRequired = await cooler.collateralFor(amount, loanToCollateral);
+    await cooler.connect(owner).requestLoan(amount, interest, loanToCollateral, duration);
+    
+    // Lender clears the request
+    await debt.mint(lender.address, ethers.parseEther("1000"));
+    await debt.connect(lender).approve(coolerAddress, ethers.parseEther("1000"));
+    await cooler.connect(lender).clearRequest(0, true, false);
+    
+    // Get loan details
+    const loan = await cooler.getLoan(0);
+    const loanAmount = loan.amount;
+    
+    // Owner tries to repay more than the loan amount
+    const overpayment = loanAmount + ethers.parseEther("50");
+    await debt.mint(owner.address, overpayment);
+    await debt.connect(owner).approve(coolerAddress, overpayment);
+    
+    // Repay with amount greater than loan amount
+    await cooler.connect(owner).repayLoan(0, overpayment);
+    
+    // Check that the loan amount was capped - the loan should now be fully repaid (amount = 0)
+    const updatedLoan = await cooler.getLoan(0);
+    expect(updatedLoan.amount).to.equal(0);
+    
+    // The collateral returned should be based on the full loan amount, not the overpayment
+    // Since we repaid the full loan amount (capped), all collateral should be returned
+    expect(updatedLoan.collateral).to.equal(0);
+  });
+});
+```

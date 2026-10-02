@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0002",
+ "property_summary": "For any two distinct senders A and B and nonzero payments vA and vB, if A funds twice (vA then vA2) and B funds once (vB) in between, the reference preserves cumulative balances per-address (userBalance(A) equals prior A deposits summed) whereas the mutant that overwrites on each deposit can make A's final stored balance equal only to its last single deposit (breaking per-address accumulation) — the test fuzzes two addresses and two amounts and detects the mutant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the update to only set the balance to msg.value (overwrite rather than add), so addToBalance sets the caller's balance to the sent value.",
+ "mutated_unit_code": "function addToBalance()  public nonReentrant_ payable {\n         userBalance[msg.sender] = msg.value;\n     }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n\n    function testFuzz_property(address actorA, address actorB, uint256 vA1, uint256 vA2, uint256 vB) public {\n        vm.assume(actorA != actorB);\n        vm.assume(actorA != address(0) && actorB != address(0));\n        vA1 = bound(vA1, 1, type(uint128).max);\n        vA2 = bound(vA2, 1, type(uint128).max);\n        vB  = bound(vB, 1, type(uint128).max);\n\n        vm.deal(actorA, vA1);\n        vm.prank(actorA);\n        c.addToBalance{value: vA1}();\n\n        vm.deal(actorA, vA2);\n        vm.prank(actorA);\n        c.addToBalance{value: vA2}();\n\n        vm.deal(actorB, vB);\n        vm.prank(actorB);\n        c.addToBalance{value: vB}();\n\n        uint256 balA = c.getBalance(actorA);\n        assertTrue(balA == vA1 + vA2);\n    }\n}\n"
+}

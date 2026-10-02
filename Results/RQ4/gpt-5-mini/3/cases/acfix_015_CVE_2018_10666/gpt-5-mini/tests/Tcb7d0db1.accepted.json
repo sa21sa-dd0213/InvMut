@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tcb7d0db1",
+ "property_summary": "For every direct call to setOwner(newOwner) the contract's owner becomes newOwner iff the caller (msg.sender) was the prior owner; the mutant that uses tx.origin allows a call where msg.sender is a forwarding contract (not the owner) but tx.origin is the owner to change ownership, violating this rule for some inputs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replace require(msg.sender == owner); with require(tx.origin == owner); so onlyOwner checks tx.origin instead of msg.sender.",
+ "mutated_unit_code": "modifier onlyOwner {\n    require(tx.origin == owner);\n    _;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Owned} from \"../src/Owned.sol\";\n\ncontract InvMutTest is Test {\n    Owned c;\n    function setUp() public { c = new Owned(); }\n\n    function testFuzz_property(address originEOA, address candidateNewOwner) public {\n        vm.assume(originEOA != address(0));\n        vm.assume(candidateNewOwner != address(0));\n\n        Forwarder f = new Forwarder();\n\n        vm.deal(originEOA, 1 ether);\n\n        vm.assume(originEOA != address(this));\n\n        bool ok;\n        try c.setOwner(originEOA) { ok = true; } catch { ok = false; }\n        assertTrue(ok);\n\n        vm.prank(originEOA);\n        try f.forwardSetOwner(address(c), candidateNewOwner) { ok = true; } catch { ok = false; }\n\n        assertTrue(c.owner() == originEOA);\n    }\n}\n\ncontract Forwarder {\n    function forwardSetOwner(address target, address newOwner) external {\n        (bool success, ) = target.call(abi.encodeWithSelector(bytes4(keccak256(\"setOwner(address)\")), newOwner));\n        require(success);\n    }\n}\n"
+}

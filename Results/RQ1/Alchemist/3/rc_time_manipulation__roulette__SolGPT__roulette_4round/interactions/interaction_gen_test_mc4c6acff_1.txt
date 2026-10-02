@@ -1,0 +1,76 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mc4c6acff of Roulette.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Roulette.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Roulette:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Roulette reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Roulette by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Roulette"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant test - block.number-1", function () {
+  it("should not transfer balance when block.number is not a multiple of 15 (original behavior) vs mutant incorrectly transfers", async function () {
+    const [owner, caller] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get current block number to ensure we can find a non-multiple of 15
+    const currentBlock = await ethers.provider.getBlock("latest");
+    const currentBlockNumber = currentBlock.number;
+    
+    // Find a future block number that is NOT a multiple of 15
+    // We'll mine blocks to reach such a block
+    let targetBlockNumber = currentBlockNumber + 1;
+    while (targetBlockNumber % 15 === 0) {
+      targetBlockNumber++;
+    }
+    
+    // Mine blocks until we reach the target block number
+    const blocksToMine = targetBlockNumber - currentBlockNumber;
+    for (let i = 0; i < blocksToMine; i++) {
+      await ethers.provider.send("evm_mine", []);
+    }
+
+    // Record caller's balance before the transaction
+    const callerBalanceBefore = await ethers.provider.getBalance(caller.address);
+    
+    // Send exactly 10 ether to the contract
+    const tx = await caller.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    await tx.wait();
+
+    // Record caller's balance after the transaction
+    const callerBalanceAfter = await ethers.provider.getBalance(caller.address);
+    
+    // The caller spent 10 ether in gas + the transfer amount
+    // In the original contract, no transfer back should occur
+    // In the mutant, a transfer back of the entire contract balance occurs
+    // Since this is the first transaction, the contract balance = 10 ether
+    // So if mutant, caller would get back 10 ether (minus gas costs)
+    
+    // Check that caller did NOT receive 10 ether back (which would indicate the mutant)
+    // The caller's balance should be less than (callerBalanceBefore - 10 ether + some gas)
+    // Actually, let's check the contract balance - should be 10 ether if original
+    const contractBalance = await ethers.provider.getBalance(await instance.getAddress());
+    
+    // For original: contract has 10 ether
+    // For mutant: contract has 0 ether (transferred back to caller)
+    expect(contractBalance).to.equal(ethers.parseEther("10"));
+  });
+});
+```

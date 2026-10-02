@@ -1,0 +1,62 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m8fe5d5ab of EtherLotto.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EtherLotto.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EtherLotto:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EtherLotto reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EtherLotto by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EtherLotto"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant m8fe5d5ab test", function () {
+  it("should detect mutant that always enters winning branch", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = ethers.parseEther("10");
+    const FEE_AMOUNT = ethers.parseEther("1");
+
+    // First play - regardless of outcome, pot will be 10 and then either reset or not
+    await instance.connect(player).play({ value: TICKET_AMOUNT });
+    
+    // Get pot after first play
+    let potAfterFirst = await instance.pot();
+    
+    // Second play - in original, if first play didn't win (random == 1), pot is 20 before this call
+    // In mutant, pot is always reset to 0 after every call
+    await instance.connect(player).play({ value: TICKET_AMOUNT });
+    
+    let potAfterSecond = await instance.pot();
+    
+    // If mutant (always true branch), pot is always reset to 0 after each play
+    // If original, there's a 50% chance potAfterSecond = 20 (when first random was 1)
+    // We cannot guarantee a specific pot value due to randomness, but we can detect the mutant
+    // by checking that pot is NEVER greater than 10 after the second call
+    // In original, pot could be 20; in mutant, pot is always 0 or 10 (after reset + new ticket)
+    // Actually in mutant: after first call pot=0 (reset), after second call pot=10 (before reset, but reset happens after)
+    // So pot after second call in mutant = 10 (from second ticket added then reset to 0? No, reset happens first then transfer)
+    // Let's trace: mutant always enters if block:
+    //   pot += msg.value => pot becomes 10
+    //   bank gets 1, player gets 9, pot = 0
+    // So after any play, pot = 0 always
+    // In original when random == 1: pot += 10 => pot=20, no reset, no transfers
+    // So after first random==1, pot=20; after second random==1, pot=30; after second random==0, pot reset
+    // We can detect mutant by checking pot is always 0 after any play
+    expect(potAfterSecond).to.equal(0);
+  });
+});
+```

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T5e7a1bc4",
+ "property_summary": "After any fallback call, the contract's balance modulo 10 ether must be 0, because the fallback's payable requirement ensures only multiples of 10 ether can remain after transfers; the buggy version allows any value, breaking this invariant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the require statement for msg.value == 10 ether so fallback can be called with any msg.value, changing when the balance transfer can occur.",
+ "mutated_unit_code": "fallback() external payable {\n\n    require(block.timestamp > pastBlockTime);\n\n    pastBlockTime = block.timestamp;\n    if(block.number % 15 == 0) {\n        payable(msg.sender).transfer(address(this).balance);\n    }\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 value, uint256 warpTime, uint256 blockNum, address sender) public {\n        vm.assume(sender != address(0) && sender != address(c));\n        vm.assume(warpTime > 0);\n        vm.assume(value <= address(this).balance);\n        vm.warp(warpTime);\n        vm.roll(blockNum);\n        vm.deal(sender, value);\n        vm.prank(sender);\n        (bool ok, ) = address(c).call{value: value}(\"\");\n        assertTrue(ok ? address(c).balance % 10 ether == 0 : true);\n    }\n}"
+}

@@ -1,0 +1,25 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Reentrancy_bonus:
+        Contract Code: pragma solidity ^0.8.0; contract SmartFix { bool public _locked = false; modifier _nonReentrant() { require(!_locked); _locked = true; _; _locked = false; } } contract Reentrancy_bonus is SmartFix { mapping (address => uint) private userBalances; mapping (address => bool) private claimedBonus; mapping (address => uint) private rewardsForA; function withdrawReward(address recipient)  public _nonReentrant  { uint amountToWithdraw = rewardsForA[recipient]; rewardsForA[recipient] = 0; (bool success, ) = recipient.call{value: amountToWithdraw}(""); require(success); } function getFirstWithdrawalBonus(address recipient) public { require(!claimedBonus[recipient]); rewardsForA[recipient] += 100; withdrawReward(recipient); claimedBonus[recipient] = true; } }
+
+    Consider the following mutant of Reentrancy_bonus:
+        Mutant m8ead4462 of function withdrawReward replaces function withdrawReward(address recipient)  public _nonReentrant with function withdrawReward(address recipient)  public
+        Mutant Diff: ---|     function withdrawReward(address recipient)  public _nonReentrant  { +++|     function withdrawReward(address recipient)  public   {
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+**Step-by-step analysis:**  
+- The original `withdrawReward` function uses the `_nonReentrant` modifier, which sets a `_locked` flag to `true` during execution and resets it to `false` after the function completes.  
+- The mutant removes the `_nonReentrant` modifier entirely, making the function unprotected against reentrancy attacks.  
+- The critical vulnerability: In the original, an attacker cannot re-enter `withdrawReward` during the external call (`recipient.call{value: ...}`) because the reentrancy lock prevents it. In the mutant, a malicious contract in the `recipient` address can call back into `withdrawReward` before the first call finishes, draining funds repeatedly.  
+
+**Hypothesis:**  
+A test case where an attacker contract calls `withdrawReward` with itself as the recipient, and inside its fallback function it recursively calls `withdrawReward` again, should pass on the original (reverting due to the reentrancy lock) but kill the mutant (allowing multiple withdrawals and draining the contract’s balance).

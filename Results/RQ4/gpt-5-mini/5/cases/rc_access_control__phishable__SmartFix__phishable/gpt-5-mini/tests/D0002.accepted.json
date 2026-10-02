@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0002",
+ "property_summary": "For any recipient contract that accepts ETH, when the owner calls withdrawAll(recipient) the reference C will transfer the entire contract balance to the provided recipient (leaving C.balance == 0); the mutant that sends to msg.sender instead will send to owner and thus may leave C.balance != 0 for some recipient addresses (so C.balance == 0 always is violated by the mutant).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replace the transfer target to send funds to msg.sender instead of the provided _recipient, changing the recipient of the withdrawal.",
+ "mutated_unit_code": "function withdrawAll(address _recipient) public {\n\n        require(msg.sender == owner);\n        payable(msg.sender).transfer(address(this).balance);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Phishable} from \"../src/Phishable.sol\";\n\ncontract InvMutTest is Test {\n    Phishable c;\n    function setUp() public { c = new Phishable(address(this)); }\n\n    function testFuzz_property(uint256 fundAmount, address recipient) public {\n        fundAmount = bound(fundAmount, 1, 1 ether);\n\n        AcceptingReceiver recv = new AcceptingReceiver();\n        address payable recvAddr = payable(address(recv));\n\n        vm.deal(address(this), fundAmount);\n        (bool okFund,) = address(c).call{value: fundAmount}(\"\");\n        require(okFund, \"funding failed\");\n\n        vm.prank(address(this));\n        c.withdrawAll(recvAddr);\n\n        assertTrue(address(c).balance == 0);\n    }\n}\n\ncontract AcceptingReceiver {\n    receive() external payable {}\n}\n"
+}

@@ -1,0 +1,54 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EBU mutant test - m95f4bdd6", function () {   it("should detect mutation where caddress is changed to address(0)", async function () {     const [owner] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("EBU");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Get the mutated contract's caddress value     const caddress = await instance.caddress();          // The mutant changes caddress to address(0), so we expect it to be zero     expect(caddress).to.equal(ethers.ZeroAddress);          // Prepare test parameters for transfer function     const tos = [owner.address];     const values = [1]; // 1 token          // Call transfer function - this should revert because calling address(0)      // with transferFrom selector will succeed (return true) but do nothing,     // which is incorrect behavior compared to the original     const tx = instance.transfer(tos, values);          // The original contract would successfully call the real caddress contract     // The mutant calls address(0) which returns success but does nothing     // This should still pass (not revert) in the mutant, but the state changes     // would be different - we can verify by checking that no actual transfer occurred          await expect(tx).to.not.be.reverted;          // Additional verification: The transfer to address(0) would succeed     // but we can verify the contract's behavior is different from original     // by checking that the from address still holds all tokens (no transfer happened)     // This demonstrates the mutation is live   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EBU { address public from = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9; address public caddress = 0x1f844685f7Bf86eFcc0e74D8642c54A257111923; function transfer( address[] memory _tos, uint[] memory v)  public returns (bool) { require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9); require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v[i] * 1000000000000000000)); _d; if (! _s) { revert();} } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant test - m95f4bdd6", function () {
+  it("should detect mutation where caddress is changed to address(0)", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get the mutated contract's caddress value
+    const caddress = await instance.caddress();
+
+    // The mutant changes caddress to address(0), so we expect it to be zero
+    expect(caddress).to.equal(ethers.ZeroAddress);
+
+    // Prepare test parameters for transfer function
+    const tos = [owner.address];
+    const values = [1]; // 1 token
+
+    // Call transfer function - this should revert because calling address(0)
+    // with transferFrom selector will succeed (return true) but do nothing,
+    // which is incorrect behavior compared to the original
+    const tx = instance.transfer(tos, values);
+
+    // The original contract would successfully call the real caddress contract
+    // The mutant calls address(0) which returns success but does nothing
+    // This should still pass (not revert) in the mutant, but the state changes
+    // would be different - we can verify by checking that no actual transfer occurred
+
+    await expect(tx).to.not.be.reverted;
+
+    // Additional verification: The transfer to address(0) would succeed
+    // but we can verify the contract's behavior is different from original
+    // by checking that the from address still holds all tokens (no transfer happened)
+    // This demonstrates the mutation is live
+  });
+});
+```

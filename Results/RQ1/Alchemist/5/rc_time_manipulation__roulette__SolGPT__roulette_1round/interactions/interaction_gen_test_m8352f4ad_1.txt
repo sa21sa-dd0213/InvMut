@@ -1,0 +1,76 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m8352f4ad of Roulette.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Roulette.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Roulette:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Roulette reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Roulette by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Roulette"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant detection - m8352f4ad", function () {
+  it("should pay out the contract balance when block.number % 15 == 0, but mutant with false condition never pays", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy({ value: ethers.parseEther("0") });
+    await instance.waitForDeployment();
+
+    // Get the current block number
+    const currentBlock = await ethers.provider.getBlock("latest");
+    const blockNumber = currentBlock!.number;
+
+    // Calculate how many blocks to mine to reach a block where block.number % 15 == 0
+    const blocksToWait = (15 - (blockNumber % 15)) % 15;
+    
+    // Mine blocks to reach the target block number
+    for (let i = 0; i < blocksToWait; i++) {
+      await ethers.provider.send("evm_mine", []);
+    }
+
+    // Verify we are at the correct block
+    const targetBlock = await ethers.provider.getBlock("latest");
+    expect(targetBlock!.number % 15).to.equal(0);
+
+    // Get player's initial balance
+    const playerBalanceBefore = await ethers.provider.getBalance(player.address);
+    
+    // Get contract's initial balance (should be 0)
+    const contractBalanceBefore = await ethers.provider.getBalance(instance.target);
+    expect(contractBalanceBefore).to.equal(0n);
+
+    // Fund the contract with some ether first (simulate previous deposits)
+    await owner.sendTransaction({
+      to: instance.target,
+      value: ethers.parseEther("10")
+    });
+
+    const contractBalanceAfterFunding = await ethers.provider.getBalance(instance.target);
+    expect(contractBalanceAfterFunding).to.equal(ethers.parseEther("10"));
+
+    // Player calls fallback with exactly 10 ether at the winning block
+    const tx = await player.sendTransaction({
+      to: instance.target,
+      value: ethers.parseEther("10")
+    });
+    await tx.wait();
+
+    // Check contract balance - in original it should be 0 (all paid out), in mutant it should still be 20 ether
+    const contractBalanceFinal = await ethers.provider.getBalance(instance.target);
+    
+    // This assertion will pass on original (balance = 0) but fail on mutant (balance = 20 ether)
+    expect(contractBalanceFinal).to.equal(0n);
+  });
+});
+```

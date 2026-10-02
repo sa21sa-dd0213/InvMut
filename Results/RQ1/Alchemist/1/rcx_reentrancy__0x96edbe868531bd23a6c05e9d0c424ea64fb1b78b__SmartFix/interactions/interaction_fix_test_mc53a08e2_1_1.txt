@@ -1,0 +1,91 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PENNY_BY_PENNY mutant mc53a08e2 test", function () {   it("should detect that unlockTime is not updated when Put is called with a longer lockTime", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy LogFile first (no constructor args)     const LogFileFactory = await ethers.getContractFactory("LogFile");     const logFile = await LogFileFactory.deploy();     await logFile.waitForDeployment();          // Deploy PENNY_BY_PENNY (no constructor args)     const Factory = await ethers.getContractFactory("PENNY_BY_PENNY");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Set up the contract     await instance.SetLogFile(await logFile.getAddress());     await instance.SetMinSum(ethers.parseEther("0.1"));     await instance.Initialized();          // Get current block timestamp     const blockNumBefore = await ethers.provider.getBlockNumber();     const blockBefore = await ethers.provider.getBlock(blockNumBefore);     const currentTime = blockBefore!.timestamp;          // First Put with lockTime of 100 seconds     const lockTime1 = 100;     await instance.connect(addr1).Put(lockTime1, { value: ethers.parseEther("1.0") });          // Check unlockTime after first Put - should be currentTime + 100     let holder = await instance.Acc(addr1.address);     expect(holder.unlockTime).to.equal(currentTime + lockTime1);          // Second Put with lockTime of 200 seconds (longer)     const lockTime2 = 200;     // Need to wait a bit to get a new block timestamp     await ethers.provider.send("evm_increaseTime", [1]);     await ethers.provider.send("evm_mine", []);          await instance.connect(addr1).Put(lockTime2, { value: ethers.parseEther("0.5") });          // Get updated timestamp     const blockNumAfter = await ethers.provider.getBlockNumber();     const blockAfter = await ethers.provider.getBlock(blockNumAfter);     const timeAfterPut2 = blockAfter!.timestamp;          // Check unlockTime - in original it should be timeAfterPut2 + 200 (the longer lock)     // In mutant it would still be currentTime + 100 (unchanged)     holder = await instance.Acc(addr1.address);          // The mutant would keep unlockTime at currentTime + 100     // The original would update it to timeAfterPut2 + 200     // We verify it's the longer time, which the mutant would fail     expect(holder.unlockTime).to.equal(timeAfterPut2 + lockTime2);          // Now try to Collect before the longer lock expires but after the shorter lock     // This should revert in original (still locked) but succeed in mutant (unlocked prematurely)     await ethers.provider.send("evm_increaseTime", [lockTime1 + 10]); // Just past first lock     await ethers.provider.send("evm_mine", []);          // Attempt to collect - should revert because unlockTime was properly extended     await expect(       instance.connect(addr1).Collect(ethers.parseEther("0.5"))     ).to.be.reverted;          // Now fast forward past the longer lock time     await ethers.provider.send("evm_increaseTime", [lockTime2 - lockTime1 - 5]);     await ethers.provider.send("evm_mine", []);          // This should now succeed in both original and mutant     await instance.connect(addr1).Collect(ethers.parseEther("0.5"));   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PENNY_BY_PENNY { struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; uint public MinSum; LogFile Log; bool intitalized; function SetMinSum(uint _val) public { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log) public { if(intitalized)revert(); Log = LogFile(_log); } function Initialized() public { intitalized = true; } function Put(uint _lockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; require(((block.timestamp + _lockTime) >= block.timestamp)); if(block.timestamp+_lockTime>acc.unlockTime)acc.unlockTime=block.timestamp+_lockTime; Log.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { Log.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } } contract LogFile { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PENNY_BY_PENNY mutant mc53a08e2 test", function () {
+  it("should detect that unlockTime is not updated when Put is called with a longer lockTime", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy LogFile first (no constructor args)
+    const LogFileFactory = await ethers.getContractFactory("LogFile");
+    const logFile = await LogFileFactory.deploy();
+    await logFile.waitForDeployment();
+
+    // Deploy PENNY_BY_PENNY (no constructor args)
+    const Factory = await ethers.getContractFactory("PENNY_BY_PENNY");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Set up the contract
+    await instance.SetLogFile(await logFile.getAddress());
+    await instance.SetMinSum(ethers.parseEther("0.1"));
+    await instance.Initialized();
+
+    // Get current block timestamp
+    const blockNumBefore = await ethers.provider.getBlockNumber();
+    const blockBefore = await ethers.provider.getBlock(blockNumBefore);
+    const currentTime = blockBefore!.timestamp;
+
+    // First Put with lockTime of 100 seconds
+    const lockTime1 = 100;
+    await instance.connect(addr1).Put(lockTime1, { value: ethers.parseEther("1.0") });
+
+    // Check unlockTime after first Put - should be currentTime + 100
+    let holder = await instance.Acc(addr1.address);
+    expect(holder.unlockTime).to.equal(currentTime + lockTime1);
+
+    // Second Put with lockTime of 200 seconds (longer)
+    const lockTime2 = 200;
+    // Need to wait a bit to get a new block timestamp
+    await ethers.provider.send("evm_increaseTime", [1]);
+    await ethers.provider.send("evm_mine", []);
+
+    await instance.connect(addr1).Put(lockTime2, { value: ethers.parseEther("0.5") });
+
+    // Get updated timestamp
+    const blockNumAfter = await ethers.provider.getBlockNumber();
+    const blockAfter = await ethers.provider.getBlock(blockNumAfter);
+    const timeAfterPut2 = blockAfter!.timestamp;
+
+    // Check unlockTime - in original it should be timeAfterPut2 + 200 (the longer lock)
+    // In mutant it would still be currentTime + 100 (unchanged)
+    holder = await instance.Acc(addr1.address);
+
+    // The mutant would keep unlockTime at currentTime + 100
+    // The original would update it to timeAfterPut2 + 200
+    // We verify it's the longer time, which the mutant would fail
+    expect(holder.unlockTime).to.equal(timeAfterPut2 + lockTime2);
+
+    // Now try to Collect before the longer lock expires but after the shorter lock
+    // This should revert in original (still locked) but succeed in mutant (unlocked prematurely)
+    await ethers.provider.send("evm_increaseTime", [lockTime1 + 10]); // Just past first lock
+    await ethers.provider.send("evm_mine", []);
+
+    // Attempt to collect - should revert because unlockTime was properly extended
+    await expect(
+      instance.connect(addr1).Collect(ethers.parseEther("0.5"))
+    ).to.be.reverted;
+
+    // Now fast forward past the longer lock time
+    await ethers.provider.send("evm_increaseTime", [lockTime2 - lockTime1 - 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    // This should now succeed in both original and mutant
+    await instance.connect(addr1).Collect(ethers.parseEther("0.5"));
+  });
+});
+```

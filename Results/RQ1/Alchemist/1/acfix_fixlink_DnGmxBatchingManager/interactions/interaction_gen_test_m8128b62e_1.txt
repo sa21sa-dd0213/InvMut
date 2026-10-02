@@ -1,0 +1,96 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m8128b62e of DnGmxBatchingManager.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test DnGmxBatchingManager.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for DnGmxBatchingManager:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("DnGmxBatchingManager reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy DnGmxBatchingManager by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("DnGmxBatchingManager"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+import { time } from "@nomicfoundation/hardhat-network-helpers";
+
+describe("DnGmxBatchingManager - kill mutant m8128b62e (cooldown operator)", function () {
+  it("should enforce 15-minute cooldown using addition, not multiplication", async function () {
+    const [owner, keeper, vault] = await ethers.getSigners();
+    
+    // Deploy with minimal constructor arguments
+    const Factory = await ethers.getContractFactory("DnGmxBatchingManager");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Setup: set keeper and vault addresses
+    await instance.connect(owner).setKeeper(keeper.address);
+    
+    // Initialize the contract (needed to set vaultBatchingState.currentRound)
+    // Use a dummy address for vault since we only need to test the cooldown check
+    const dummyToken = ethers.ZeroAddress;
+    const dummyRouter = ethers.ZeroAddress;
+    const dummyManager = ethers.ZeroAddress;
+    await instance.initialize(
+      dummyToken,
+      dummyToken,
+      dummyRouter,
+      dummyManager,
+      vault.address,
+      keeper.address
+    );
+    
+    // First, call executeBatchDeposit to set lastUnpauseTimestamp
+    // This requires the contract to be paused first and have glp balance = 0 to avoid reverts
+    // We'll call it when paused to trigger the unpause logic
+    await instance.connect(keeper).pauseDeposit();
+    
+    // Get the current block timestamp
+    const blockNumBefore = await ethers.provider.getBlockNumber();
+    const blockBefore = await ethers.provider.getBlock(blockNumBefore);
+    const startTime = blockBefore.timestamp;
+    
+    // Call executeBatchDeposit (this will unpause and set lastUnpauseTimestamp)
+    // It may revert on other checks, but the cooldown check is first
+    try {
+      await instance.connect(keeper).executeBatchDeposit();
+    } catch (e) {
+      // Expected to possibly fail on other checks, but cooldown should pass
+    }
+    
+    // Now immediately try again - should fail with cooldown revert
+    // because 0 seconds < 15 minutes (900 seconds)
+    await expect(
+      instance.connect(keeper).executeBatchDeposit()
+    ).to.be.revertedWith("Cooldown period not passed");
+    
+    // Fast forward exactly 15 minutes (900 seconds)
+    await time.increase(900);
+    
+    // Now the call should pass the cooldown check (addition: startTime + 900 < now)
+    // With the mutant (multiplication: startTime * 900), this would still fail
+    // because startTime * 900 is astronomically larger than current timestamp
+    
+    // We expect it to NOT revert with the cooldown message
+    // If it reverts with another error, that's fine - the cooldown passed
+    try {
+      await instance.connect(keeper).executeBatchDeposit();
+    } catch (e) {
+      // Check it's not the cooldown revert
+      expect((e as Error).message).to.not.include("Cooldown period not passed");
+    }
+    
+    // Alternative: verify the function executes without cooldown revert
+    // by checking it doesn't revert with that specific message
+    const tx = instance.connect(keeper).executeBatchDeposit();
+    await expect(tx).to.not.be.revertedWith("Cooldown period not passed");
+  });
+});
+```

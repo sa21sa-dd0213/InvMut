@@ -1,0 +1,48 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MultiplicatorX4 mutant test - m27db169d", function () {     it("should detect the mutant that subtracts 1 wei from msg.value in Command function", async function () {         const [owner, addr1] = await ethers.getSigners();         const Factory = await ethers.getContractFactory("MultiplicatorX4");         const instance = await Factory.deploy();         await instance.waitForDeployment();          // Fund the contract with some initial balance         const initialFunding = ethers.parseEther("1");         await owner.sendTransaction({             to: await instance.getAddress(),             value: initialFunding         });          // Record the target address balance before the call         const targetBalanceBefore = await ethers.provider.getBalance(addr1.address);          // Call Command with exactly 1 wei         const tx = await instance.connect(owner).Command(addr1.address, "0x", { value: 1 });         await tx.wait();          // Check the target address balance after the call         const targetBalanceAfter = await ethers.provider.getBalance(addr1.address);          // In the original contract, the target should receive exactly 1 wei         // In the mutant, it receives 0 wei (msg.value - 1 = 0)         expect(targetBalanceAfter - targetBalanceBefore).to.equal(1);     }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract MultiplicatorX4 { address public Owner = msg.sender; receive() external payable {} function withdraw() payable public { require(msg.sender == Owner); payable(Owner).transfer(address(this).balance); } function Command(address adr,bytes memory data) payable public { require(msg.sender == Owner); adr.call{value: msg.value}(data); } function multiplicate(address adr) public payable { if(msg.value>=address(this).balance) { require(((address(this).balance + msg.value) >= address(this).balance)); payable(adr).transfer(address(this).balance+msg.value); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MultiplicatorX4 mutant test - m27db169d", function () {
+    it("should detect the mutant that subtracts 1 wei from msg.value in Command function", async function () {
+        const [owner, addr1] = await ethers.getSigners();
+        const Factory = await ethers.getContractFactory("MultiplicatorX4");
+        const instance = await Factory.deploy();
+        await instance.waitForDeployment();
+
+        // Fund the contract with some initial balance
+        const initialFunding = ethers.parseEther("1");
+        await owner.sendTransaction({
+            to: await instance.getAddress(),
+            value: initialFunding
+        });
+
+        // Record the target address balance before the call
+        const targetBalanceBefore = await ethers.provider.getBalance(addr1.address);
+
+        // Call Command with exactly 1 wei
+        const tx = await instance.connect(owner).Command(addr1.address, "0x", { value: 1 });
+        await tx.wait();
+
+        // Check the target address balance after the call
+        const targetBalanceAfter = await ethers.provider.getBalance(addr1.address);
+
+        // In the original contract, the target should receive exactly 1 wei
+        // In the mutant, it receives 0 wei (msg.value - 1 = 0)
+        expect(targetBalanceAfter - targetBalanceBefore).to.equal(1n);
+    });
+});
+```

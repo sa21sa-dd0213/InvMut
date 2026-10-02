@@ -1,0 +1,70 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant detection - block.number+1", function () {
+  it("should detect mutant where block.number+1 is used instead of block.number in modulo condition", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy contract with initial funding
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    const contractAddress = await instance.getAddress();
+    
+    // Fund the contract with some initial balance for the payout test
+    const initialFunding = ethers.parseEther("10");
+    await owner.sendTransaction({
+      to: contractAddress,
+      value: initialFunding
+    });
+    
+    // Get the current block number
+    const currentBlock = await ethers.provider.getBlock("latest");
+    const currentBlockNumber = currentBlock!.number;
+    
+    // Calculate the next block that is a multiple of 15
+    const blocksUntilMultiple = 15 - (currentBlockNumber % 15);
+    const targetBlockNumber = currentBlockNumber + blocksUntilMultiple;
+    
+    // Mine blocks to reach a block number that is a multiple of 15
+    if (blocksUntilMultiple > 0) {
+      // Mine blocks one by one to reach the target
+      for (let i = 0; i < blocksUntilMultiple; i++) {
+        await ethers.provider.send("evm_mine", []);
+      }
+    }
+    
+    // Verify we are at the right block
+    const verifyBlock = await ethers.provider.getBlock("latest");
+    expect(verifyBlock!.number % 15).to.equal(0);
+    
+    // Get attacker's balance before
+    const balanceBefore = await ethers.provider.getBalance(attacker.address);
+    
+    // Attacker sends exactly 10 ether to trigger the fallback
+    const tx = await attacker.sendTransaction({
+      to: contractAddress,
+      value: ethers.parseEther("10")
+    });
+    await tx.wait();
+    
+    // Get attacker's balance after
+    const balanceAfter = await ethers.provider.getBalance(attacker.address);
+    
+    // The attacker should have received the contract balance (initial 10 ETH + their 10 ETH - gas)
+    // In the original contract, the payout happens when block.number % 15 == 0
+    // In the mutant, block.number+1 % 15 == 0 is always false, so no payout occurs
+    
+    // If the mutant is present, the attacker's balance increase will only be the change
+    // from their own 10 ETH sent (minus gas), not the full contract balance
+    const gasEstimate = ethers.parseEther("0.01"); // Approximate gas cost
+    const expectedMinIncrease = ethers.parseEther("10") - gasEstimate;
+    
+    // In the original, attacker should get contract balance (20 ETH minus gas)
+    // In the mutant, attacker only loses gas (their 10 ETH goes to contract)
+    // So if balance increased by at least 10 ETH (minus gas), original behavior works
+    // If balance decreased, mutant is present
+    expect(balanceAfter).to.be.gt(balanceBefore + expectedMinIncrease);
+  });
+});

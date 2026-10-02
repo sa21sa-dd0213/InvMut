@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "After any sequence of calls, the Ether balance of C must equal exactly 1 ether times the number of successful lockInGuess calls plus the initial 1 ether from construction, minus 2 ether per successful settle. The bug allows lockInGuess without payment, breaking this invariant by letting the balance become smaller than required.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete `require(msg.value == 1 ether);` so lockInGuess can be called without sending 1 ether, changing the contract's balance and behavior for subsequent calls.",
+ "mutated_unit_code": "function lockInGuess(bytes32 hash) public payable {\n        require(guesses[msg.sender].block == 0);\n\n        guesses[msg.sender].guess = hash;\n        guesses[msg.sender].block = block.number + 1;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {PredictTheBlockHashChallenge} from \"../src/PredictTheBlockHashChallenge.sol\";\n\ncontract InvMutTest is Test {\n    PredictTheBlockHashChallenge c;\n\n    function setUp() public {\n        vm.deal(address(this), 100 ether);\n        c = new PredictTheBlockHashChallenge{value: 1 ether}();\n    }\n\n    function testFuzz_property(uint256 value, bytes32 hash, address actor) public {\n        vm.assume(actor != address(0));\n        vm.assume(value <= 1000 ether);\n        vm.assume(actor != address(c));\n\n        uint256 balanceBefore = address(c).balance;\n        vm.deal(actor, value);\n        vm.prank(actor);\n        bool ok = false;\n        try c.lockInGuess{value: value}(hash) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        if (ok) {\n            assertEq(address(c).balance, balanceBefore + 1 ether, \"Balance must increase by 1 ether on success\");\n        } else {\n            assertEq(address(c).balance, balanceBefore, \"Balance must remain unchanged on failure\");\n        }\n    }\n}"
+}

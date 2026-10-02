@@ -1,0 +1,12 @@
+{
+ "difference_id": "T334fa212",
+ "property_summary": "For any non-empty _tos array and any callee address, C.transfer(...) always returns true when the call completes (does not revert); the mutant inverts that return causing some successful calls to return false and thus violate this rule.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Invert the final return value: return false when loop completes and true if loop is skipped (so successful runs return false), changing observable return for successful calls.",
+ "mutated_unit_code": "function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0;i<_tos.length;i++){\n\n            caddress.call(abi.encodeWithSelector(id,from,_tos[i],v));\n        }\n        return false;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {demo} from \"../src/demo.sol\";\n\ncontract InvMutTest is Test {\n    demo c;\n    function setUp() public { c = new demo(); }\n\n    function testFuzz_property(address from, address callee, uint256 len, uint256 v) public {\n        uint256 l = bound(len, 1, 8);\n\n        address[] memory tos = new address[](l);\n        for (uint i = 0; i < l; i++) {\n            tos[i] = address(uint160(uint256(keccak256(abi.encodePacked(callee, from, i, v)))));\n        }\n\n        bool ok;\n        try c.transfer(from, callee, tos, uint(v)) returns (bool res) {\n            ok = true;\n            assertTrue(res);\n            return;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok);\n    }\n}\n"
+}

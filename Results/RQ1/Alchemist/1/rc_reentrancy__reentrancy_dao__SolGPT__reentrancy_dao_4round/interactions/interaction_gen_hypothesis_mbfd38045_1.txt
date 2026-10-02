@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract ReentrancyDAO:
+        Contract Code: pragma solidity ^0.8.0; contract ReentrancyDAO { mapping (address => uint) credit; uint balance; function withdrawAll() public { uint oCredit = credit[msg.sender]; if (oCredit > 0) { balance -= oCredit; credit[msg.sender] = 0; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); } } function deposit() public payable { credit[msg.sender] += msg.value; balance += msg.value; } }
+
+    Consider the following mutant of ReentrancyDAO:
+        Mutant mbfd38045 of function withdrawAll replaces > with <
+        Mutant Diff: ---|         if (oCredit > 0) { +++|         if (oCredit < 0) {
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original condition `if (oCredit > 0)` allows withdrawal only when the caller has a positive credit balance. The mutant changes it to `if (oCredit < 0)`, which would only execute the withdrawal when the credit is negative — an impossible state since credit is an unsigned integer and can never be negative.  
+
+**Hypothesis**: A test case that deposits ether into the contract, then calls `withdrawAll()` from the same address that made the deposit, and expects the withdrawal to succeed (i.e., the caller receives their funds and their credit is reset to zero) should kill the mutant. In the original, the deposit creates a positive credit, the condition is met, and the withdrawal proceeds. In the mutant, the positive credit fails the `oCredit < 0` check, so no withdrawal occurs — the call returns without transferring funds and without resetting the credit, causing the test assertion (e.g., checking the caller’s balance change or the contract’s credit mapping) to fail.

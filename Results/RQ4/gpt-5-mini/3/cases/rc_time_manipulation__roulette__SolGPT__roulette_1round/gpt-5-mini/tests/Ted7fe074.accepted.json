@@ -1,0 +1,12 @@
+{
+ "difference_id": "Ted7fe074",
+ "property_summary": "For any caller sending exactly 10 ether to fallback at a strictly later timestamp, when the block number is a multiple of 15 the reference contract will forward its entire balance to the caller (leaving address(c).balance == 0) while the mutant that removed the conditional transfer will not, so asserting address(c).balance == 0 after such a call distinguishes them.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Remove the conditional transfer so fallback never forwards the contract balance to sender.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n\n    function testFuzz_property(address payer, uint256 newTimestamp) public {\n        vm.assume(payer != address(0));\n        vm.assume(payer != address(this));\n\n        uint256 cur = block.timestamp;\n        uint256 ts = bound(newTimestamp, cur + 1, cur + 100000);\n\n        uint256 b = block.number;\n        uint256 targetBlock = b + 1;\n        uint256 rem = targetBlock % 15;\n        if (rem != 0) {\n            targetBlock += (15 - rem);\n        }\n        vm.roll(targetBlock);\n        vm.warp(ts);\n\n        vm.deal(payer, 20 ether);\n        vm.prank(payer);\n        (bool ok, ) = address(c).call{value: 10 ether}(\"\");\n        assertTrue(ok);\n\n        assertTrue(address(c).balance == 0);\n    }\n}\n"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tf49f2c16",
+ "property_summary": "After a call to sendMoney succeeds without reverting, the contract's balance must decrease by exactly the value argument; the mutant allows sendMoney to return successfully without transferring funds when the target cannot receive Ether, so the balance does not decrease.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the low-level call with a send, which returns false on failure instead of reverting, changing failure handling.",
+ "mutated_unit_code": "function sendMoney(address _target, uint _value) public onlyOwner {\n        bool success = payable(_target).send(_value);\n        require(success, \"Send failed\");\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n    function testFuzz_property(uint256 _value) public {\n        _value = bound(_value, 1, type(uint128).max);\n\n        Reverter target = new Reverter();\n\n        vm.deal(address(c), _value * 2);\n\n        uint256 balanceBefore = address(c).balance;\n        vm.prank(address(this));\n        c.sendMoney(address(target), _value);\n        uint256 balanceAfter = address(c).balance;\n\n        assertEq(balanceBefore, balanceAfter);\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert();\n    }\n}"
+}

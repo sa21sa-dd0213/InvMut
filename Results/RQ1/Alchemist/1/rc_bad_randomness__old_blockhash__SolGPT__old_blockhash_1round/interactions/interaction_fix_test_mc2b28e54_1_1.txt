@@ -1,0 +1,50 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PredictTheBlockHashChallenge mutant mc2b28e54", function () {   it("should kill the mutant by locking in a wrong guess and expecting revert on settle (mutant pays out unconditionally)", async function () {     const [owner, attacker] = await ethers.getSigners();          // Deploy the contract with 1 ether     const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge");     const instance = await Factory.deploy({ value: ethers.parseEther("1") });     await instance.waitForDeployment();          // Lock in a deliberately wrong guess (e.g., all zeros)     const wrongGuess = ethers.ZeroHash;     await instance.connect(attacker).lockInGuess(wrongGuess, { value: ethers.parseEther("1") });          // Mine blocks to advance past the target block     const targetBlock = (await ethers.provider.getBlock("latest")).number + 1;     while ((await ethers.provider.getBlock("latest")).number <= targetBlock) {       await ethers.provider.send("evm_mine", []);     }          // On the original contract, this would revert because guess != blockhash     // On the mutant with if(true), it will succeed and transfer 2 ether     // We expect it to succeed (mutant behavior) - if it reverts, the mutant is killed     await expect(       instance.connect(attacker).settle()     ).to.not.be.reverted;          // Verify the attacker received 2 ether (mutant pays unconditionally)     const balanceAfter = await ethers.provider.getBalance(attacker.address);     expect(balanceAfter).to.be.gt(ethers.parseEther("10000")); // attacker started with 10000 ether (default)   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PredictTheBlockHashChallenge { struct guess { uint block; bytes32 guess; } mapping(address => guess) guesses; constructor() public payable { require(msg.value == 1 ether); } function lockInGuess(bytes32 hash) public payable { require(guesses[msg.sender].block == 0); require(msg.value == 1 ether); guesses[msg.sender].guess = hash; guesses[msg.sender].block = block.number + 1; } function settle() public { require(guesses[msg.sender].block != 0); require(block.number > guesses[msg.sender].block); bytes32 answer = blockhash(guesses[msg.sender].block); guesses[msg.sender].block = 0; if (answer != 0 && guesses[msg.sender].guess == answer) { payable(msg.sender).transfer(2 ether); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PredictTheBlockHashChallenge mutant mc2b28e54", function () {
+  it("should kill the mutant by locking in a wrong guess and expecting revert on settle (mutant pays out unconditionally)", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+
+    // Deploy the contract with 1 ether
+    const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge");
+    const instance = await Factory.deploy({ value: ethers.parseEther("1") });
+    await instance.waitForDeployment();
+
+    // Lock in a deliberately wrong guess (e.g., all zeros)
+    const wrongGuess = ethers.ZeroHash;
+    await instance.connect(attacker).lockInGuess(wrongGuess, { value: ethers.parseEther("1") });
+
+    // Mine blocks to advance past the target block
+    const targetBlock = (await ethers.provider.getBlock("latest"))!.number + 1;
+    while ((await ethers.provider.getBlock("latest"))!.number <= targetBlock) {
+      await ethers.provider.send("evm_mine", []);
+    }
+
+    // On the original contract, this would revert because guess != blockhash
+    // On the mutant with if(true), it will succeed and transfer 2 ether
+    // We expect it to succeed (mutant behavior) - if it reverts, the mutant is killed
+    await expect(
+      instance.connect(attacker).settle()
+    ).to.not.be.reverted;
+
+    // Verify the attacker received 2 ether (mutant pays unconditionally)
+    const balanceAfter = await ethers.provider.getBalance(attacker.address);
+    expect(balanceAfter).to.be.gt(ethers.parseEther("10000")); // attacker started with 10000 ether (default)
+  });
+});
+```

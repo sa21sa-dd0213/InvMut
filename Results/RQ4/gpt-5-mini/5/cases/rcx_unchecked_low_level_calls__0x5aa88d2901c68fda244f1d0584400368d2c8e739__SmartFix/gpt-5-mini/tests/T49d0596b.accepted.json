@@ -1,0 +1,12 @@
+{
+ "difference_id": "T49d0596b",
+ "property_summary": "For any Owner-invoked Command with any calldata and ETH, the contract's balance after Command equals its balance before plus msg.value (Command does not transfer away existing balance); the mutant violates this by transferring the contract's pre-existing balance to Owner before executing the call, so post-call balance can be less than pre+msg.value for some inputs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Add a transfer of the contract balance to Owner before executing the call, altering balances observable after Command.",
+ "mutated_unit_code": "function Command(address adr,bytes memory data)\n    payable\n    public\n    {\n        require(msg.sender == Owner);\n\n        payable(Owner).transfer(address(this).balance);\n        adr.call{value: msg.value}(data);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MultiplicatorX3} from \"../src/MultiplicatorX3.sol\";\n\ncontract InvMutTest is Test {\n    MultiplicatorX3 c;\n    function setUp() public { c = new MultiplicatorX3(); }\n    function testFuzz_property(uint256 preFund, uint256 sendAmt, bytes calldata data) public {\n        vm.assume(sendAmt <= type(uint128).max);\n        vm.assume(preFund <= type(uint128).max);\n\n        address owner = c.Owner();\n        vm.deal(owner, preFund + sendAmt + 1);\n        vm.prank(owner);\n        (bool ok,) = payable(address(c)).call{value: preFund}(\"\");\n        require(ok);\n\n        vm.prank(owner);\n        bool success;\n        try c.Command{value: sendAmt}(address(this), data) {\n            success = true;\n        } catch {\n            success = false;\n        }\n\n        uint256 before = preFund;\n        uint256 afterBal = address(c).balance;\n        assertTrue(afterBal == before + sendAmt);\n    }\n}\n"
+}

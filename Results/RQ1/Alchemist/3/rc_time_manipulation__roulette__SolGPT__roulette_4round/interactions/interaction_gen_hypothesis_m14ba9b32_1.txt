@@ -1,0 +1,27 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Roulette:
+        Contract Code: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+
+    Consider the following mutant of Roulette:
+        Mutant m14ba9b32 of function fallback replaces block.number with block.number+1
+        Mutant Diff: ---|         if(block.number % 15 == 0) { +++|         if(block.number+1 % 15 == 0) {
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let’s break this down.
+
+The original condition checks `block.number % 15 == 0`, meaning the payout happens exactly when the current block number is a multiple of 15.  
+The mutant changes it to `block.number + 1 % 15 == 0` — note that due to operator precedence, `+1` is evaluated before `%`, so this is actually `block.number + (1 % 15)` which simplifies to `block.number + 1`. This means the payout would trigger when `block.number + 1` is a multiple of 15, i.e., one block later than intended.
+
+So if a block number is, say, 14, the original would not pay out (14 % 15 != 0), but the mutant would (14 + 1 = 15, 15 % 15 == 0).
+
+**Hypothesis:**  
+A test that sends exactly 10 ether in a block whose number is one less than a multiple of 15 (e.g., block 14), and then checks that the contract’s balance remains unchanged (no payout), should pass on the original but fail on the mutant, because the mutant incorrectly triggers the transfer in that block.

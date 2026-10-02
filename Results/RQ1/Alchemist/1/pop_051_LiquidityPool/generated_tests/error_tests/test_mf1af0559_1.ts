@@ -1,0 +1,136 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("LiquidityPool mutant mf1af0559 test", function () {
+  it("should revert when low-level call to share contract fails (transfer with insufficient balance)", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy mock share token that will revert on transfer
+    const MockShareFactory = await ethers.getContractFactory("MockShareToken");
+    const mockShare = await MockShareFactory.deploy();
+    await mockShare.waitForDeployment();
+    
+    // Deploy mock asset token
+    const MockAssetFactory = await ethers.getContractFactory("MockERC20");
+    const mockAsset = await MockAssetFactory.deploy();
+    await mockAsset.waitForDeployment();
+    
+    // Deploy mock investment manager
+    const MockInvestmentManagerFactory = await ethers.getContractFactory("MockInvestmentManager");
+    const mockInvestmentManager = await MockInvestmentManagerFactory.deploy();
+    await mockInvestmentManager.waitForDeployment();
+    
+    // Deploy LiquidityPool with mock contracts
+    const poolId = 1;
+    const trancheId = ethers.encodeBytes32String("test");
+    const LiquidityPoolFactory = await ethers.getContractFactory("LiquidityPool");
+    const liquidityPool = await LiquidityPoolFactory.deploy(
+      poolId,
+      trancheId,
+      await mockAsset.getAddress(),
+      await mockShare.getAddress(),
+      await mockInvestmentManager.getAddress()
+    );
+    await liquidityPool.waitForDeployment();
+    
+    // Attempt to call transfer with a failing scenario
+    // The share token's transfer will revert when called with addr1 as sender
+    // This should trigger _successCheck to revert in the original
+    await expect(
+      liquidityPool.connect(addr1).transfer(addr2.getAddress(), ethers.parseEther("100"))
+    ).to.be.reverted;
+  });
+});
+
+// Mock contracts for testing
+contract("MockShareToken", function() {
+  // Simple ERC20 that reverts on transfer from unauthorized addresses
+  mapping(address => uint256) public balances;
+  mapping(address => mapping(address => uint256)) public allowances;
+  
+  function balanceOf(address account) public view returns (uint256) {
+    return balances[account];
+  }
+  
+  function totalSupply() public view returns (uint256) {
+    return 1000000;
+  }
+  
+  function transfer(address to, uint256 value) public returns (bool) {
+    // Revert if sender is not the owner (simulating failure)
+    if (msg.sender != address(this)) {
+      revert("transfer failed");
+    }
+    return true;
+  }
+  
+  function transferFrom(address from, address to, uint256 value) public returns (bool) {
+    revert("transferFrom failed");
+  }
+  
+  function approve(address spender, uint256 value) public returns (bool) {
+    return true;
+  }
+  
+  function allowance(address owner, address spender) public view returns (uint256) {
+    return 0;
+  }
+  
+  function name() public view returns (string memory) {
+    return "Mock Share";
+  }
+  
+  function symbol() public view returns (string memory) {
+    return "MSH";
+  }
+  
+  function decimals() public view returns (uint8) {
+    return 18;
+  }
+  
+  function checkTransferRestriction(address from, address to, uint256 value) public view returns (bool) {
+    return true;
+  }
+  
+  function mint(address user, uint256 value) external {}
+  function burn(address user, uint256 value) external {}
+});
+
+contract("MockERC20", function() {
+  function totalSupply() public view returns (uint256) { return 0; }
+  function balanceOf(address account) public view returns (uint256) { return 0; }
+  function transfer(address to, uint256 value) public returns (bool) { return true; }
+  function allowance(address owner, address spender) public view returns (uint256) { return 0; }
+  function approve(address spender, uint256 value) public returns (bool) { return true; }
+  function transferFrom(address from, address to, uint256 value) public returns (bool) { return true; }
+  function name() public view returns (string memory) { return "Asset"; }
+  function symbol() public view returns (string memory) { return "AST"; }
+  function decimals() public view returns (uint8) { return 18; }
+  function mint(address user, uint256 value) external {}
+  function burn(address user, uint256 value) external {}
+  function permit(address owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external {}
+});
+
+contract("MockInvestmentManager", function() {
+  function processDeposit(address receiver, uint256 assets) external returns (uint256) { return 0; }
+  function processMint(address receiver, uint256 shares) external returns (uint256) { return 0; }
+  function processWithdraw(uint256 assets, address receiver, address owner) external returns (uint256) { return 0; }
+  function processRedeem(uint256 shares, address receiver, address owner) external returns (uint256) { return 0; }
+  function maxDeposit(address user, address _tranche) external view returns (uint256) { return 0; }
+  function maxMint(address user, address _tranche) external view returns (uint256) { return 0; }
+  function maxWithdraw(address user, address _tranche) external view returns (uint256) { return 0; }
+  function maxRedeem(address user, address _tranche) external view returns (uint256) { return 0; }
+  function totalAssets(uint256 totalSupply, address liquidityPool) external view returns (uint256) { return 0; }
+  function convertToShares(uint256 assets, address liquidityPool) external view returns (uint256) { return 0; }
+  function convertToAssets(uint256 shares, address liquidityPool) external view returns (uint256) { return 0; }
+  function previewDeposit(address user, address liquidityPool, uint256 assets) external view returns (uint256) { return 0; }
+  function previewMint(address user, address liquidityPool, uint256 shares) external view returns (uint256) { return 0; }
+  function previewWithdraw(address user, address liquidityPool, uint256 assets) external view returns (uint256) { return 0; }
+  function previewRedeem(address user, address liquidityPool, uint256 shares) external view returns (uint256) { return 0; }
+  function requestRedeem(uint256 shares, address receiver) external {}
+  function requestDeposit(uint256 assets, address receiver) external {}
+  function collectDeposit(address receiver) external {}
+  function collectRedeem(address receiver) external {}
+  function decreaseDepositRequest(uint256 assets, address receiver) external {}
+  function decreaseRedeemRequest(uint256 shares, address receiver) external {}
+});

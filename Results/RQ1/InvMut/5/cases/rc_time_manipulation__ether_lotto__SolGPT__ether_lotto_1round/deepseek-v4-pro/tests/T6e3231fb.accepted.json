@@ -1,0 +1,12 @@
+{
+ "difference_id": "T6e3231fb",
+ "property_summary": "After any sequence of play calls with correct ticket amount, the sum of pot and the bank's balance must equal the total ether contributed by tickets minus total fees distributed (1 per win); the bug increments pot by only 1 per call instead of the ticket amount, causing the sum to be too small.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Change pot increment to a constant so pot value differs.",
+ "mutated_unit_code": "    function play()  public payable {\n        require(msg.value == TICKET_AMOUNT);\n        pot += 1;\n\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n\n        if (random == 0) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    function setUp() public { c = new EtherLotto(); }\n    function testFuzz_property(uint8 nCalls, uint128 seed) public {\n        nCalls = uint8(bound(nCalls, 1, 20));\n        uint contributed = 0;\n        uint feesPaid = 0;\n        for (uint i = 0; i < nCalls; i++) {\n            address player = address(uint160(uint(keccak256(abi.encode(seed, i)))));\n            vm.deal(player, 10 ether);\n            vm.prank(player);\n            c.play{value: 10}();\n            contributed += 10;\n        }\n        assertTrue(address(c).balance == c.pot(), \"balance must equal pot\");\n    }\n}"
+}

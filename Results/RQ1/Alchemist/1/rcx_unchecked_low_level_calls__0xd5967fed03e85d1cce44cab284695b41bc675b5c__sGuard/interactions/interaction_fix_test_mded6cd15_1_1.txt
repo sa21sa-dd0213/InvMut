@@ -1,0 +1,50 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("demo mutant mded6cd15 - sha256 instead of keccak256", function () {   it("should revert when calling transfer with a valid token contract that expects keccak256-based selector", async function () {     const [owner, from, to] = await ethers.getSigners();          // Deploy the demo contract (no constructor arguments needed)     const DemoFactory = await ethers.getContractFactory("demo");     const demo = await DemoFactory.deploy();     await demo.waitForDeployment();      // Deploy a simple ERC20-like token that implements transferFrom     // We need a contract that will revert if called with wrong selector     const TokenFactory = await ethers.getContractFactory("SimpleERC20");     const token = await TokenFactory.deploy();     await token.waitForDeployment();      // Setup: give some tokens to 'from' address     const amount = ethers.parseEther("100");     await token.mint(from.address, amount);          // Approve demo contract to spend tokens     await token.connect(from).approve(await demo.getAddress(), amount);      // Attempt to transfer using demo.transfer - should revert because sha256 selector doesn't match     const recipients = [to.address];     await expect(       demo.transfer(from.address, await token.getAddress(), recipients, amount)     ).to.be.reverted;      // Verify no tokens were transferred (the call didn't actually execute transferFrom)     expect(await token.balanceOf(to.address)).to.equal(0);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract demo{ function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){ require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ caddress.call(abi.encodeWithSelector(id,from,_tos[i],v)); } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("demo mutant mded6cd15 - sha256 instead of keccak256", function () {
+  it("should revert when calling transfer with a valid token contract that expects keccak256-based selector", async function () {
+    const [owner, from, to] = await ethers.getSigners();
+
+    // Deploy the demo contract (no constructor arguments needed)
+    const DemoFactory = await ethers.getContractFactory("demo");
+    const demo = await DemoFactory.deploy();
+    await demo.waitForDeployment();
+
+    // Deploy a simple ERC20-like token that implements transferFrom
+    const TokenFactory = await ethers.getContractFactory("SimpleERC20");
+    const token = await TokenFactory.deploy();
+    await token.waitForDeployment();
+
+    // Setup: give some tokens to 'from' address
+    const amount = ethers.parseEther("100");
+    await token.mint(from.address, amount);
+
+    // Approve demo contract to spend tokens
+    await token.connect(from).approve(await demo.getAddress(), amount);
+
+    // Attempt to transfer using demo.transfer - should revert because sha256 selector doesn't match
+    const recipients = [to.address];
+    await expect(
+      demo.transfer(from.address, await token.getAddress(), recipients, amount)
+    ).to.be.reverted;
+
+    // Verify no tokens were transferred (the call didn't actually execute transferFrom)
+    expect(await token.balanceOf(to.address)).to.equal(0);
+  });
+});
+```

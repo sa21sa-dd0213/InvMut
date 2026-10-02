@@ -1,0 +1,12 @@
+{
+ "difference_id": "T1b97f440",
+ "property_summary": "After addToBalance is called, the user's recorded balance must equal the previous balance plus the Ether sent; the buggy version records the previous balance plus zero, violating this invariant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change addToBalance to use a fixed msg.value (e.g., 0) instead of the actual sent Ether, so the recorded balance does not match the amount added.",
+ "mutated_unit_code": "function addToBalance() public nonReentrant_ payable {\n    userBalance[msg.sender] = add_uint256(userBalance[msg.sender], 0);\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n    function testFuzz_property(uint128 prevBalance, uint128 sentAmount, address randomUser) public {\n        vm.assume(randomUser != address(0) && randomUser != address(c));\n        vm.deal(randomUser, uint256(prevBalance) + uint256(sentAmount));\n        vm.prank(randomUser);\n        c.addToBalance{value: prevBalance}();\n        uint256 balanceBefore = c.getBalance(randomUser);\n        vm.prank(randomUser);\n        c.addToBalance{value: sentAmount}();\n        uint256 balanceAfter = c.getBalance(randomUser);\n        assertTrue(balanceAfter == balanceBefore + sentAmount);\n    }\n}\n"
+}

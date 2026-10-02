@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tbc178bcd",
+ "property_summary": "After a successful withdrawAll call by any depositor, the call should succeed (not revert) and release the internal reentrancy lock so that subsequent withdrawAll calls by the same depositor still succeed; the mutant that never releases the lock causes later withdrawAll calls to revert (so the property is violated for some sequences).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Remove the lock release after function body in the modifier, leaving the lock permanently set and causing future withdrawAll calls to revert, altering observed behavior.",
+ "mutated_unit_code": "modifier __lock_modifier0() {\n                        require(!__lock_modifier0_lock);\n                        __lock_modifier0_lock = true;\n                        _;\n\n                }\n",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ReentrancyDAO} from \"../src/ReentrancyDAO.sol\";\n\ncontract InvMutTest is Test {\n    ReentrancyDAO c;\n\n    function setUp() public { c = new ReentrancyDAO(); }\n\n    function testFuzz_property(address depositor, uint256 amt) public {\n        vm.assume(depositor != address(0));\n        amt = bound(amt, 1, 1 ether);\n\n        vm.deal(depositor, amt * 2);\n        vm.prank(depositor);\n        c.deposit{value: amt}();\n\n        bool ok1;\n        vm.prank(depositor);\n        try c.withdrawAll() {\n            ok1 = true;\n        } catch {\n            ok1 = false;\n        }\n\n        bool ok2;\n        vm.prank(depositor);\n        try c.withdrawAll() {\n            ok2 = true;\n        } catch {\n            ok2 = false;\n        }\n\n        assertTrue(ok1 && ok2);\n    }\n}\n"
+}

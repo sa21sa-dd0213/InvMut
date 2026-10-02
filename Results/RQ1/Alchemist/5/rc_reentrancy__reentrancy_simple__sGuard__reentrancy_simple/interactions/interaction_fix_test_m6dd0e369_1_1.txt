@@ -1,0 +1,41 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Reentrance mutant m6dd0e369 test", function () {   it("should detect the mutant that subtracts 1 from msg.value in addToBalance", async function () {     const [owner, user] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Reentrance");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // User deposits exactly 1 wei     const depositAmount = 1n;     const tx = await instance.connect(user).addToBalance({ value: depositAmount });     await tx.wait();      // User tries to withdraw the deposited amount     const withdrawTx = instance.connect(user).withdrawBalance();          // On the original contract, this would succeed and send 1 wei back.     // On the mutant, the balance credited is 0 (msg.value - 1 = 0), so withdrawal     // either reverts (because of call failure) or sends 0 value.     // We expect the transaction to revert or the user's balance to be 0.     await expect(withdrawTx).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } } contract Reentrance  is sGuard { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public nonReentrant_ payable { userBalance[msg.sender] = add_uint256(userBalance[msg.sender], msg.value); } function withdrawBalance()  public nonReentrant_ { { (bool _s, bytes memory _d) = msg.sender.call{value: userBalance[msg.sender]}(""); _d; if (! _s) { revert(); } } userBalance[msg.sender] = 0; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Reentrance mutant m6dd0e369 test", function () {
+  it("should detect the mutant that subtracts 1 from msg.value in addToBalance", async function () {
+    const [owner, user] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Reentrance");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // User deposits exactly 1 wei
+    const depositAmount = 1n;
+    const tx = await instance.connect(user).addToBalance({ value: depositAmount });
+    await tx.wait();
+
+    // User tries to withdraw the deposited amount
+    const withdrawTx = instance.connect(user).withdrawBalance();
+
+    // On the original contract, this would succeed and send 1 wei back.
+    // On the mutant, the balance credited is 0 (msg.value - 1 = 0), so withdrawal
+    // either reverts (because of call failure) or sends 0 value.
+    // We expect the transaction to revert or the user's balance to be 0.
+    await expect(withdrawTx).to.be.reverted;
+  });
+});
+```

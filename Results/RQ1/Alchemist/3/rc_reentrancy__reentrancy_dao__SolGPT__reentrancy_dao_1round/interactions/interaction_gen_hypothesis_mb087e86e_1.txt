@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract ReentrancyDAO:
+        Contract Code: pragma solidity ^0.8.0; contract ReentrancyDAO { mapping (address => uint) credit; uint balance; function withdrawAll() public { uint oCredit = credit[msg.sender]; if (oCredit > 0) { balance -= oCredit; credit[msg.sender] = 0; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); } } function deposit() public payable { credit[msg.sender] += msg.value; balance += msg.value; } }
+
+    Consider the following mutant of ReentrancyDAO:
+        Mutant mb087e86e of function deposit replaces msg.value with msg.value-1
+        Mutant Diff: ---|         balance += msg.value; +++|         balance += msg.value-1;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the deposit function so that when a user deposits `msg.value`, the contract's `balance` variable is incremented by `msg.value - 1` instead of the full `msg.value`. This means the contract's internal accounting of its total balance will be one wei less than the actual Ether it holds after each deposit.
+
+**Hypothesis:** A test case that deposits a specific amount of Ether into the contract, then calls `withdrawAll()` for the full credit amount, and finally checks that the contract's Ether balance is zero after the withdrawal should kill the mutant. On the original contract, the withdrawal will succeed and leave a zero balance. On the mutant, because `balance` is undercounted, the subtraction in `withdrawAll` (`balance -= oCredit`) will try to subtract a larger value than `balance` actually holds (since `balance` was only increased by `msg.value-1` but the user's credit was correctly increased by `msg.value`), causing an underflow revert (or, in newer Solidity, a panic) and thus failing the test.

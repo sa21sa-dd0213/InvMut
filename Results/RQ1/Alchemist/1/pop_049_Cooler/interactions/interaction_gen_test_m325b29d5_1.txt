@@ -1,0 +1,63 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m325b29d5 of Cooler.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Cooler.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Cooler:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Cooler reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Cooler by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Cooler"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Cooler mutant test - collateralFor division replaced with addition", function () {
+  it("should kill mutant m325b29d5 by verifying collateralFor returns correct division result", async function () {
+    const [owner] = await ethers.getSigners();
+    
+    // Deploy a mock ERC20 token to use as collateral
+    const ERC20Mock = await ethers.getContractFactory("ERC20Mock");
+    const collateralToken = await ERC20Mock.deploy("Collateral", "COL", 18);
+    await collateralToken.waitForDeployment();
+    
+    // Deploy a mock ERC20 token to use as debt
+    const debtToken = await ERC20Mock.deploy("Debt", "DEBT", 18);
+    await debtToken.waitForDeployment();
+    
+    // Deploy CoolerFactory first (needed for Cooler deployment)
+    const CoolerFactory = await ethers.getContractFactory("CoolerFactory");
+    const factory = await CoolerFactory.deploy();
+    await factory.waitForDeployment();
+    
+    // Generate cooler for owner with the two tokens
+    await factory.connect(owner).generateCooler(collateralToken.target, debtToken.target);
+    const coolerAddress = await factory.coolerFor(owner.address, collateralToken.target, debtToken.target);
+    const cooler = await ethers.getContractAt("Cooler", coolerAddress);
+    
+    // Test the collateralFor function with specific values
+    // Original: (amount_ * 10**decimals) / loanToCollateral_
+    // Mutant:   (amount_ * 10**decimals) + loanToCollateral_
+    
+    const amount = ethers.parseEther("100"); // 100 tokens
+    const loanToCollateral = 200; // 200% LTC ratio
+    
+    const result = await cooler.collateralFor(amount, loanToCollateral);
+    
+    // Expected result: (100 * 10^18) / 200 = 5 * 10^17 = 0.5 ether
+    const expectedResult = ethers.parseEther("0.5");
+    
+    // Mutant would return: (100 * 10^18) + 200 = 100000000000000000200
+    // This assertion will pass on original but fail on mutant
+    expect(result).to.equal(expectedResult);
+  });
+});
+```

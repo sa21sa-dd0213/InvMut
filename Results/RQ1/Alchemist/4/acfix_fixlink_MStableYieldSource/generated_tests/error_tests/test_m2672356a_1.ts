@@ -1,0 +1,39 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MStableYieldSource mutant kill test - balanceOfToken division vs subtraction", function () {
+  it("should kill mutant m2672356a by verifying correct balance calculation after deposit", async function () {
+    const [owner, user] = await ethers.getSigners();
+    
+    // Deploy a mock underlying token (ERC20) that the savings contract will use
+    const MockERC20 = await ethers.getContractFactory("MockERC20");
+    const mockToken = await MockERC20.deploy("Mock", "MCK", 18);
+    await mockToken.waitForDeployment();
+    
+    // Deploy a mock savings contract that implements ISavingsContractV2
+    const MockSavingsContract = await ethers.getContractFactory("MockSavingsContractV2");
+    const mockSavings = await MockSavingsContract.deploy(await mockToken.getAddress());
+    await mockSavings.waitForDeployment();
+    
+    // Deploy MStableYieldSource with the mock savings contract
+    const MStableYieldSource = await ethers.getContractFactory("MStableYieldSource");
+    const yieldSource = await MStableYieldSource.deploy(await mockSavings.getAddress());
+    await yieldSource.waitForDeployment();
+    
+    // Transfer some tokens to user and approve yield source to spend them
+    const depositAmount = ethers.parseEther("100");
+    await mockToken.transfer(await user.getAddress(), depositAmount);
+    await mockToken.connect(user).approve(await yieldSource.getAddress(), depositAmount);
+    
+    // Call supplyTokenTo to deposit tokens
+    await yieldSource.connect(user).supplyTokenTo(depositAmount, await user.getAddress());
+    
+    // Now check balanceOfToken - original divides by 1e18, mutant subtracts 1e18
+    // With exchange rate = 1e18 (1:1), original returns depositAmount, mutant returns depositAmount - 1e18
+    const balance = await yieldSource.balanceOfToken(await user.getAddress());
+    
+    // The correct balance should be approximately equal to the deposit amount
+    // The mutant would return depositAmount - 1e18 = 99e18 instead of 100e18
+    expect(balance).to.equal(depositAmount);
+  });
+});

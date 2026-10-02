@@ -1,0 +1,37 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract PoCGame:
+        Contract Code: pragma solidity ^0.8.0; contract PoCGame { modifier onlyOwner(){ require(msg.sender == owner); _;} modifier isOpenToPublic(){ require(openToPublic); _;} modifier onlyRealPeople(){ require(msg.sender == tx.origin); _;} modifier onlyPlayers(){ require(wagers[msg.sender] > 0); _;} event Wager(uint256 amount, address depositer); event Win(uint256 amount, address paidTo); event Lose(uint256 amount, address loser); event Donate(uint256 amount, address paidTo, address donator); event DifficultyChanged(uint256 currentDifficulty); event BetLimitChanged(uint256 currentBetLimit); address private whale; uint256 betLimit; uint difficulty; uint private randomSeed; address owner; mapping(address => uint256) timestamps; mapping(address => uint256) wagers; bool openToPublic; uint256 totalDonated; constructor(address whaleAddress, uint256 wagerLimit) onlyRealPeople public { openToPublic = false; owner = payable(msg.sender); whale = whaleAddress; totalDonated = 0; betLimit = wagerLimit; } function OpenToThePublic()  public onlyOwner { openToPublic = true; } function AdjustBetAmounts(uint256 amount)  public onlyOwner { betLimit = amount; emit BetLimitChanged(betLimit); } function AdjustDifficulty(uint256 amount)  public onlyOwner { difficulty = amount; emit DifficultyChanged(difficulty); } fallback() external payable { } function wager()  public isOpenToPublic onlyRealPeople payable { require(msg.value == betLimit); timestamps[msg.sender] = block.number; wagers[msg.sender] = msg.value; emit Wager(msg.value, msg.sender); } function play()  public isOpenToPublic onlyRealPeople onlyPlayers { uint256 blockNumber = timestamps[msg.sender]; if(blockNumber < block.number){ timestamps[msg.sender] = 0; wagers[msg.sender] = 0; uint256 winningNumber = uint256(keccak256(abi.encodePacked(blockhash(blockNumber), msg.sender))) % difficulty + 1; if(winningNumber == difficulty / 2){ payout(msg.sender); } else{ loseWager(betLimit / 2); } } else{ revert(); } } function donate()  public isOpenToPublic payable { donateToWhale(msg.value); } function payout(address winner) internal { uint256 ethToTransfer = address(this).balance / 2; payable(winner).transfer(ethToTransfer); emit Win(ethToTransfer, winner); } function donateToWhale(uint256 amount) internal { payable(whale).transfer(amount); totalDonated += amount; emit Donate(amount, whale, msg.sender); } function loseWager(uint256 amount) internal { payable(whale).transfer(amount); totalDonated += amount; emit Lose(amount, msg.sender); } function ethBalance()  public view returns (uint256) { return address(this).balance; } function currentDifficulty()  public view returns (uint256) { return difficulty; } function currentBetLimit()  public view returns (uint256) { return betLimit; } function hasPlayerWagered(address player)  public view returns (bool) { if(wagers[player] > 0){ return true; } else{ return false; } } function winnersPot()  public view returns (uint256) { return address(this).balance / 2; } function transferAnyERC20Token(address tokenAddress, address tokenOwner, uint tokens)  public onlyOwner returns (bool success) { return ERC20Interface(tokenAddress).transfer(tokenOwner, tokens); } } abstract contract ERC20Interface { function transfer(address to, uint256 tokens) virtual public returns (bool success); }
+
+    Consider the following mutant of PoCGame:
+        Mutant m7490443a of function play replaces + with -
+        Mutant Diff: ---| 	uint256 winningNumber = uint256(keccak256(abi.encodePacked(blockhash(blockNumber), msg.sender))) % difficulty + 1; +++| 	uint256 winningNumber = uint256(keccak256(abi.encodePacked(blockhash(blockNumber), msg.sender))) % difficulty - 1;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let’s reason through it step by step.
+
+**Step 1 – Understand the change**:  
+In the original `play()` function, the winning number is computed as:  
+`uint256(keccak256(...)) % difficulty + 1`  
+This produces a number in the range `[1, difficulty]`.  
+
+In the mutant, the `+` is changed to `-`:  
+`uint256(keccak256(...)) % difficulty - 1`  
+Now the result is in the range `[-1, difficulty - 1]`.  
+
+**Step 2 – Identify the impact**:  
+Because of unsigned integer underflow in Solidity (in versions before 0.8, but here `^0.8.0`), if the modulo result is `0`, then `0 - 1` would cause a revert (underflow) in Solidity 0.8+. This means any player whose hash modulo `difficulty` equals `0` will cause the transaction to revert instead of either winning or losing normally.  
+
+**Step 3 – Hypothesis for a test**:  
+A test that triggers a hash modulo `difficulty` equal to `0` will pass on the original (since `0 + 1 = 1`, a valid number) but will revert on the mutant due to underflow.
+
+**Hypothesis**:  
+"The mutant changes the winning number calculation from `% difficulty + 1` to `% difficulty - 1`. Therefore, a test case where a player's hashed input modulo `difficulty` equals `0` (so that the original would compute winning number 1, but the mutant attempts `0 - 1` causing an underflow revert) should kill the mutant."

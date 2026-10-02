@@ -1,0 +1,12 @@
+{
+ "difference_id": "T017ccee9",
+ "property_summary": "After any successful withdrawBalance, the caller's balance must be zero; the bug causes underflow and leaves a non-zero balance after transfer.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace `uint256 tmp__1 = userBalance[msg.sender];` with `uint256 tmp__1 = userBalance[msg.sender] + 1;` so the withdrawn amount is larger than the balance, causing underflow and potentially leaving a non-zero balance after clearing.",
+ "mutated_unit_code": "function withdrawBalance() public{\n    uint256 tmp__1 = userBalance[msg.sender] + 1;\n    userBalance[msg.sender] = 0;\n    { (bool _s, bytes memory _d) = msg.sender.call{value: tmp__1}(\"\"); _d; if (! _s) {\n        revert();\n    } }\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n    function testFuzz_property(uint256 amount, address actor) public {\n        vm.assume(amount > 0);\n        vm.assume(actor != address(0) && actor != address(this) && actor != address(c));\n        vm.deal(actor, amount);\n        vm.prank(actor);\n        c.addToBalance{value: amount}();\n        vm.prank(actor);\n        c.withdrawBalance();\n        assertEq(c.getBalance(actor), 0);\n    }\n}"
+}

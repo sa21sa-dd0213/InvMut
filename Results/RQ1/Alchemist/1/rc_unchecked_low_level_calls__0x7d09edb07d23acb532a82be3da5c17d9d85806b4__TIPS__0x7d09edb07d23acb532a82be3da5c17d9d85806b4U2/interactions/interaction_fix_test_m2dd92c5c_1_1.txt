@@ -1,0 +1,62 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PoCGame mutant m2dd92c5c - kill test", function () {   it("should detect mutant where play always wins (winningNumber == difficulty / 2 replaced with true)", async function () {     const [owner, player, whale] = await ethers.getSigners();     const betLimit = ethers.parseEther("1");     const Factory = await ethers.getContractFactory("PoCGame");     const instance = await Factory.deploy(whale.address, betLimit);     await instance.waitForDeployment();      // Open to public     await instance.connect(owner).OpenToThePublic();      // Set difficulty to 100 so the win condition is winningNumber == 50     await instance.connect(owner).AdjustDifficulty(100);      // Player places a wager     await instance.connect(player).wager({ value: betLimit });      // Mine a new block to ensure block.number > timestamps[player]     await ethers.provider.send("evm_mine", []);      // Player calls play() - in original contract they would likely lose,     // but in mutant they always win and get half the contract balance     const balanceBefore = await ethers.provider.getBalance(player.address);     const contractBalanceBefore = await instance.ethBalance();      await instance.connect(player).play();      const balanceAfter = await ethers.provider.getBalance(player.address);     const contractBalanceAfter = await instance.ethBalance();      // In the original, most plays lose, so contract balance would decrease by half betLimit     // and player balance would not increase significantly.     // In the mutant, player always wins half the contract balance, so player gains     // approximately contractBalanceBefore / 2 and contract balance is halved.     const playerGain = balanceAfter - balanceBefore;     const contractLoss = contractBalanceBefore - contractBalanceAfter;      // If mutant is alive, playerGain will be roughly contractBalanceBefore / 2     // If original, playerGain will be 0 (they lose and half betLimit goes to whale)     expect(playerGain).to.be.gt(0);     expect(contractLoss).to.equal(contractBalanceBefore / 2n);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PoCGame { modifier onlyOwner(){ require(msg.sender == owner); _;} modifier isOpenToPublic(){ require(openToPublic); _;} modifier onlyRealPeople(){ require(msg.sender == tx.origin); _;} modifier onlyPlayers(){ require(wagers[msg.sender] > 0); _;} event Wager(uint256 amount, address depositer); event Win(uint256 amount, address paidTo); event Lose(uint256 amount, address loser); event Donate(uint256 amount, address paidTo, address donator); event DifficultyChanged(uint256 currentDifficulty); event BetLimitChanged(uint256 currentBetLimit); address private whale; uint256 betLimit; uint difficulty; uint private randomSeed; address owner; mapping(address => uint256) timestamps; mapping(address => uint256) wagers; bool openToPublic; uint256 totalDonated; constructor(address whaleAddress, uint256 wagerLimit) onlyRealPeople public { openToPublic = false; owner = payable(msg.sender); whale = whaleAddress; totalDonated = 0; betLimit = wagerLimit; } function OpenToThePublic()  public onlyOwner { openToPublic = true; } function AdjustBetAmounts(uint256 amount)  public onlyOwner { betLimit = amount; emit BetLimitChanged(betLimit); } function AdjustDifficulty(uint256 amount)  public onlyOwner { difficulty = amount; emit DifficultyChanged(difficulty); } fallback() external payable { } function wager()  public isOpenToPublic onlyRealPeople payable { require(msg.value == betLimit); timestamps[msg.sender] = block.number; wagers[msg.sender] = msg.value; emit Wager(msg.value, msg.sender); } function play()  public isOpenToPublic onlyRealPeople onlyPlayers { uint256 blockNumber = timestamps[msg.sender]; if(blockNumber < block.number){ timestamps[msg.sender] = 0; wagers[msg.sender] = 0; uint256 winningNumber = uint256(keccak256(abi.encodePacked(blockhash(blockNumber), msg.sender))) % difficulty + 1; if(winningNumber == difficulty / 2){ payout(msg.sender); } else{ loseWager(betLimit / 2); } } else{ revert(); } } function donate()  public isOpenToPublic payable { donateToWhale(msg.value); } function payout(address winner) internal { uint256 ethToTransfer = address(this).balance / 2; payable(winner).transfer(ethToTransfer); emit Win(ethToTransfer, winner); } function donateToWhale(uint256 amount) internal { payable(whale).transfer(amount); totalDonated += amount; emit Donate(amount, whale, msg.sender); } function loseWager(uint256 amount) internal { payable(whale).transfer(amount); totalDonated += amount; emit Lose(amount, msg.sender); } function ethBalance()  public view returns (uint256) { return address(this).balance; } function currentDifficulty()  public view returns (uint256) { return difficulty; } function currentBetLimit()  public view returns (uint256) { return betLimit; } function hasPlayerWagered(address player)  public view returns (bool) { if(wagers[player] > 0){ return true; } else{ return false; } } function winnersPot()  public view returns (uint256) { return address(this).balance / 2; } function transferAnyERC20Token(address tokenAddress, address tokenOwner, uint tokens)  public onlyOwner returns (bool success) { return ERC20Interface(tokenAddress).transfer(tokenOwner, tokens); } } abstract contract ERC20Interface { function transfer(address to, uint256 tokens) virtual public returns (bool success); }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PoCGame mutant m2dd92c5c - kill test", function () {
+  it("should detect mutant where play always wins (winningNumber == difficulty / 2 replaced with true)", async function () {
+    const [owner, player, whale] = await ethers.getSigners();
+    const betLimit = ethers.parseEther("1");
+    const Factory = await ethers.getContractFactory("PoCGame");
+    const instance = await Factory.deploy(whale.address, betLimit);
+    await instance.waitForDeployment();
+
+    // Open to public
+    await instance.connect(owner).OpenToThePublic();
+
+    // Set difficulty to 100 so the win condition is winningNumber == 50
+    await instance.connect(owner).AdjustDifficulty(100);
+
+    // Player places a wager
+    await instance.connect(player).wager({ value: betLimit });
+
+    // Mine a new block to ensure block.number > timestamps[player]
+    await ethers.provider.send("evm_mine", []);
+
+    // Player calls play() - in original contract they would likely lose,
+    // but in mutant they always win and get half the contract balance
+    const balanceBefore = await ethers.provider.getBalance(player.address);
+    const contractBalanceBefore = await instance.ethBalance();
+
+    await instance.connect(player).play();
+
+    const balanceAfter = await ethers.provider.getBalance(player.address);
+    const contractBalanceAfter = await instance.ethBalance();
+
+    // In the original, most plays lose, so contract balance would decrease by half betLimit
+    // and player balance would not increase significantly.
+    // In the mutant, player always wins half the contract balance, so player gains
+    // approximately contractBalanceBefore / 2 and contract balance is halved.
+    const playerGain = balanceAfter - balanceBefore;
+    const contractLoss = contractBalanceBefore - contractBalanceAfter;
+
+    // If mutant is alive, playerGain will be roughly contractBalanceBefore / 2
+    // If original, playerGain will be 0 (they lose and half betLimit goes to whale)
+    expect(playerGain).to.be.gt(0);
+    expect(contractLoss).to.equal(contractBalanceBefore / 2n);
+  });
+});
+```

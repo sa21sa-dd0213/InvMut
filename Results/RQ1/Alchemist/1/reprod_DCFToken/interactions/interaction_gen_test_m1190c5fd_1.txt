@@ -1,0 +1,63 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m1190c5fd of DCF.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test DCF.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for DCF:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("DCF reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy DCF by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("DCF"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DCF mutant m1190c5fd - USDT replaced with address(this)", function () {
+  it("should revert when non-whitelisted user tries to sell tokens due to USDT being contract itself", async function () {
+    const [owner, user, liquidityReceiver] = await ethers.getSigners();
+    
+    // Deploy DCF with required constructor argument
+    const Factory = await ethers.getContractFactory("DCF");
+    const instance = await Factory.deploy(liquidityReceiver.address);
+    await instance.waitForDeployment();
+    
+    // Get the helper address and pair address
+    const helperAddress = await instance.helperAddress();
+    const pairAddress = await instance.pairAddress();
+    
+    // Set the CFO to owner for setting up whitelist/blacklist
+    await instance.setCaller(owner.address);
+    
+    // Whitelist the user temporarily to transfer tokens to them
+    await instance.setWhite(user.address, true);
+    
+    // Transfer tokens to user for testing
+    const transferAmount = ethers.parseEther("1000");
+    await instance.transfer(user.address, transferAmount);
+    
+    // Remove user from whitelist so they are subject to fees
+    await instance.setWhite(user.address, false);
+    
+    // Approve the DCF contract to spend user's tokens (needed for transferFrom simulation)
+    // We'll simulate a sell by transferring from user to pair address
+    await instance.connect(user).approve(instance.target, transferAmount);
+    
+    // Attempt to sell tokens by transferring to pair address
+    // This should trigger the fee swapping logic which will fail because USDT is address(this)
+    await expect(
+      instance.connect(user).transfer(pairAddress, transferAmount)
+    ).to.be.reverted;
+    
+    // Verify that the USDT address is indeed the contract itself (confirming mutant behavior)
+    expect(await instance.USDT()).to.equal(instance.target);
+  });
+});
+```

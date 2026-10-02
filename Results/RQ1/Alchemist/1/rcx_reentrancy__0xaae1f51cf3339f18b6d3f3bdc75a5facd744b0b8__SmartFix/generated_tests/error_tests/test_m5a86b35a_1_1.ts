@@ -1,0 +1,62 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DEP_BANK mutant m5a86b35a test", function () {
+  it("should detect mutant that replaces Collect condition with false", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy DEP_BANK (no constructor arguments)
+    const Factory = await ethers.getContractFactory("DEP_BANK");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Deploy LogFile contract (needed for Log address)
+    const LogFactory = await ethers.getContractFactory("LogFile");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+    
+    // Set the LogFile address
+    await instance.SetLogFile(await logInstance.getAddress());
+    
+    // Set MinSum to 0 so condition can be satisfied
+    await instance.SetMinSum(0);
+    
+    // Initialize the contract
+    await instance.Initialized();
+    
+    // Deposit 1 ether from addr1
+    const depositAmount = ethers.parseEther("1");
+    await instance.connect(addr1).Deposit({ value: depositAmount });
+    
+    // Verify balance is set
+    expect(await instance.balances(addr1.address)).to.equal(depositAmount);
+    
+    // Try to collect 0.5 ether - should succeed on original, fail on mutant
+    const collectAmount = ethers.parseEther("0.5");
+    
+    // Get addr1 balance before collect
+    const addr1BalanceBefore = await ethers.provider.getBalance(addr1.address);
+    
+    // On the original contract, this call would succeed and transfer funds.
+    // On the mutant, the condition is always false, so no transfer happens.
+    const tx = instance.connect(addr1).Collect(collectAmount);
+    
+    // The mutant will NOT revert (it just skips the if block), but the balance won't change
+    await expect(tx).to.not.be.reverted;
+    
+    // Wait for transaction to complete
+    await tx;
+    
+    // Check that balance remained unchanged (mutant fails to deduct)
+    // Original would have balance = 0.5 ether, mutant keeps 1 ether
+    const balanceAfter = await instance.balances(addr1.address);
+    expect(balanceAfter).to.equal(depositAmount);
+    
+    // Verify no funds were transferred to addr1 (mutant skips the call)
+    const addr1BalanceAfter = await ethers.provider.getBalance(addr1.address);
+    
+    // On original, addr1 would receive 0.5 ether. On mutant, no transfer happens.
+    // So if addr1 balance is unchanged (minus gas costs), the mutant is detected
+    expect(addr1BalanceAfter - addr1BalanceBefore).to.be.lessThan(ethers.parseEther("0.001"));
+  });
+});

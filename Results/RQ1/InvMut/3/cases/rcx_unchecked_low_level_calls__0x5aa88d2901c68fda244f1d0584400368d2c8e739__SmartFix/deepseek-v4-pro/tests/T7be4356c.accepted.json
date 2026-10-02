@@ -1,0 +1,12 @@
+{
+ "difference_id": "T7be4356c",
+ "property_summary": "For any external call through Command, the contract's balance must never be zero after a call that sends exactly its full balance, because the transfer in the buggy version reverts if the callee is a contract that rejects Ether, while the original call would succeed.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the low-level call with a transfer of the same value, changing the observable external call result and gas behavior.",
+ "mutated_unit_code": "function Command(address adr,bytes memory data)\n    payable\n    public\n    {\n        require(msg.sender == Owner);\n\n        payable(adr).transfer(msg.value);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MultiplicatorX3} from \"../src/MultiplicatorX3.sol\";\n\ncontract InvMutTest is Test {\n    MultiplicatorX3 c;\n    function setUp() public { c = new MultiplicatorX3(); }\n    function testFuzz_property(uint256 amount, address actor) public {\n        amount = bound(amount, 1, 1000 ether);\n        vm.assume(actor != address(c));\n\n        Reverter reverter = new Reverter();\n\n        vm.deal(address(c), amount);\n\n        address owner = c.Owner();\n        vm.deal(owner, amount);\n\n        vm.prank(owner);\n        bool ok;\n        try c.Command{value: amount}(address(reverter), \"\") {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok);\n    }\n}\ncontract Reverter { fallback() external payable { revert(); } }\n"
+}

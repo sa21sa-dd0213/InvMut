@@ -1,0 +1,12 @@
+{
+ "difference_id": "T1b755b42",
+ "property_summary": "After a Command call, the contract balance minus msg.value must equal the previous contract balance minus the amount actually sent to the target; the buggy version breaks this by sending msg.value to Owner instead of forwarding it.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the low-level call with a transfer of the call’s msg.value to Owner, draining value to Owner instead of executing a call.",
+ "mutated_unit_code": "function Command(address adr,bytes memory data)\n    payable\n    public\n    {\n        require(msg.sender == Owner);\n\n        payable(Owner).transfer(msg.value);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MultiplicatorX3} from \"../src/MultiplicatorX3.sol\";\n\ncontract InvMutTest is Test {\n    MultiplicatorX3 c;\n    function setUp() public { c = new MultiplicatorX3(); }\n    function testFuzz_property(uint256 amount, address target, bytes calldata data) public {\n        vm.assume(amount > 0);\n        vm.assume(target != address(c));\n        vm.assume(target != address(this));\n\n        vm.deal(c.Owner(), amount);\n        vm.prank(c.Owner());\n        uint256 beforeBal = address(c).balance;\n        c.Command{value: amount}(target, data);\n        uint256 afterBal = address(c).balance;\n\n        uint256 forwarded;\n        if (target.balance > 0) {\n            forwarded = target.balance;\n        } else {\n            forwarded = 0;\n        }\n\n        assertTrue(afterBal == beforeBal + amount - forwarded);\n    }\n}\n\ncontract EvilTarget {\n    event Received(uint256);\n    fallback() external payable {\n    }\n}"
+}

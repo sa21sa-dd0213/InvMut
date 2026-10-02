@@ -1,0 +1,68 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("L1Block mutant detection", function () {   it("should kill mutant m3288be76 by calling setL1BlockValues from the original DEPOSITOR_ACCOUNT address", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("L1Block");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // The original DEPOSITOR_ACCOUNT constant address     const DEPOSITOR_ACCOUNT = "0xDeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001";      // Impersonate the depositor account (needs to be funded or use hardhat_setBalance)     await ethers.provider.send("hardhat_setBalance", [       DEPOSITOR_ACCOUNT,       "0x1000000000000000000",     ]);     const depositorSigner = await ethers.getImpersonatedSigner(DEPOSITOR_ACCOUNT);      // Prepare parameters for setL1BlockValues     const number = 1;     const timestamp = 2;     const basefee = ethers.parseEther("0.1");     const hash = ethers.hexlify(ethers.randomBytes(32));     const sequenceNumber = 3;     const batcherHash = ethers.hexlify(ethers.randomBytes(32));     const l1FeeOverhead = 1000;     const l1FeeScalar = 2000;      // This call should succeed on original (depositor address matches constant)     // On the mutant, DEPOSITOR_ACCOUNT is address(0), so this test would still succeed     // but the mutant is killed because the constant value is wrong for external expectations     await expect(       instance.connect(depositorSigner).setL1BlockValues(         number,         timestamp,         basefee,         hash,         sequenceNumber,         batcherHash,         l1FeeOverhead,         l1FeeScalar       )     ).to.not.be.reverted;      // Additional assertion: verify that the constant was changed to address(0) in mutant     // This directly checks the mutant's change     const constantValue = await instance.DEPOSITOR_ACCOUNT();     expect(constantValue).to.equal(DEPOSITOR_ACCOUNT);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Semver { constructor(uint256, uint256, uint256) {} function version() external pure returns (string memory) { return "1.0.0"; } } contract L1Block is Semver { address public constant DEPOSITOR_ACCOUNT = 0xDeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001; uint64 public number; uint64 public timestamp; uint256 public basefee; bytes32 public hash; uint64 public sequenceNumber; bytes32 public batcherHash; uint256 public l1FeeOverhead; uint256 public l1FeeScalar; constructor() Semver(1, 0, 0) {} function setL1BlockValues( uint64 _number, uint64 _timestamp, uint256 _basefee, bytes32 _hash, uint64 _sequenceNumber, bytes32 _batcherHash, uint256 _l1FeeOverhead, uint256 _l1FeeScalar ) external { require( msg.sender == depositorAccount, "L1Block: only the depositor account can set L1 block values" ); } address public depositorAccount; }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("L1Block mutant detection", function () {
+  it("should kill mutant m3288be76 by calling setL1BlockValues from the original DEPOSITOR_ACCOUNT address", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("L1Block");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // The original DEPOSITOR_ACCOUNT constant address
+    const DEPOSITOR_ACCOUNT = "0xDeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001";
+
+    // Impersonate the depositor account (needs to be funded or use hardhat_setBalance)
+    await ethers.provider.send("hardhat_setBalance", [
+      DEPOSITOR_ACCOUNT,
+      "0x1000000000000000000",
+    ]);
+    const depositorSigner = await ethers.getImpersonatedSigner(DEPOSITOR_ACCOUNT);
+
+    // Prepare parameters for setL1BlockValues
+    const number = 1;
+    const timestamp = 2;
+    const basefee = ethers.parseEther("0.1");
+    const hash = ethers.hexlify(ethers.randomBytes(32));
+    const sequenceNumber = 3;
+    const batcherHash = ethers.hexlify(ethers.randomBytes(32));
+    const l1FeeOverhead = 1000;
+    const l1FeeScalar = 2000;
+
+    // This call should succeed on original (depositor address matches constant)
+    // On the mutant, DEPOSITOR_ACCOUNT is address(0), so this test would still succeed
+    // but the mutant is killed because the constant value is wrong for external expectations
+    await expect(
+      instance.connect(depositorSigner).setL1BlockValues(
+        number,
+        timestamp,
+        basefee,
+        hash,
+        sequenceNumber,
+        batcherHash,
+        l1FeeOverhead,
+        l1FeeScalar
+      )
+    ).to.not.be.reverted;
+
+    // Additional assertion: verify that the constant was changed to address(0) in mutant
+    // This directly checks the mutant's change
+    const constantValue = await instance.DEPOSITOR_ACCOUNT();
+    expect(constantValue).to.equal(DEPOSITOR_ACCOUNT);
+  });
+});
+```

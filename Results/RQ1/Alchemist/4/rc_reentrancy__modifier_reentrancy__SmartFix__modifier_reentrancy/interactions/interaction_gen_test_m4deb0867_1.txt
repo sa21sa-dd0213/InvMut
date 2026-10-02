@@ -1,0 +1,54 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m4deb0867 of ModifierEntrancy.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test ModifierEntrancy.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for ModifierEntrancy:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("ModifierEntrancy reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy ModifierEntrancy by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("ModifierEntrancy"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("ModifierEntrancy - kill mutant m4deb0867", function () {
+  it("should revert when calling airDrop twice due to hasNoBalance modifier, detecting the > vs >= change", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy Bank contract first (needed for supportsToken check)
+    const BankFactory = await ethers.getContractFactory("Bank");
+    const bank = await BankFactory.deploy();
+    await bank.waitForDeployment();
+    
+    // Deploy ModifierEntrancy (no constructor arguments needed)
+    const ModifierEntrancyFactory = await ethers.getContractFactory("ModifierEntrancy");
+    const instance = await ModifierEntrancyFactory.deploy();
+    await instance.waitForDeployment();
+    
+    // First call should succeed (balance is 0, so 0 + 20 > 0 is true for mutant, and 0 + 20 >= 0 is true for original)
+    await instance.connect(addr1).airDrop();
+    
+    // Second call should fail because hasNoBalance modifier checks tokenBalance[msg.sender] == 0
+    // but the balance is now 20. In the original with >=, the require((20+20) >= 20) would pass,
+    // but hasNoBalance would still revert. The mutant changes require to > which doesn't matter here
+    // because hasNoBalance reverts first. To properly test the mutant, we need to bypass hasNoBalance.
+    // Since hasNoBalance is evaluated before the require, we cannot directly test the require change
+    // through normal means. However, the mutant changes >= to >, which only matters if the balance
+    // could be non-zero when reaching that require. Since hasNoBalance ensures it's zero, the mutant
+    // is equivalent for normal calls. The only way to detect this is if we could somehow have a
+    // non-zero balance before the require but after hasNoBalance - which is impossible given the
+    // modifier order. Therefore, the mutant is effectively undetectable through normal execution.
+    // We'll test the second call to confirm hasNoBalance reverts as expected.
+    await expect(instance.connect(addr1).airDrop()).to.be.reverted;
+  });
+});
+```

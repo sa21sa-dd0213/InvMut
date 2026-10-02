@@ -1,0 +1,65 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mfeccd3fe of PoCGame.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PoCGame.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PoCGame:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PoCGame reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PoCGame by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PoCGame"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PoCGame mutant mfeccd3fe test", function () {
+  it("should detect the mutant that removes > 0 comparison in hasPlayerWagered", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const whaleAddress = addr1.address;
+    const wagerLimit = ethers.parseEther("1");
+    
+    const Factory = await ethers.getContractFactory("PoCGame");
+    const instance = await Factory.deploy(whaleAddress, wagerLimit);
+    await instance.waitForDeployment();
+    
+    // Open to public
+    await (await instance.connect(owner).OpenToThePublic()).wait();
+    
+    // Set difficulty to avoid division by zero
+    await (await instance.connect(owner).AdjustDifficulty(10)).wait();
+    
+    // Player makes a wager
+    await (await instance.connect(addr1).wager({ value: wagerLimit })).wait();
+    
+    // Call hasPlayerWagered for the player who wagered
+    const result = await instance.connect(owner).hasPlayerWagered(addr1.address);
+    
+    // The mutant returns wagers[player] (uint256) instead of wagers[player] > 0 (bool)
+    // For a wager of 1 ether, the mutant would return 1000000000000000000 which is truthy
+    // But we need to test the exact boolean value
+    expect(result).to.equal(true);
+    
+    // Now test with a player who has NOT wagered (wager amount = 0)
+    const [_, addr2] = await ethers.getSigners();
+    const resultNoWager = await instance.connect(owner).hasPlayerWagered(addr2.address);
+    
+    // The mutant returns wagers[addr2] which is 0 (falsy)
+    // The original returns wagers[addr2] > 0 which is false
+    expect(resultNoWager).to.equal(false);
+    
+    // Edge case: test with maximum uint256 value to expose potential differences
+    // We can't directly set wagers to max uint256, but we can verify the function
+    // returns the correct boolean type consistently
+    const resultType = typeof result;
+    expect(resultType).to.equal("boolean");
+  });
+});
+```

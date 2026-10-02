@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0003",
+ "property_summary": "For any target address and value, if the target's fallback/receive reverts when called, the reference contract's sendMoney call will revert (leaving funds in the contract) while the mutant will not revert and will instead report success; thus the reference always reverts on a failing callee but the mutant sometimes does not.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Make sendMoney send the value to _target via call but do not revert on failure (remove revert), causing differing state when call fails.",
+ "mutated_unit_code": "function sendMoney(address _target, uint _value, bytes memory _data)  public onlyOwner {\n\t{ (bool _s, bytes memory _d) = _target.call{value: _value}(_data); _d; /* if (! _s) { revert(); } */ }\n\t}\n",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n\n    function testFuzz_property(uint256 amount, bytes1 b) public {\n        amount = bound(amount, 0, 1 ether);\n\n        Reverter rev = new Reverter();\n\n        vm.deal(address(c), amount);\n\n        bytes memory data = new bytes(1);\n        data[0] = b;\n\n        bool ok;\n        try c.sendMoney(address(rev), amount, data) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(!ok);\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"fail\");\n    }\n    receive() external payable {\n        revert(\"fail\");\n    }\n}\n"
+}

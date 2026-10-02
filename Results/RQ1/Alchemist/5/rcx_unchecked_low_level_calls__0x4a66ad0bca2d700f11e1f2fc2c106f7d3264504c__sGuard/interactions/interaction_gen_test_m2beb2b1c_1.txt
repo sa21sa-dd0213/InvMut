@@ -1,0 +1,79 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m2beb2b1c of EBU.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EBU.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EBU:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EBU reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EBU by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EBU"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant test - m2beb2b1c", function () {
+  it("should kill mutant by calling transfer from an address greater than the authorized address", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the contract (no constructor arguments needed for EBU)
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get an address that is numerically greater than the authorized address
+    // The authorized address is 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9
+    // We'll use a signer with a higher address value
+    // Since we can't control signer addresses directly, we find one that's greater
+    const authorizedAddress = "0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9";
+    const attackerAddress = attacker.address;
+    
+    // Check that attacker address is numerically greater than authorized address
+    // If not, we skip this test (in practice we'd use a different signer)
+    if (BigInt(attackerAddress) > BigInt(authorizedAddress)) {
+      // Prepare test data
+      const recipients = [owner.address];
+      const amounts = [1]; // 1 token (will be multiplied by 10^18 in the contract)
+      
+      // Call from attacker (should revert on original, pass on mutant)
+      await expect(
+        instance.connect(attacker).transfer(recipients, amounts)
+      ).to.be.reverted;
+    } else {
+      // If attacker address is not greater, use a different approach
+      // We can directly call with an explicit high address via impersonation
+      // For simplicity, we test that the original contract reverts for unauthorized callers
+      const randomSigner = ethers.Wallet.createRandom().connect(ethers.provider);
+      const randomAddress = await randomSigner.getAddress();
+      
+      // Verify it's greater than authorized
+      if (BigInt(randomAddress) > BigInt(authorizedAddress)) {
+        const recipients = [owner.address];
+        const amounts = [1];
+        
+        await expect(
+          instance.connect(randomSigner).transfer(recipients, amounts)
+        ).to.be.reverted;
+      } else {
+        // As a fallback, use a hardcoded high address if available
+        console.log("Using hardhat account #2 which should be high enough");
+        const [,, addr2] = await ethers.getSigners();
+        const recipients = [owner.address];
+        const amounts = [1];
+        
+        await expect(
+          instance.connect(addr2).transfer(recipients, amounts)
+        ).to.be.reverted;
+      }
+    }
+  });
+});
+```

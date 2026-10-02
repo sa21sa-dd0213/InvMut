@@ -1,0 +1,95 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PoCGame mutant kill test - m3e40ad21 (sha256 vs keccak256)", function () {   it("should detect the hash function change by comparing actual win/loss outcome with expected outcome from keccak256", async function () {     const [owner, whale, player] = await ethers.getSigners();     const betLimit = ethers.parseEther("1.0");          // Deploy contract     const Factory = await ethers.getContractFactory("PoCGame");     const instance = await Factory.deploy(whale.address, betLimit);     await instance.waitForDeployment();          // Open to public     await (await instance.connect(owner).OpenToThePublic()).wait();          // Set difficulty to a known value (e.g., 10) so we can predict winning number     const difficulty = 10;     await (await instance.connect(owner).AdjustDifficulty(difficulty)).wait();          // Player wagers     await (await instance.connect(player).wager({ value: betLimit })).wait();          // Mine a block to ensure block.number > blockNumber stored in timestamps     await ethers.provider.send("evm_mine", []);          // Get the blockNumber when player wagered (stored in timestamps)     // We need to simulate the original keccak256 calculation to determine expected outcome     const blockNumber = (await ethers.provider.getBlock("latest")).number - 1;          // Compute expected winning number using keccak256 (original hash function)     const randomSeed = 0; // default randomSeed is 0     const encodedData = ethers.solidityPacked(       ["bytes32", "address", "uint256"],       [ethers.zeroPadValue(ethers.toBeHex(blockNumber), 32), player.address, randomSeed]     );     const keccakHash = ethers.keccak256(encodedData);     const keccakWinningNumber = (BigInt(keccakHash) % BigInt(difficulty)) + BigInt(1);          // Compute what sha256 would produce (mutant behavior)     const shaHash = ethers.sha256(encodedData);     const shaWinningNumber = (BigInt(shaHash) % BigInt(difficulty)) + BigInt(1);          // Play the game - if mutant is present, outcome will differ when keccak != sha     const balanceBefore = await ethers.provider.getBalance(instance.target);     const tx = instance.connect(player).play();          // The expected win condition is winningNumber == difficulty / 2 (i.e., 5)     const winThreshold = BigInt(difficulty) / BigInt(2); // 5          if (keccakWinningNumber === winThreshold) {       // Original would win - check that we get a win event       await expect(tx).to.emit(instance, "Win");     } else if (shaWinningNumber === winThreshold && keccakWinningNumber !== winThreshold) {       // Mutant would win but original would not - test should fail (mutant detected)       await expect(tx).to.not.emit(instance, "Win");     } else {       // Both produce same outcome (both win or both lose) - need different test scenario       // For thorough testing, we force a specific block number where keccak gives win       // This test scenario already covers the case where they differ       // If they don't differ here, we can assert the transaction succeeds without revert       await expect(tx).to.not.be.reverted;     }          // Additional check: if keccakWinningNumber != shaWinningNumber, we can directly     // verify the contract's behavior matches keccak256 (original) not sha256 (mutant)     if (keccakWinningNumber !== shaWinningNumber) {       // The actual contract balance should reflect original behavior       const balanceAfter = await ethers.provider.getBalance(instance.target);       if (keccakWinningNumber === winThreshold) {         // Original: player wins, contract loses half balance         expect(balanceAfter).to.be.lessThan(balanceBefore);       } else {         // Original: player loses, contract loses betLimit/2 to whale         expect(balanceAfter).to.be.lessThan(balanceBefore);       }     }   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PoCGame { modifier onlyOwner() { require(msg.sender == owner); _; } modifier isOpenToPublic() { require(openToPublic); _; } modifier onlyRealPeople() { require(msg.sender == tx.origin); _; } modifier onlyPlayers() { require(wagers[msg.sender] > 0); _; } event Wager(uint256 amount, address depositer); event Win(uint256 amount, address paidTo); event Lose(uint256 amount, address loser); event Donate(uint256 amount, address paidTo, address donator); event DifficultyChanged(uint256 currentDifficulty); event BetLimitChanged(uint256 currentBetLimit); address private whale; uint256 betLimit; uint difficulty; uint private randomSeed; address owner; mapping(address => uint256) timestamps; mapping(address => uint256) wagers; bool openToPublic; uint256 totalDonated; constructor(address whaleAddress, uint256 wagerLimit) public { openToPublic = false; owner = payable(msg.sender); whale = whaleAddress; totalDonated = 0; betLimit = wagerLimit; } function OpenToThePublic()  public onlyOwner() { openToPublic = true; } function AdjustBetAmounts(uint256 amount)  public onlyOwner() { betLimit = amount; emit BetLimitChanged(betLimit); } function AdjustDifficulty(uint256 amount)  public onlyOwner() { difficulty = amount; emit DifficultyChanged(difficulty); } fallback() external payable {} function wager()  public isOpenToPublic() onlyRealPeople() payable { require(msg.value == betLimit); require(wagers[msg.sender] == 0); timestamps[msg.sender] = block.number; wagers[msg.sender] = msg.value; emit Wager(msg.value, msg.sender); } function play()  public isOpenToPublic() onlyRealPeople() onlyPlayers() { uint256 blockNumber = timestamps[msg.sender]; if (blockNumber < block.number) { timestamps[msg.sender] = 0; wagers[msg.sender] = 0; uint256 winningNumber = uint256(keccak256(abi.encodePacked(blockhash(blockNumber), msg.sender, randomSeed))) % difficulty + 1; if (winningNumber == difficulty / 2) { payout(msg.sender); } else { loseWager(betLimit / 2); } } else { revert(); } } function donate()  public isOpenToPublic() payable { donateToWhale(msg.value); } function payout(address winner) internal { uint256 ethToTransfer = address(this).balance / 2; payable(winner).transfer(ethToTransfer); emit Win(ethToTransfer, winner); } function donateToWhale(uint256 amount) internal { { (bool _s,) = whale.call{value: amount}(""); require(_s); } totalDonated += amount; emit Donate(amount, whale, msg.sender); } function loseWager(uint256 amount) internal { { (bool _s,) = whale.call{value: amount}(""); require(_s); } totalDonated += amount; emit Lose(amount, msg.sender); } function ethBalance() public view returns (uint256) { return address(this).balance; } function currentDifficulty() public view returns (uint256) { return difficulty; } function currentBetLimit() public view returns (uint256) { return betLimit; } function hasPlayerWagered(address player) public view returns (bool) { return wagers[player] > 0; } function winnersPot() public view returns (uint256) { return address(this).balance / 2; } function transferAnyERC20Token(address tokenAddress, address tokenOwner, uint tokens) public onlyOwner() returns (bool success) { return ERC20Interface(tokenAddress).transfer(tokenOwner, tokens); } } abstract contract ERC20Interface { function transfer(address to, uint256 tokens) virtual public returns (bool success); }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PoCGame mutant kill test - m3e40ad21 (sha256 vs keccak256)", function () {
+  it("should detect the hash function change by comparing actual win/loss outcome with expected outcome from keccak256", async function () {
+    const [owner, whale, player] = await ethers.getSigners();
+    const betLimit = ethers.parseEther("1.0");
+
+    // Deploy contract
+    const Factory = await ethers.getContractFactory("PoCGame");
+    const instance = await Factory.deploy(whale.address, betLimit);
+    await instance.waitForDeployment();
+
+    // Open to public
+    await (await instance.connect(owner).OpenToThePublic()).wait();
+
+    // Set difficulty to a known value (e.g., 10) so we can predict winning number
+    const difficulty = 10;
+    await (await instance.connect(owner).AdjustDifficulty(difficulty)).wait();
+
+    // Player wagers
+    await (await instance.connect(player).wager({ value: betLimit })).wait();
+
+    // Mine a block to ensure block.number > blockNumber stored in timestamps
+    await ethers.provider.send("evm_mine", []);
+
+    // Get the blockNumber when player wagered (stored in timestamps)
+    // We need to simulate the original keccak256 calculation to determine expected outcome
+    const blockNumber = (await ethers.provider.getBlock("latest")).number - 1;
+
+    // Compute expected winning number using keccak256 (original hash function)
+    const randomSeed = 0; // default randomSeed is 0
+    const encodedData = ethers.solidityPacked(
+      ["bytes32", "address", "uint256"],
+      [ethers.zeroPadValue(ethers.toBeHex(blockNumber), 32), player.address, randomSeed]
+    );
+    const keccakHash = ethers.keccak256(encodedData);
+    const keccakWinningNumber = (BigInt(keccakHash) % BigInt(difficulty)) + BigInt(1);
+
+    // Compute what sha256 would produce (mutant behavior)
+    const shaHash = ethers.sha256(encodedData);
+    const shaWinningNumber = (BigInt(shaHash) % BigInt(difficulty)) + BigInt(1);
+
+    // Play the game - if mutant is present, outcome will differ when keccak != sha
+    const balanceBefore = await ethers.provider.getBalance(instance.target);
+    const tx = instance.connect(player).play();
+
+    // The expected win condition is winningNumber == difficulty / 2 (i.e., 5)
+    const winThreshold = BigInt(difficulty) / BigInt(2); // 5
+
+    if (keccakWinningNumber === winThreshold) {
+      // Original would win - check that we get a win event
+      await expect(tx).to.emit(instance, "Win");
+    } else if (shaWinningNumber === winThreshold && keccakWinningNumber !== winThreshold) {
+      // Mutant would win but original would not - test should fail (mutant detected)
+      await expect(tx).to.not.emit(instance, "Win");
+    } else {
+      // Both produce same outcome (both win or both lose) - need different test scenario
+      // For thorough testing, we force a specific block number where keccak gives win
+      // This test scenario already covers the case where they differ
+      // If they don't differ here, we can assert the transaction succeeds without revert
+      await expect(tx).to.not.be.reverted;
+    }
+
+    // Additional check: if keccakWinningNumber != shaWinningNumber, we can directly
+    // verify the contract's behavior matches keccak256 (original) not sha256 (mutant)
+    if (keccakWinningNumber !== shaWinningNumber) {
+      // The actual contract balance should reflect original behavior
+      const balanceAfter = await ethers.provider.getBalance(instance.target);
+      if (keccakWinningNumber === winThreshold) {
+        // Original: player wins, contract loses half balance
+        expect(balanceAfter).to.be.lessThan(balanceBefore);
+      } else {
+        // Original: player loses, contract loses betLimit/2 to whale
+        expect(balanceAfter).to.be.lessThan(balanceBefore);
+      }
+    }
+  });
+});
+```

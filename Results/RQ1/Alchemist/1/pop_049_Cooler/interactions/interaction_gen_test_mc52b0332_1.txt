@@ -1,0 +1,67 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mc52b0332 of Cooler.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Cooler.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Cooler:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Cooler reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Cooler by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Cooler"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("Cooler mutant mc52b0332 - interestFor mutation", function () {
+  it("should kill the mutant by verifying interestFor calculation with non-zero rate and duration", async function () {
+    const [owner, lender] = await ethers.getSigners();
+    
+    // Deploy CoolerFactory which deploys Cooler implementation
+    const CoolerFactory = await ethers.getContractFactory("CoolerFactory");
+    const factory = await CoolerFactory.deploy();
+    await factory.waitForDeployment();
+    
+    // Deploy mock ERC20 tokens for collateral and debt
+    const ERC20 = await ethers.getContractFactory("ERC20");
+    const collateral = await ERC20.deploy("Collateral", "COL", 18);
+    const debt = await ERC20.deploy("Debt", "DEBT", 18);
+    await collateral.waitForDeployment();
+    await debt.waitForDeployment();
+    
+    // Generate a cooler for the owner
+    await factory.connect(owner).generateCooler(await collateral.getAddress(), await debt.getAddress());
+    
+    // Get the cooler address
+    const coolersFor = await factory.coolersFor(await collateral.getAddress(), await debt.getAddress());
+    const coolerAddress = coolersFor[0];
+    const cooler = await ethers.getContractAt("Cooler", coolerAddress);
+    
+    // Set up test values: rate = 5e18 (5 tokens with 18 decimals), duration = 30 days
+    const rate = ethers.parseEther("5");
+    const duration = 30 * 24 * 60 * 60; // 30 days in seconds
+    
+    // Expected result from original: (rate * duration) / 365 days
+    const expectedInterest = (rate * BigInt(duration)) / BigInt(365 * 24 * 60 * 60);
+    
+    // Mutant result would be: (rate + duration) / 365 days
+    const mutantInterest = (rate + BigInt(duration)) / BigInt(365 * 24 * 60 * 60);
+    
+    // Call interestFor and verify it matches original calculation, not mutant
+    const actualInterest = await cooler.interestFor(rate, rate, duration);
+    
+    // This assertion will pass on original but fail on mutant
+    expect(actualInterest).to.equal(expectedInterest);
+    
+    // Additional verification that mutant would give different result
+    expect(actualInterest).to.not.equal(mutantInterest);
+  });
+});
+```

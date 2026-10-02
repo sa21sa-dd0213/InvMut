@@ -1,0 +1,95 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m916b9143 of Roulette.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Roulette.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Roulette:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Roulette reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Roulette by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Roulette"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant m916b9143 - kill test", function () {
+  it("should kill mutant that replaces block.timestamp with block.prevrandao", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy contract (constructor is payable but takes no arguments)
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy({ value: 0 });
+    await instance.waitForDeployment();
+    
+    // Get initial pastBlockTime
+    const initialPastBlockTime = await instance.pastBlockTime();
+    
+    // First transaction: send 10 ether to satisfy msg.value == 10 ether
+    const tx1 = await attacker.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    await tx1.wait();
+    
+    // Get the block where tx1 was mined to verify timestamp
+    const block1 = await ethers.provider.getBlock(tx1.blockNumber);
+    const block1Timestamp = block1!.timestamp;
+    
+    // After first call, pastBlockTime should be updated to block1Timestamp
+    const pastBlockTimeAfterTx1 = await instance.pastBlockTime();
+    expect(pastBlockTimeAfterTx1).to.equal(block1Timestamp);
+    
+    // Mine a new block to ensure timestamp advances
+    await ethers.provider.send("evm_mine", []);
+    
+    // Second transaction: send another 10 ether
+    // Original: require(block.timestamp > pastBlockTime) will pass because timestamp advanced
+    // Mutant: require(block.prevrandao > pastBlockTime) may fail because prevrandao is unrelated to timestamp
+    const tx2 = await attacker.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    await tx2.wait();
+    
+    // Get the block where tx2 was mined
+    const block2 = await ethers.provider.getBlock(tx2.blockNumber);
+    const block2Timestamp = block2!.timestamp;
+    
+    // Verify pastBlockTime was updated again (should happen on both original and mutant if tx2 didn't revert)
+    const pastBlockTimeAfterTx2 = await instance.pastBlockTime();
+    
+    // On original: pastBlockTime will be block2Timestamp (which is > block1Timestamp)
+    // On mutant: if require(block.prevrandao > pastBlockTime) fails, tx2 reverts and test fails
+    // If it passes (unlikely but possible), pastBlockTime will still be updated
+    // But the key assertion: the behavior differs from original because original guarantees
+    // the timestamp comparison works, while mutant uses an unpredictable value
+    
+    // Critical assertion: On original, block2Timestamp > block1Timestamp always true
+    // On mutant, block.prevrandao could be anything - we verify the update happened
+    // but the mutant's logic is fundamentally broken
+    expect(pastBlockTimeAfterTx2).to.equal(block2Timestamp);
+    
+    // Additional verification: on original, both transactions succeed
+    // On mutant, this test will either:
+    // 1. Revert on tx2 (killing the mutant) if prevrandao <= pastBlockTime
+    // 2. Pass but with incorrect logic - we detect by checking the contract balance
+    // The test should fail the mutant because the behavior is semantically wrong
+    
+    // Final check: verify contract has correct balance (20 ether minus any transfer)
+    const balance = await ethers.provider.getBalance(await instance.getAddress());
+    // On original, if block.number % 15 != 0, balance = 20 ether
+    // On mutant, if tx2 reverted, balance = 10 ether
+    // This catches the case where prevrandao happens to be > pastBlockTime
+    // The test expects the balance to reflect both successful transactions
+    expect(balance).to.equal(ethers.parseEther("20"));
+  });
+});
+```

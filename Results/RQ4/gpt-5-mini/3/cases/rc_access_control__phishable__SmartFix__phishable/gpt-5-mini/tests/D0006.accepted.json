@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0006",
+ "property_summary": "After any successful withdrawAll(recipient) call initiated by the owner, the contract's owner remains unchanged (reference preserves owner), whereas the mutant that sets owner = recipient before transfer will change owner for some inputs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "After successful require, set owner to the recipient before transferring, so funds go to the (now) owner (the provided _recipient).",
+ "mutated_unit_code": "function withdrawAll(address _recipient) public {\n\n        require(msg.sender == owner);\n        owner = _recipient;\n        payable(_recipient).transfer(address(this).balance);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Phishable} from \"../src/Phishable.sol\";\n\ncontract InvMutTest is Test {\n    Phishable c;\n\n    function setUp() public { c = new Phishable(address(this)); }\n\n    function testFuzz_property(address recipient, uint256 amount) public {\n        amount = bound(amount, 0, 1 ether);\n\n        if (amount > 0) {\n            vm.deal(address(this), amount);\n            (bool sent, ) = address(c).call{value: amount}(\"\");\n            require(sent);\n        }\n\n        bool ok;\n        address beforeOwner = c.owner();\n        require(beforeOwner == address(this));\n\n        vm.prank(address(this));\n        try c.withdrawAll(recipient) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        if (ok) {\n            assertTrue(c.owner() == beforeOwner);\n        } else {\n            assertTrue(c.owner() == beforeOwner);\n        }\n    }\n}\n"
+}

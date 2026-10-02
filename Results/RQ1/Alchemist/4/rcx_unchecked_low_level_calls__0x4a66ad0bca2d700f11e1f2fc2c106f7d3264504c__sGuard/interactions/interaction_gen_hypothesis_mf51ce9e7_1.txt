@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EBU:
+        Contract Code: pragma solidity ^0.8.0; contract sGuard{ function mul_uint256(uint256 a, uint256 b) internal pure returns (uint256) { if (a == 0) { return 0; } uint256 c = a * b; assert(c / a == b); return c; } } contract EBU is sGuard { address public from = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9; address public caddress = 0x1f844685f7Bf86eFcc0e74D8642c54A257111923; function transfer( address[] memory _tos, uint[] memory v)public returns (bool){ require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9); require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ caddress.call(abi.encodeWithSelector(id,from,_tos[i],mul_uint256(v[i], 1000000000000000000))); } return true; } }
+
+    Consider the following mutant of EBU:
+        Mutant mf51ce9e7 of function transfer replaces < with >
+        Mutant Diff: ---|         for(uint i=0;i<_tos.length;i++){ +++|         for(uint i=0;i>_tos.length;i++){
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original `for` loop uses `i < _tos.length`, so it iterates through all elements in the `_tos` array. The mutant changes `<` to `>`, meaning the loop condition `i > _tos.length` will be false immediately when `i` starts at 0 (since 0 is not greater than any positive length), so the loop body never executes.  
+
+**Hypothesis**: A test case that calls `transfer` with a non-empty `_tos` array and non-zero `v` values, then checks that the `transferFrom` calls were actually made (for example, by verifying state changes in a mock token contract or by checking that events from those calls were emitted), should pass on the original (which executes the loop and makes the calls) but fail on the mutant (which never enters the loop, so no calls are made).

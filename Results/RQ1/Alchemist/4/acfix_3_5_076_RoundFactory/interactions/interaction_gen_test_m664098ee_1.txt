@@ -1,0 +1,70 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m664098ee of RoundFactory.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test RoundFactory.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for RoundFactory:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("RoundFactory reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy RoundFactory by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("RoundFactory"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("RoundFactory mutant m664098ee - updateRoundImplementation sets address(this) instead of parameter", function () {
+  it("should kill the mutant by verifying that roundImplementation is updated correctly and clone creation uses the correct implementation", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy RoundFactory (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("RoundFactory");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Initialize the contract
+    await instance.connect(owner).initialize();
+    
+    // Add owner as program operator
+    await instance.connect(owner).programOperators(owner.address, true);
+    
+    // Deploy a mock implementation contract to use as roundImplementation
+    const MockRoundImpl = await ethers.getContractFactory("RoundImplementation");
+    const mockImplementation = await MockRoundImpl.deploy();
+    await mockImplementation.waitForDeployment();
+    
+    // Set alloSettings to a non-zero address
+    const MockAlloSettings = await ethers.getContractFactory("AlloSettings");
+    const mockAlloSettings = await MockAlloSettings.deploy();
+    await mockAlloSettings.waitForDeployment();
+    await instance.connect(owner).updateAlloSettings(mockAlloSettings.target);
+    
+    // Update roundImplementation with the mock implementation
+    const tx = await instance.connect(owner).updateRoundImplementation(mockImplementation.target);
+    await tx.wait();
+    
+    // Verify that roundImplementation was set to the mock, NOT address(this)
+    const storedImplementation = await instance.roundImplementation();
+    expect(storedImplementation).to.equal(mockImplementation.target);
+    
+    // Now try to create a round - this will fail with the mutant because it tries to clone itself
+    const encodedParameters = ethers.AbiCoder.defaultAbiCoder().encode(
+      ["address", "address", "uint256", "uint256"],
+      [owner.address, addr1.address, 100, 200]
+    );
+    
+    // With the original contract this would succeed, with mutant it should revert
+    // because cloning address(this) (the factory) will fail as it's not a valid implementation
+    await expect(
+      instance.connect(owner).create(encodedParameters, owner.address)
+    ).to.be.reverted;
+  });
+});
+```

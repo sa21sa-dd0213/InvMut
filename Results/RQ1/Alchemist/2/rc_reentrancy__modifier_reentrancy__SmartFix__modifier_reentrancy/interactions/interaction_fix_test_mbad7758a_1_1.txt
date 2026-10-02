@@ -1,0 +1,41 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("ModifierEntrancy mutant mbad7758a test", function () {   it("should revert when calling airDrop from a contract that does not support 'Nu Token'", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy the ModifierEntrancy contract (no constructor arguments needed)     const Factory = await ethers.getContractFactory("ModifierEntrancy");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Deploy a malicious contract that does NOT support 'Nu Token'     const MaliciousFactory = await ethers.getContractFactory("contracts/MaliciousBank.sol:MaliciousBank");     const malicious = await MaliciousFactory.deploy();     await malicious.waitForDeployment();          // Call airDrop from the malicious contract address - this should revert     // because the supportsToken modifier checks if Bank(msg.sender).supportsToken()     // returns the correct keccak256 hash for "Nu Token"     await expect(       instance.connect(addr1).airDrop()     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract SmartFix { bool public _locked = false; modifier _nonReentrant() { require(!_locked); _locked = true; _; _locked = false; } } contract ModifierEntrancy is SmartFix { mapping (address => uint) public tokenBalance; string constant name = "Nu Token"; function airDrop()  public _nonReentrant  hasNoBalance supportsToken { require(((tokenBalance[msg.sender] + 20) >= tokenBalance[msg.sender])); tokenBalance[msg.sender] += 20; } modifier supportsToken() { require(keccak256(abi.encodePacked("Nu Token")) == Bank(msg.sender).supportsToken()); _; } modifier hasNoBalance { require(tokenBalance[msg.sender] == 0); _; } } contract Bank{ function supportsToken() external pure returns (bytes32){ return(keccak256(abi.encodePacked("Nu Token"))); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ModifierEntrancy mutant mbad7758a test", function () {
+  it("should revert when calling airDrop from a contract that does not support 'Nu Token'", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy the ModifierEntrancy contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("ModifierEntrancy");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Deploy a malicious contract that does NOT support 'Nu Token'
+    const MaliciousFactory = await ethers.getContractFactory("MaliciousBank");
+    const malicious = await MaliciousFactory.deploy();
+    await malicious.waitForDeployment();
+    
+    // Call airDrop from the malicious contract address - this should revert
+    // because the supportsToken modifier checks if Bank(msg.sender).supportsToken()
+    // returns the correct keccak256 hash for "Nu Token"
+    await expect(
+      instance.connect(malicious).airDrop()
+    ).to.be.reverted;
+  });
+});
+```

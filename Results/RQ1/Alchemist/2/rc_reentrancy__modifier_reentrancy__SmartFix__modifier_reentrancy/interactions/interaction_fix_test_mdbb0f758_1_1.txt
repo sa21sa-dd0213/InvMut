@@ -1,0 +1,59 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("ModifierEntrancy mutant detection - mdbb0f758", function () {   it("should revert when calling airDrop with zero balance on the mutant (<= check)", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy Bank contract (needed by supportsToken modifier)     const BankFactory = await ethers.getContractFactory("Bank");     const bank = await BankFactory.deploy();     await bank.waitForDeployment();          // Deploy ModifierEntrancy - no constructor arguments needed     const ModifierEntrancyFactory = await ethers.getContractFactory("ModifierEntrancy");     const instance = await ModifierEntrancyFactory.deploy();     await instance.waitForDeployment();          // addr1 has zero balance initially - hasNoBalance modifier will pass     // supportsToken modifier requires msg.sender to be a Bank contract     // We need to call from the bank contract address to satisfy the modifier     // But the test must call from an EOA - let's check the modifiers          // The supportsToken modifier checks: keccak256("Nu Token") == Bank(msg.sender).supportsToken()     // This means msg.sender must be a contract that implements supportsToken()     // We'll deploy a simple contract that calls airDrop          const AttackerFactory = await ethers.getContractFactory("Attacker");     const attacker = await AttackerFactory.deploy(await instance.getAddress());     await attacker.waitForDeployment();          // Call airDrop through the attacker contract     await expect(attacker.callAirDrop()).to.be.reverted;   }); });  // Helper contract to satisfy the supportsToken modifier contract Attacker {     ModifierEntrancy public target;          constructor(address _target) {         target = ModifierEntrancy(_target);     }          function supportsToken() external pure returns (bytes32) {         return keccak256(abi.encodePacked("Nu Token"));     }          function callAirDrop() external {         target.airDrop();     } }
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract SmartFix { bool public _locked = false; modifier _nonReentrant() { require(!_locked); _locked = true; _; _locked = false; } } contract ModifierEntrancy is SmartFix { mapping (address => uint) public tokenBalance; string constant name = "Nu Token"; function airDrop()  public _nonReentrant  hasNoBalance supportsToken { require(((tokenBalance[msg.sender] + 20) >= tokenBalance[msg.sender])); tokenBalance[msg.sender] += 20; } modifier supportsToken() { require(keccak256(abi.encodePacked("Nu Token")) == Bank(msg.sender).supportsToken()); _; } modifier hasNoBalance { require(tokenBalance[msg.sender] == 0); _; } } contract Bank{ function supportsToken() external pure returns (bytes32){ return(keccak256(abi.encodePacked("Nu Token"))); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ModifierEntrancy mutant detection - mdbb0f758", function () {
+  it("should revert when calling airDrop with zero balance on the mutant (<= check)", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy Bank contract (needed by supportsToken modifier)
+    const BankFactory = await ethers.getContractFactory("Bank");
+    const bank = await BankFactory.deploy();
+    await bank.waitForDeployment();
+
+    // Deploy ModifierEntrancy - no constructor arguments needed
+    const ModifierEntrancyFactory = await ethers.getContractFactory("ModifierEntrancy");
+    const instance = await ModifierEntrancyFactory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy Attacker contract that will call airDrop
+    const AttackerFactory = await ethers.getContractFactory("Attacker");
+    const attacker = await AttackerFactory.deploy(await instance.getAddress());
+    await attacker.waitForDeployment();
+
+    // Call airDrop through the attacker contract - should revert
+    await expect(attacker.callAirDrop()).to.be.reverted;
+  });
+});
+
+// Helper contract to satisfy the supportsToken modifier
+contract Attacker {
+    ModifierEntrancy public target;
+
+    constructor(address _target) {
+        target = ModifierEntrancy(_target);
+    }
+
+    function supportsToken() external pure returns (bytes32) {
+        return keccak256(abi.encodePacked("Nu Token"));
+    }
+
+    function callAirDrop() external {
+        target.airDrop();
+    }
+}
+```

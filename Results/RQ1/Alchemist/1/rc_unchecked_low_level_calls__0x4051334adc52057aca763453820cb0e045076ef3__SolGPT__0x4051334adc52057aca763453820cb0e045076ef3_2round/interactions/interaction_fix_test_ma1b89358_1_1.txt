@@ -1,0 +1,47 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("airdrop mutant test - require(_s) removal", function () {   it("should revert when external call to transferFrom fails (mutant silently returns true)", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy the airdrop contract (no constructor arguments)     const AirdropFactory = await ethers.getContractFactory("airdrop");     const airdrop = await AirdropFactory.deploy();     await airdrop.waitForDeployment();      // Deploy a simple ERC20 token that does NOT implement transferFrom     // We'll use a minimal contract that reverts on any call     const MaliciousFactory = await ethers.getContractFactory(       "contract MaliciousToken { function transferFrom(address, address, uint256) public pure returns (bool) { revert(); } }"     );     const maliciousToken = await MaliciousFactory.deploy();     await maliciousToken.waitForDeployment();      // Prepare test data: send tokens from owner to addr1 (addr1 is not the owner of tokens)     // The call should fail because MaliciousToken.transferFrom will revert     const recipients = [addr2.address];     const amount = ethers.parseEther("10");      // Expect the transaction to revert on the original (but mutant will return true)     await expect(       airdrop.transfer(owner.address, maliciousToken.target, recipients, amount)     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract airdrop{ function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){ require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ { (bool _s,) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v)); require(_s); } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airdrop mutant test - require(_s) removal", function () {
+  it("should revert when external call to transferFrom fails (mutant silently returns true)", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy the airdrop contract (no constructor arguments)
+    const AirdropFactory = await ethers.getContractFactory("airdrop");
+    const airdrop = await AirdropFactory.deploy();
+    await airdrop.waitForDeployment();
+
+    // Deploy a simple ERC20 token that does NOT implement transferFrom
+    // We'll use a minimal contract that reverts on any call
+    const MaliciousFactory = await ethers.getContractFactory(
+      "contract MaliciousToken { function transferFrom(address, address, uint256) public pure returns (bool) { revert(); } }"
+    );
+    const maliciousToken = await MaliciousFactory.deploy();
+    await maliciousToken.waitForDeployment();
+
+    // Prepare test data: send tokens from owner to addr1 (addr1 is not the owner of tokens)
+    // The call should fail because MaliciousToken.transferFrom will revert
+    const recipients = [addr2.address];
+    const amount = ethers.parseEther("10");
+
+    // Expect the transaction to revert on the original (but mutant will return true)
+    await expect(
+      airdrop.transfer(owner.address, maliciousToken.target, recipients, amount)
+    ).to.be.reverted;
+  });
+});
+```

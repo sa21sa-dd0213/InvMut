@@ -1,0 +1,55 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mcc648c58 of Reentrance.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Reentrance.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Reentrance:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Reentrance reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Reentrance by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Reentrance"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Reentrance mutant test - mcc648c58", function () {
+  it("should detect the mutant that adds 1 extra wei to user balance", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Reentrance");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get initial contract balance (should be 0)
+    const initialContractBalance = await ethers.provider.getBalance(instance.target);
+    expect(initialContractBalance).to.equal(0n);
+
+    // Add exactly 1 wei to balance via addr1
+    const depositAmount = 1n;
+    const tx = await instance.connect(addr1).addToBalance({ value: depositAmount });
+    await tx.wait();
+
+    // Check addr1's balance in the contract - should be exactly 1 wei in original
+    const userBalanceAfterDeposit = await instance.getBalance(addr1.address);
+    
+    // Withdraw the balance
+    const withdrawTx = await instance.connect(addr1).withdrawBalance();
+    await withdrawTx.wait();
+
+    // Check final contract balance - in original it should be 0, in mutant it will revert
+    const finalContractBalance = await ethers.provider.getBalance(instance.target);
+    
+    // The mutant will fail this assertion because:
+    // Original: deposits 1, balance becomes 1, withdraws 1, contract balance = 0
+    // Mutant: deposits 1, balance becomes 2, tries to withdraw 2 but contract only has 1, reverts
+    expect(finalContractBalance).to.equal(0n);
+  });
+});
+```

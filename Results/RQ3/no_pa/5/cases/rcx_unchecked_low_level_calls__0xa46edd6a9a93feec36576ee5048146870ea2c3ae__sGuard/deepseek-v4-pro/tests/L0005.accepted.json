@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0005",
+ "property_summary": "When calling transfer with multiple recipients, the reference version sends tokens to all recipients while the bug version stops after the first recipient due to an early break.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "+break;",
+ "mutated_unit_code": "    function transfer(address from,address caddress, address[] memory _tos, uint[] memory v)public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0;i<_tos.length;i++){\n\n            caddress.call(abi.encodeWithSelector(id,from,_tos[i],v[i]));\n            break;\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EBU} from \"../src/EBU.sol\";\n\ncontract InvMutTest is Test {\n    EBU c;\n    function setUp() public { c = new EBU(); }\n    function testRegression_property() public {\n        Token token = new Token();\n        token.mint(address(1), 100);\n\n        vm.prank(address(1));\n        token.approve(address(c), 100);\n\n        address[] memory tos = new address[](2);\n        tos[0] = address(2);\n        tos[1] = address(3);\n        uint[] memory amounts = new uint[](2);\n        amounts[0] = 50;\n        amounts[1] = 50;\n\n        c.transfer(address(1), address(token), tos, amounts);\n\n        assertEq(token.balanceOf(address(2)), 50);\n        assertEq(token.balanceOf(address(3)), 50);\n    }\n}\n\ncontract Token {\n    mapping(address => uint) public balanceOf;\n    mapping(address => mapping(address => uint)) public allowance;\n\n    function mint(address to, uint amount) public {\n        balanceOf[to] += amount;\n    }\n\n    function approve(address spender, uint amount) public returns (bool) {\n        allowance[msg.sender][spender] = amount;\n        return true;\n    }\n\n    function transferFrom(address from, address to, uint amount) public returns (bool) {\n        require(allowance[from][msg.sender] >= amount, \"allowance too low\");\n        require(balanceOf[from] >= amount, \"balance too low\");\n        allowance[from][msg.sender] -= amount;\n        balanceOf[from] -= amount;\n        balanceOf[to] += amount;\n        return true;\n    }\n}"
+}

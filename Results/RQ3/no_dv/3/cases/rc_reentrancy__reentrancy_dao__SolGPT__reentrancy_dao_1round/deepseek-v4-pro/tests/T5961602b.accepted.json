@@ -1,0 +1,12 @@
+{
+ "difference_id": "T5961602b",
+ "property_summary": "After a successful withdrawAll, the contract's balance must decrease by at least the caller's previous credit; the bug allows repeated withdrawals without clearing credit, eventually causing the balance to drop by more than the total deposited.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Delete `credit[msg.sender] = 0;` so credit not cleared after withdraw.",
+ "mutated_unit_code": "function withdrawAll() public {\n        uint oCredit = credit[msg.sender];\n        if (oCredit > 0) {\n            balance -= oCredit;\n            (bool callResult, ) = msg.sender.call{value: oCredit}(\"\");\n            require(callResult);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ReentrancyDAO} from \"../src/ReentrancyDAO.sol\";\n\ncontract InvMutTest is Test {\n    ReentrancyDAO c;\n    function setUp() public { c = new ReentrancyDAO(); }\n    function testFuzz_property(uint256 depositAmount, uint256 withdrawAmount, address actor) public {\n        vm.assume(actor != address(0) && actor != address(c));\n        depositAmount = bound(depositAmount, 1, type(uint128).max);\n        withdrawAmount = bound(withdrawAmount, 1, depositAmount);\n\n        vm.deal(actor, depositAmount);\n        vm.prank(actor);\n        c.deposit{value: depositAmount}();\n\n        ReentrantAttacker attacker = new ReentrantAttacker(c);\n        vm.deal(address(attacker), 0);\n        vm.deal(address(attacker), depositAmount);\n        vm.prank(address(attacker));\n        c.deposit{value: depositAmount}();\n\n        uint256 balanceBefore = address(c).balance;\n\n        vm.prank(address(attacker));\n        attacker.attack();\n\n        uint256 balanceAfter = address(c).balance;\n        assertTrue(balanceAfter >= balanceBefore - depositAmount);\n    }\n}\n\ncontract ReentrantAttacker {\n    ReentrancyDAO public target;\n    bool private attacking;\n    constructor(ReentrancyDAO _target) { target = _target; }\n    function attack() external payable {\n        attacking = true;\n        target.withdrawAll();\n        attacking = false;\n    }\n    receive() external payable {\n        if (attacking) {\n            target.withdrawAll();\n        }\n    }\n}\n"
+}

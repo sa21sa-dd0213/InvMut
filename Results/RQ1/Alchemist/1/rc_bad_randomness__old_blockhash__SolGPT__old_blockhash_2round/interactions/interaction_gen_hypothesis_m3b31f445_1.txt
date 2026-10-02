@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract PredictTheBlockHashChallenge:
+        Contract Code: pragma solidity ^0.8.0; contract PredictTheBlockHashChallenge { struct Guess { uint block; bytes32 guess; } mapping(address => Guess) guesses; constructor() public payable { require(msg.value == 1 ether); } function lockInGuess(bytes32 hash) public payable { require(guesses[msg.sender].block == 0); require(msg.value == 1 ether); guesses[msg.sender].guess = hash; guesses[msg.sender].block = block.number + 1; } function settle() public { require(guesses[msg.sender].block != 0); require(block.number > guesses[msg.sender].block); bytes32 answer = keccak256(abi.encodePacked(blockhash(guesses[msg.sender].block))); guesses[msg.sender].block = 0; if (guesses[msg.sender].guess == answer) { require(address(this).balance >= 2 ether); payable(msg.sender).transfer(2 ether); } } }
+
+    Consider the following mutant of PredictTheBlockHashChallenge:
+        Mutant m3b31f445 of function constructor replaces require(msg.value == 1 ether); with 
+        Mutant Diff: ---|         require(msg.value == 1 ether); +++|
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Looking at the mutant, the difference is that the constructor's `require(msg.value == 1 ether)` statement has been removed entirely. This means the mutant contract can be deployed without sending any ether, whereas the original contract requires exactly 1 ether to be sent during deployment.
+
+**Hypothesis**: The mutant removes the requirement that the contract must receive exactly 1 ether upon deployment. Therefore, a test case that deploys the contract with 0 ether and then calls the `settle()` function (after a successful `lockInGuess` call) expecting the `require(address(this).balance >= 2 ether)` check to pass and the transfer to execute should kill the mutant. In the original contract, deploying with 0 ether would revert during construction, making such a test impossible. In the mutant, the deployment succeeds, but the subsequent `settle()` call will revert because the contract balance will be insufficient (only 1 ether from `lockInGuess` instead of the required 2 ether total).

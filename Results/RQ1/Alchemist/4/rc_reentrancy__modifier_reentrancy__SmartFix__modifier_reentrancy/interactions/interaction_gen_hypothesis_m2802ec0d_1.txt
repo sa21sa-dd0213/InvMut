@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract ModifierEntrancy:
+        Contract Code: pragma solidity ^0.8.0; contract SmartFix { bool public _locked = false; modifier _nonReentrant() { require(!_locked); _locked = true; _; _locked = false; } } contract ModifierEntrancy is SmartFix { mapping (address => uint) public tokenBalance; string constant name = "Nu Token"; function airDrop()  public _nonReentrant  hasNoBalance supportsToken { require(((tokenBalance[msg.sender] + 20) >= tokenBalance[msg.sender])); tokenBalance[msg.sender] += 20; } modifier supportsToken() { require(keccak256(abi.encodePacked("Nu Token")) == Bank(msg.sender).supportsToken()); _; } modifier hasNoBalance { require(tokenBalance[msg.sender] == 0); _; } } contract Bank{ function supportsToken() external pure returns (bytes32){ return(keccak256(abi.encodePacked("Nu Token"))); } }
+
+    Consider the following mutant of ModifierEntrancy:
+        Mutant m2802ec0d of function airDrop replaces + with -
+        Mutant Diff: ---|     require(((tokenBalance[msg.sender] + 20) >= tokenBalance[msg.sender])); +++|     require(((tokenBalance[msg.sender] - 20) >= tokenBalance[msg.sender]));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the addition (`+`) to subtraction (`-`) in the require statement, so instead of checking that the balance plus 20 is greater than or equal to the original balance (a trivial overflow check), it now checks that the balance minus 20 is greater than or equal to the original balance. This subtraction can never be true for any positive balance, meaning the function will always revert when `tokenBalance[msg.sender]` is zero or positive. However, if `tokenBalance[msg.sender]` is zero, `0 - 20` underflows in Solidity 0.8.x (which has built-in overflow/underflow protection) and causes a revert. Therefore, a test case that calls `airDrop` with a wallet that has no prior balance should pass on the original (since `0 + 20 >= 0` is true) but fail on the mutant (since `0 - 20` underflows and reverts).
+
+**Hypothesis**: The mutant replaces the addition operator with subtraction in the require statement, causing an arithmetic underflow when the user’s token balance is zero. Therefore, a test case that calls `airDrop` from an address with a zero balance and expects a successful state change (balance increase to 20) should kill the mutant, because the mutant will always revert due to the underflow.

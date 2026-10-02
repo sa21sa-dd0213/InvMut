@@ -1,0 +1,70 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant ma07826ef of W_WALLET.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test W_WALLET.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for W_WALLET:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("W_WALLET reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy W_WALLET by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("W_WALLET"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("W_WALLET mutant kill test - ma07826ef", function () {
+  it("should detect mutant by using past unlockTime to expose block.prevrandao vs block.timestamp difference", async function () {
+    const [owner, user] = await ethers.getSigners();
+    
+    // Deploy Log contract first (required constructor argument for W_WALLET)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+    
+    // Deploy W_WALLET with Log address
+    const Factory = await ethers.getContractFactory("W_WALLET");
+    const instance = await Factory.deploy(await logInstance.getAddress());
+    await instance.waitForDeployment();
+    
+    // Get current block timestamp
+    const blockNumBefore = await ethers.provider.getBlockNumber();
+    const blockBefore = await ethers.provider.getBlock(blockNumBefore);
+    const currentTimestamp = blockBefore.timestamp;
+    
+    // User puts 1 ether with _unlockTime set to 0 (in the past)
+    const putTx = await instance.connect(user).Put(0, { value: ethers.parseEther("1") });
+    await putTx.wait();
+    
+    // Get the user's unlockTime after Put
+    const holder = await instance.Acc(user.address);
+    const unlockTime = holder.unlockTime;
+    
+    // Get block.prevrandao value (accessible via block.difficulty in pre-Merge contexts, 
+    // but in post-Merge it's prevrandao; we use it to verify the mutant's behavior)
+    const blockAfterPut = await ethers.provider.getBlock("latest");
+    
+    // On the original contract, unlockTime would equal block.timestamp (since _unlockTime=0 < block.timestamp)
+    // On the mutant, unlockTime would equal block.prevrandao instead
+    
+    // To kill the mutant: Call Collect after ensuring enough time has passed
+    // Wait for next block to ensure block.timestamp > unlockTime in original
+    await ethers.provider.send("evm_mine", []);
+    
+    // Now try to collect 0.5 ether - should succeed on original, fail on mutant
+    // because block.prevrandao is typically a very large number (> block.timestamp)
+    const collectTx = instance.connect(user).Collect(ethers.parseEther("0.5"));
+    
+    // In the original contract this would succeed (unlockTime = block.timestamp < new block.timestamp)
+    // In the mutant, block.prevrandao >> block.timestamp, so it will revert
+    await expect(collectTx).to.be.reverted;
+  });
+});
+```

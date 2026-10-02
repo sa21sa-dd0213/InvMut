@@ -1,0 +1,58 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("MultiplicatorX4 - Kill mutant me60c0f74", function () {   it("should fail on mutant when sending exactly the contract balance", async function () {     const [owner, attacker, recipient] = await ethers.getSigners();          // Deploy contract (no constructor arguments needed)     const Factory = await ethers.getContractFactory("MultiplicatorX4");     const instance = await Factory.deploy();     await instance.waitForDeployment();     const contractAddress = await instance.getAddress();      // Fund contract with some ETH     const fundAmount = ethers.parseEther("10");     await owner.sendTransaction({       to: contractAddress,       value: fundAmount     });      // Get initial balances     const initialRecipientBalance = await ethers.provider.getBalance(recipient.address);     const contractBalanceBefore = await ethers.provider.getBalance(contractAddress);      // Send exactly the contract balance to trigger multiplicate     const tx = await attacker.sendTransaction({       to: contractAddress,       value: contractBalanceBefore,       data: instance.interface.encodeFunctionData("multiplicate", [recipient.address])     });     await tx.wait();      const finalRecipientBalance = await ethers.provider.getBalance(recipient.address);     const contractBalanceAfter = await ethers.provider.getBalance(contractAddress);      // Original: recipient gets contractBalanceBefore * 2 (since msg.value == contractBalanceBefore)     // Mutant: condition fails (msg.value-1 < contractBalanceBefore), so no transfer occurs     // Assert that recipient received funds (passes on original, fails on mutant)     expect(finalRecipientBalance).to.equal(initialRecipientBalance + contractBalanceBefore * 2n);     expect(contractBalanceAfter).to.equal(0n);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract MultiplicatorX4 { address public Owner = msg.sender; receive() external payable {} function withdraw() payable public { require(msg.sender == Owner); payable(Owner).transfer(address(this).balance); } function Command(address adr,bytes memory data) payable public { require(msg.sender == Owner); adr.call{value: msg.value}(data); } function multiplicate(address adr) public payable { if(msg.value>=address(this).balance) { require(((address(this).balance + msg.value) >= address(this).balance)); payable(adr).transfer(address(this).balance+msg.value); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MultiplicatorX4 - Kill mutant me60c0f74", function () {
+  it("should fail on mutant when sending exactly the contract balance", async function () {
+    const [owner, attacker, recipient] = await ethers.getSigners();
+
+    // Deploy contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("MultiplicatorX4");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    const contractAddress = await instance.getAddress();
+
+    // Fund contract with some ETH
+    const fundAmount = ethers.parseEther("10");
+    await owner.sendTransaction({
+      to: contractAddress,
+      value: fundAmount
+    });
+
+    // Get initial balances
+    const initialRecipientBalance = await ethers.provider.getBalance(recipient.address);
+    const contractBalanceBefore = await ethers.provider.getBalance(contractAddress);
+
+    // Send exactly the contract balance to trigger multiplicate
+    const tx = await attacker.sendTransaction({
+      to: contractAddress,
+      value: contractBalanceBefore,
+      data: instance.interface.encodeFunctionData("multiplicate", [recipient.address])
+    });
+    await tx.wait();
+
+    const finalRecipientBalance = await ethers.provider.getBalance(recipient.address);
+    const contractBalanceAfter = await ethers.provider.getBalance(contractAddress);
+
+    // Original: recipient gets contractBalanceBefore * 2 (since msg.value == contractBalanceBefore)
+    // Mutant: condition fails (msg.value-1 < contractBalanceBefore), so no transfer occurs
+    // Assert that recipient received funds (passes on original, fails on mutant)
+    expect(finalRecipientBalance).to.equal(initialRecipientBalance + contractBalanceBefore * 2n);
+    expect(contractBalanceAfter).to.equal(0n);
+  });
+});
+```

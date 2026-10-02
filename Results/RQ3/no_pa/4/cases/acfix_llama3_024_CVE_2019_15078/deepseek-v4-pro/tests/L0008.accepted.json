@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0008",
+ "property_summary": "After calling XBornID() as a non-owner address, the reference contract sets balances[msg.sender] to totalDistributed (200000000e18) because of a typo (it sets owner's balance, not caller's), while the buggy version also sets owner's balance (since XBornID only modifies owner's balance regardless) so both set owner balance to 200000000e18 \u2014 but when a non-owner later calls getTokens(), the reference correctly adds value to their balance, while the buggy distr subtracts, causing a negative balance that underflows to a huge number; the assertion checks that after a non-owner calls getTokens(), their balance is not equal to the huge underflowed value.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Replace 'balances[_to] = (balances[_to] + (_amount));' with 'balances[_to] = (balances[_to] - (_amount));'.",
+ "mutated_unit_code": "    function distr(address _to, uint256 _amount) canDistr private returns (bool) {\n        totalDistributed = (totalDistributed + (_amount));\n        totalRemaining = (totalRemaining - (_amount));\n        balances[_to] = (balances[_to] - (_amount));\n        emit Distr(_to, _amount);\n        emit Transfer(address(0), _to, _amount);\n        return true;\n\n        if (totalDistributed >= totalSupply) {\n            distributionFinished = true;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {XBORNID} from \"../src/XBORNID.sol\";\n\ncontract InvMutTest is Test {\n    XBORNID c;\n    function setUp() public { c = new XBORNID(); }\n    function testRegression_property() public {\n        address user = address(0x1234);\n        vm.deal(user, 1 ether);\n        c.XBornID();\n        vm.prank(user);\n        c.getTokens();\n        uint256 bal = c.balanceOf(user);\n        assertTrue(bal == 1000e18);\n    }\n}\n"
+}

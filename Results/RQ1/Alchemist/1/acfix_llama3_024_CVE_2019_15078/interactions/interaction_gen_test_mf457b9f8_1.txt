@@ -1,0 +1,71 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mf457b9f8 of XBORNID.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test XBORNID.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for XBORNID:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("XBORNID reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy XBORNID by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("XBORNID"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("XBORNID mutant test - Transfer event emission", function () {
+  it("should emit Transfer event when transfer is called, and fail on mutant that removes the event", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("XBORNID");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get initial balances for owner and addr1
+    const initialOwnerBalance = await instance.balanceOf(owner.address);
+    const transferAmount = ethers.parseEther("100");
+
+    // Perform transfer
+    const tx = await instance.transfer(addr1.address, transferAmount);
+    const receipt = await tx.wait();
+
+    // Verify the Transfer event was emitted with correct parameters
+    const transferEvent = receipt.logs.find(
+      (log: any) => {
+        try {
+          const parsedLog = instance.interface.parseLog({
+            topics: log.topics as string[],
+            data: log.data
+          });
+          return parsedLog?.name === "Transfer";
+        } catch {
+          return false;
+        }
+      }
+    );
+
+    // Parse the event to verify parameters
+    const parsedEvent = instance.interface.parseLog({
+      topics: transferEvent!.topics as string[],
+      data: transferEvent!.data
+    });
+
+    expect(parsedEvent?.name).to.equal("Transfer");
+    expect(parsedEvent?.args.from).to.equal(owner.address);
+    expect(parsedEvent?.args.to).to.equal(addr1.address);
+    expect(parsedEvent?.args.value).to.equal(transferAmount);
+
+    // Verify state changes still occurred
+    const finalOwnerBalance = await instance.balanceOf(owner.address);
+    const finalAddr1Balance = await instance.balanceOf(addr1.address);
+    expect(finalOwnerBalance).to.equal(initialOwnerBalance - transferAmount);
+    expect(finalAddr1Balance).to.equal(transferAmount);
+  });
+});
+```

@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EtherLotto:
+        Contract Code: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+
+    Consider the following mutant of EtherLotto:
+        Mutant ma75bd713 of function play replaces block.timestamp with block.prevrandao
+        Mutant Diff: ---|         uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 2; +++|         uint random = uint(keccak256(abi.encodePacked(block.prevrandao, block.difficulty, msg.sender))) % 2;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant replaces `block.timestamp` with `block.prevrandao` in the random number generation. Since `block.timestamp` and `block.prevrandao` are different values (time-based vs. difficulty/randomness-related), the random outcome `random == 0` or `random == 1` will likely differ between the original and mutant for the same transaction inputs. Therefore, a test case that calls `play()` with the exact same `msg.value`, `msg.sender`, and within the same block conditions, then asserts that the resulting `pot` value and the final balance of the bank or player match the expected deterministic outcome based on `block.timestamp` (original) should kill the mutant, because the mutant will produce a different result.  
+
+**Hypothesis:** A test case that invokes `play()` multiple times under identical block conditions (fixed `block.timestamp`, `block.difficulty`, and `block.prevrandao`), and asserts that the `pot` resets to zero and the bank receives the fee exactly when `random == 0` according to the original formula using `block.timestamp`, will fail on the mutant because the mutant uses `block.prevrandao` instead, producing a different random value and thus a different distribution of outcomes.

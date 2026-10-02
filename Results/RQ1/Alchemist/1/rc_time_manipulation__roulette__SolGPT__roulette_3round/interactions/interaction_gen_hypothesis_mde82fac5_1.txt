@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Roulette:
+        Contract Code: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp + 1; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+
+    Consider the following mutant of Roulette:
+        Mutant mde82fac5 of function fallback replaces == with >=
+        Mutant Diff: ---|         require(msg.value == 10 ether); +++|         require(msg.value >= 10 ether);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract requires exactly 10 ether to be sent, while the mutant accepts any amount greater than or equal to 10 ether.
+
+**Hypothesis:** A test case that sends exactly 10 ether to the contract on a block number that is NOT divisible by 15 (so the balance remains in the contract), and then sends an additional transaction with exactly 11 ether (or any amount > 10 ether) on a block number that IS divisible by 15, and then checks whether the contract balance becomes zero. In the original contract, the second transaction would revert because 11 ether does not equal exactly 10 ether, so the balance would remain non-zero. In the mutant, the second transaction would succeed (since 11 >= 10) and transfer the entire contract balance, making it zero. A test that verifies the contract balance remains non-zero after this sequence would pass on the original but fail on the mutant, thereby killing it.

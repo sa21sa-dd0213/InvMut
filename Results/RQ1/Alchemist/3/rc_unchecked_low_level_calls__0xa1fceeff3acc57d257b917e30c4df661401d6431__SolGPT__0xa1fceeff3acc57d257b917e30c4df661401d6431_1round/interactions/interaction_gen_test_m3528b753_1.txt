@@ -1,0 +1,58 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m3528b753 of AirDropContract.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test AirDropContract.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for AirDropContract:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("AirDropContract reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy AirDropContract by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("AirDropContract"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("AirDropContract mutant kill test - m3528b753", function () {
+  it("should revert when transferFrom call fails (original) but mutant would not revert", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy AirDropContract
+    const AirDropFactory = await ethers.getContractFactory("AirDropContract");
+    const airDrop = await AirDropFactory.deploy();
+    await airDrop.waitForDeployment();
+    
+    // Deploy a minimal contract that will fail on transferFrom call
+    // This contract does not implement transferFrom, so the call will succeed at EVM level but return false
+    const FailContractFactory = await ethers.getContractFactory(
+      "contracts/FailContract.sol:FailContract"
+    );
+    const failContract = await FailContractFactory.deploy();
+    await failContract.waitForDeployment();
+    
+    // Prepare arrays for the transfer call
+    const tos = [addr1.address];
+    const vs = [ethers.parseEther("1")];
+    
+    // In the original contract, this call would revert because the external call returns false
+    // In the mutant, the require(_s) is removed, so it would return true instead of reverting
+    await expect(
+      airDrop.connect(owner).transfer(
+        await failContract.getAddress(),
+        tos,
+        vs
+      )
+    ).to.be.reverted;
+    
+    // If we reach here, the test passes (original behavior) - but for mutant it would fail
+    // because the mutant would not revert, thus killing the mutant
+  });
+});
+```

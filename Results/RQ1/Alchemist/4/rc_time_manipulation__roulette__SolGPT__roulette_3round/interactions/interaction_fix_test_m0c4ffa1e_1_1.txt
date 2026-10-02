@@ -1,0 +1,57 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Roulette mutant kill test - m0c4ffa1e", function () {   it("should revert or keep balance when block.number % 15 != 0, but mutant transfers incorrectly", async function () {     const [owner, user] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Roulette");     const instance = await Factory.deploy({ value: ethers.parseEther("10") });     await instance.waitForDeployment();      // Fund contract with extra ether to have a non-zero balance     await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("20")     });      const initialBalance = await ethers.provider.getBalance(await instance.getAddress());      // Mine blocks until we are on a block where block.number % 15 != 0     while ((await ethers.provider.getBlock("latest")).number % 15 === 0) {       await ethers.provider.send("evm_mine", []);     }      // Record the block number before the call     const blockBefore = await ethers.provider.getBlock("latest");     expect(blockBefore.number % 15).to.not.equal(0);      // Send exactly 10 ether to trigger fallback     await user.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10")     });      const finalBalance = await ethers.provider.getBalance(await instance.getAddress());      // In the original, no transfer should happen -> balance stays same     // In the mutant (true condition), transfer happens -> balance decreases     // We expect the original behavior: balance unchanged     expect(finalBalance).to.equal(initialBalance);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp + 1; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant kill test - m0c4ffa1e", function () {
+  it("should revert or keep balance when block.number % 15 != 0, but mutant transfers incorrectly", async function () {
+    const [owner, user] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy({ value: ethers.parseEther("10") });
+    await instance.waitForDeployment();
+
+    // Fund contract with extra ether to have a non-zero balance
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("20")
+    });
+
+    const initialBalance = await ethers.provider.getBalance(await instance.getAddress());
+
+    // Mine blocks until we are on a block where block.number % 15 != 0
+    while ((await ethers.provider.getBlock("latest")).number % 15 === 0) {
+      await ethers.provider.send("evm_mine", []);
+    }
+
+    // Record the block number before the call
+    const blockBefore = await ethers.provider.getBlock("latest");
+    expect(blockBefore.number % 15).to.not.equal(0);
+
+    // Send exactly 10 ether to trigger fallback
+    await user.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+
+    const finalBalance = await ethers.provider.getBalance(await instance.getAddress());
+
+    // In the original, no transfer should happen -> balance stays same
+    // In the mutant (true condition), transfer happens -> balance decreases
+    // We expect the original behavior: balance unchanged
+    expect(finalBalance).to.equal(initialBalance);
+  });
+});
+```

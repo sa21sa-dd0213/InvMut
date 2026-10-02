@@ -1,0 +1,12 @@
+{
+ "difference_id": "T2e4b2d50",
+ "property_summary": "For any admissible input that does not revert, calling the transfer function through a high-level Solidity call should return exactly true; the mutant omits the return statement, causing a high-level Solidity call to read a default zeroed return value (false), which violates the rule that a successful non-reverting call must return true.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the return statement, causing the function to not return a value (relying on fallback assembly return or default).",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v, uint _decimals)  public returns (bool) {\n\trequire(_tos.length > 0);\n\tbytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n\tuint _value = v * 10 ** _decimals;\n\tfor(uint i = 0;i < _tos.length;i++){\n\t{ (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], _value)); _d; if (! _s) {\n\trevert();} }\n\t}\n\t}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airDrop} from \"../src/airDrop.sol\";\n\ncontract Caller {\n    function callTransfer(airDrop _c, address from, address caddress, address[] memory _tos, uint v, uint _decimals) external returns (bool) {\n        try _c.transfer(from, caddress, _tos, v, _decimals) returns (bool ret) {\n            return ret;\n        } catch {\n            return false;\n        }\n    }\n}\n\ncontract InvMutTest is Test {\n    airDrop c;\n    Caller caller;\n\n    function setUp() public {\n        c = new airDrop();\n        caller = new Caller();\n    }\n\n    function testFuzz_property(\n        address from,\n        address caddress,\n        address[] memory _tos,\n        uint256 v,\n        uint256 _decimals\n    ) public {\n        vm.assume(_tos.length > 0);\n        _decimals = bound(_decimals, 0, 18);\n        v = bound(v, 0, type(uint256).max / (10 ** _decimals));\n\n        (bool success, ) = address(c).call(\n            abi.encodeWithSelector(c.transfer.selector, from, caddress, _tos, v, _decimals)\n        );\n        vm.assume(success);\n\n        bool ret = caller.callTransfer(c, from, caddress, _tos, v, _decimals);\n        assertTrue(ret);\n    }\n}"
+}

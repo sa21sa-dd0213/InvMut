@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0005",
+ "property_summary": "For any caller who is the owner and any recipient address, after owner calls withdrawAll(recipient) (sending the contract any Ether beforehand), the reference contract always ends with address(c).balance == 0; the mutant that first transfers the full balance to owner can cause the overall call to succeed while leaving non-zero balance in c for some adversarial recipient behaviour (or cause different distribution), so the property distinguishes them.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Swap transfer to owner and then to recipient by first transferring full balance to owner, making recipient receive nothing (order change causing different end-state).",
+ "mutated_unit_code": "function withdrawAll(address _recipient) public {\n\n        require(msg.sender == owner);\n        payable(owner).transfer(address(this).balance);\n        payable(_recipient).transfer(address(this).balance);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Phishable} from \"../src/Phishable.sol\";\n\ncontract InvMutTest is Test {\n    Phishable c;\n    function setUp() public { c = new Phishable(address(this)); }\n\n    function testFuzz_property(uint256 amt, address recipient) public {\n        vm.assume(uint160(recipient) > 255 && recipient != address(this) && recipient != 0x7109709ECfa91a80626fF3989D68f67F5b1DD12D && recipient != 0x000000000000000000636F6e736F6c652e6c6f67 && recipient != 0x4e59b44847b379578588920cA78FbF26c0B4956C && recipient != 0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38);\n\n        amt = bound(amt, 1, 1e20);\n        vm.assume(recipient != address(0));\n\n        vm.deal(address(this), amt);\n        (bool s, ) = address(c).call{value: amt}(\"\");\n        require(s, \"funding failed\");\n\n        assert(address(c).balance == amt);\n\n        bool ok;\n        try c.withdrawAll(recipient) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(address(c).balance == 0);\n    }\n}\n"
+}

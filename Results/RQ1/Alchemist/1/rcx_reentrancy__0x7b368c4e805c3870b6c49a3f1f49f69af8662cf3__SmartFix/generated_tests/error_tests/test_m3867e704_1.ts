@@ -1,0 +1,87 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("W_WALLET mutant m3867e704 test", function () {
+  it("should detect removal of revert on failed Collect call", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy Log contract first (required constructor argument)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Deploy W_WALLET with Log address
+    const Factory = await ethers.getContractFactory("W_WALLET");
+    const instance = await Factory.deploy(await log.getAddress());
+    await instance.waitForDeployment();
+
+    // Fund the contract so addr1 can collect
+    const depositAmount = ethers.parseEther("2");
+    await instance.connect(addr1).Put(0, { value: depositAmount });
+
+    // Deploy a contract that rejects incoming Ether
+    const RejectorFactory = await ethers.getContractFactory(
+      "contract Rejector { receive() external payable { revert(); } fallback() external payable { revert(); } }"
+    );
+    const rejector = await RejectorFactory.deploy();
+    await rejector.waitForDeployment();
+
+    // Transfer ownership of W_WALLET balance to rejector address
+    // (Simulate the test by having addr1 call Collect on behalf of the rejector)
+    // First, we need to make the rejector address have a balance in W_WALLET
+    // We can directly set the mapping via a helper or transfer ownership
+    // Since we cannot directly manipulate storage, we'll use addr1 to call Collect
+    // and then check the contract state
+
+    // Record balance before
+    const balanceBefore = await instance.Acc(await rejector.getAddress());
+    const balanceBeforeValue = balanceBefore.balance;
+
+    // Attempt to collect from the rejector address (which will fail to receive Ether)
+    // We need to make a call that passes the balance checks but fails on transfer
+    // First, fund the rejector's account in W_WALLET
+    await instance.connect(addr1).Put(0, { value: depositAmount });
+
+    // Now call Collect from addr1 but for a different address? 
+    // Actually, the Collect function uses msg.sender, so we need to call it from the rejector
+    // But the rejector is a contract, so we need to make it call Collect
+    // Let's create a proxy call
+    const CallerFactory = await ethers.getContractFactory(
+      "contract Caller { function callCollect(address target, uint amount) external { (bool ok,) = target.call(abi.encodeWithSignature(\"Collect(uint256)\", amount)); require(ok, \"call failed\"); } }"
+    );
+    const caller = await CallerFactory.deploy();
+    await caller.waitForDeployment();
+
+    // Fund the caller's account in W_WALLET
+    await instance.connect(addr1).Put(0, { value: depositAmount });
+
+    // Now call Collect from the caller (which will try to send Ether to itself)
+    // The caller's fallback will succeed (accepts Ether), but we need a contract that rejects
+    // Let's use the rejector as the caller instead
+    // Actually, we can use a simpler approach: deploy a contract that calls Collect and then reverts on receive
+    const AttackerFactory = await ethers.getContractFactory(
+      "contract Attacker { function attack(address target, uint amount) external { target.call(abi.encodeWithSignature(\"Collect(uint256)\", amount)); } receive() external payable { revert(); } }"
+    );
+    const attacker = await AttackerFactory.deploy();
+    await attacker.waitForDeployment();
+
+    // Fund attacker's account in W_WALLET
+    await instance.connect(addr1).Put(0, { value: depositAmount });
+
+    // Get attacker's balance before
+    const attackerAccBefore = await instance.Acc(await attacker.getAddress());
+    const attackerBalanceBefore = attackerAccBefore.balance;
+
+    // Call Collect through the attacker (which will revert on receiving Ether)
+    await attacker.connect(addr1).attack(await instance.getAddress(), ethers.parseEther("1"));
+
+    // Check the balance after - in the mutant, the balance should have decreased
+    // (because the revert was removed, so the subtraction happened even though transfer failed)
+    const attackerAccAfter = await instance.Acc(await attacker.getAddress());
+    const attackerBalanceAfter = attackerAccAfter.balance;
+
+    // In the original contract, the balance should remain unchanged due to revert
+    // In the mutant, the balance decreases even though the transfer failed
+    expect(attackerBalanceAfter).to.be.lessThan(attackerBalanceBefore);
+  });
+});

@@ -1,0 +1,136 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("StaxLPStaking - Mutant m951e5bfc detection", function () {
+  it("should detect the mutant by verifying reward rate calculation when notifying rewards during an ongoing period", async function () {
+    const [owner, distributor, staker] = await ethers.getSigners();
+    
+    // Deploy a mock ERC20 token for staking
+    const MockERC20Factory = await ethers.getContractFactory("MockERC20");
+    const stakingToken = await MockERC20Factory.deploy("Staking Token", "STK", 18);
+    await stakingToken.waitForDeployment();
+    
+    // Deploy a mock ERC20 token for rewards
+    const rewardToken = await MockERC20Factory.deploy("Reward Token", "RWD", 18);
+    await rewardToken.waitForDeployment();
+    
+    // Deploy the StaxLPStaking contract
+    const StaxLPStakingFactory = await ethers.getContractFactory("StaxLPStaking");
+    const staking = await StaxLPStakingFactory.deploy(
+      await stakingToken.getAddress(),
+      distributor.address
+    );
+    await staking.waitForDeployment();
+    
+    // Setup: fund staker with staking tokens
+    const stakeAmount = ethers.parseEther("1000");
+    await stakingToken.transfer(staker.address, stakeAmount);
+    await stakingToken.connect(staker).approve(await staking.getAddress(), stakeAmount);
+    
+    // Add reward token
+    await staking.addReward(await rewardToken.getAddress());
+    
+    // Fund distributor with reward tokens
+    const firstRewardAmount = ethers.parseEther("100");
+    const secondRewardAmount = ethers.parseEther("50");
+    await rewardToken.transfer(distributor.address, firstRewardAmount + secondRewardAmount);
+    await rewardToken.connect(distributor).approve(await staking.getAddress(), firstRewardAmount + secondRewardAmount);
+    
+    // First notification: start reward period
+    await staking.connect(distributor).notifyRewardAmount(
+      await rewardToken.getAddress(),
+      firstRewardAmount
+    );
+    
+    // Stake tokens to generate rewards
+    await staking.connect(staker).stake(stakeAmount);
+    
+    // Fast forward half of the reward period (DURATION = 86400 * 7 = 604800 seconds)
+    await ethers.provider.send("evm_increaseTime", [302400]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // Second notification: notify additional reward during ongoing period
+    await staking.connect(distributor).notifyRewardAmount(
+      await rewardToken.getAddress(),
+      secondRewardAmount
+    );
+    
+    // Fast forward to the end of the extended period
+    await ethers.provider.send("evm_increaseTime", [302400]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // Calculate expected rewards using the ORIGINAL formula (addition)
+    // First period: 100 tokens / 604800 seconds = rewardRate1
+    // After half period: leftover = 302400 * rewardRate1
+    // Original: new rewardRate = (50 + leftover) / 604800
+    // Mutant: new rewardRate = (50 * leftover) / 604800
+    
+    // Get the reward rate from the contract
+    const rewardData = await staking.rewardData(await rewardToken.getAddress());
+    const rewardRate = rewardData.rewardRate;
+    
+    // Calculate what the reward rate SHOULD be with the ORIGINAL formula
+    const DURATION = BigInt(86400 * 7);
+    const halfDuration = BigInt(302400);
+    const firstRewardRate = (firstRewardAmount * BigInt(1e18)) / DURATION; // scaled for precision
+    const leftover = halfDuration * firstRewardRate / BigInt(1e18);
+    const expectedRewardRate = (secondRewardAmount + leftover) / DURATION;
+    
+    // If the mutant is present, the reward rate will be (50 * leftover) / 604800
+    // which would be much larger than expected
+    const mutantRewardRate = (secondRewardAmount * leftover) / DURATION;
+    
+    // The test kills the mutant if the actual reward rate matches the mutant calculation
+    // instead of the original calculation
+    expect(rewardRate).to.equal(mutantRewardRate);
+    
+    // Verify that the reward calculation is wrong by checking staker's earned amount
+    const earned = await staking.earned(staker.address, await rewardToken.getAddress());
+    
+    // With the mutant, the earned amount would be significantly higher
+    // than what the original formula would produce
+    const originalExpectedEarned = (stakeAmount * (firstRewardRate + secondRewardRate)) / BigInt(1e18);
+    
+    // If mutant is present, earned will be much larger than original expected
+    expect(earned).to.be.gt(originalExpectedEarned);
+  });
+});
+
+// Helper contract for testing
+// Note: This should be deployed as a separate contract or use an existing mock
+contract MockERC20 {
+    string public name;
+    string public symbol;
+    uint8 public decimals;
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+    
+    constructor(string memory _name, string memory _symbol, uint8 _decimals) {
+        name = _name;
+        symbol = _symbol;
+        decimals = _decimals;
+        // Mint initial supply to deployer
+        balanceOf[msg.sender] = 1000000 * 10 ** _decimals;
+    }
+    
+    function transfer(address to, uint256 amount) external returns (bool) {
+        require(balanceOf[msg.sender] >= amount);
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+    
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
+    }
+    
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        require(allowance[from][msg.sender] >= amount);
+        require(balanceOf[from] >= amount);
+        allowance[from][msg.sender] -= amount;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+}

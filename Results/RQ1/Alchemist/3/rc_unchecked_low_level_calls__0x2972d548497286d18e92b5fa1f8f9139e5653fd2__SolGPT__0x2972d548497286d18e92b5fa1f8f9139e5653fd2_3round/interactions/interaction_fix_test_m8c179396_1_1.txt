@@ -1,0 +1,67 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("demo mutant m8c179396 - loop condition changed from < to >", function () {   it("should revert or fail when transferring to multiple recipients because loop never executes with > condition", async function () {     const [owner, from, recipient1, recipient2] = await ethers.getSigners();          // Deploy the contract (no constructor arguments for demo)     const Factory = await ethers.getContractFactory("demo");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Setup: Create an ERC20 token to use with transferFrom (demo calls transferFrom on caddress)     // Deploy a simple ERC20 that allows transferFrom     const TokenFactory = await ethers.getContractFactory("ERC20Mock");     const token = await TokenFactory.deploy("Test", "TST", 18);     await token.waitForDeployment();          // Mint tokens to from address and approve demo contract to spend them     await token.mint(from.address, ethers.parseEther("100"));     await token.connect(from).approve(await instance.getAddress(), ethers.parseEther("100"));          // Prepare recipients array and values array     const recipients = [recipient1.address, recipient2.address];     const values = [ethers.parseEther("10"), ethers.parseEther("20")];          // Call transfer function - on the mutant, the loop never executes (i > length is false)     // so no transferFrom calls happen, meaning no tokens are transferred     const tx = await instance.connect(owner).transfer(       from.address,       await token.getAddress(),       recipients,       values     );     await tx.wait();          // Verify that NO tokens were transferred to any recipient (mutant fails to execute loop)     const balance1 = await token.balanceOf(recipient1.address);     const balance2 = await token.balanceOf(recipient2.address);          expect(balance1).to.equal(0);     expect(balance2).to.equal(0);          // Also verify from address still has full balance (no transfers happened)     const fromBalance = await token.balanceOf(from.address);     expect(fromBalance).to.equal(ethers.parseEther("100"));          // On the original contract, this test would fail because transfers would occur     // and balances would be updated, but on the mutant it passes (detecting the bug)   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract demo{ function transfer(address from, address caddress, address[] memory _tos, uint[] memory v) public returns (bool){ require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0; i<_tos.length; i++){ { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v[i])); require(_s); } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("demo mutant m8c179396 - loop condition changed from < to >", function () {
+  it("should revert or fail when transferring to multiple recipients because loop never executes with > condition", async function () {
+    const [owner, from, recipient1, recipient2] = await ethers.getSigners();
+
+    // Deploy the contract (no constructor arguments for demo)
+    const Factory = await ethers.getContractFactory("demo");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Setup: Create an ERC20 token to use with transferFrom (demo calls transferFrom on caddress)
+    // Deploy a simple ERC20 that allows transferFrom
+    const TokenFactory = await ethers.getContractFactory("ERC20Mock");
+    const token = await TokenFactory.deploy("Test", "TST", 18);
+    await token.waitForDeployment();
+
+    // Mint tokens to from address and approve demo contract to spend them
+    await token.mint(from.address, ethers.parseEther("100"));
+    await token.connect(from).approve(await instance.getAddress(), ethers.parseEther("100"));
+
+    // Prepare recipients array and values array
+    const recipients = [recipient1.address, recipient2.address];
+    const values = [ethers.parseEther("10"), ethers.parseEther("20")];
+
+    // Call transfer function - on the mutant, the loop never executes (i > length is false)
+    // so no transferFrom calls happen, meaning no tokens are transferred
+    const tx = await instance.connect(owner).transfer(
+      from.address,
+      await token.getAddress(),
+      recipients,
+      values
+    );
+    await tx.wait();
+
+    // Verify that NO tokens were transferred to any recipient (mutant fails to execute loop)
+    const balance1 = await token.balanceOf(recipient1.address);
+    const balance2 = await token.balanceOf(recipient2.address);
+
+    expect(balance1).to.equal(0);
+    expect(balance2).to.equal(0);
+
+    // Also verify from address still has full balance (no transfers happened)
+    const fromBalance = await token.balanceOf(from.address);
+    expect(fromBalance).to.equal(ethers.parseEther("100"));
+
+    // On the original contract, this test would fail because transfers would occur
+    // and balances would be updated, but on the mutant it passes (detecting the bug)
+  });
+});
+```

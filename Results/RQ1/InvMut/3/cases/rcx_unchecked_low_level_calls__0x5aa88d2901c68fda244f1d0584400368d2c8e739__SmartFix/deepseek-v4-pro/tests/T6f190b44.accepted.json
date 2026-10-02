@@ -1,0 +1,12 @@
+{
+ "difference_id": "T6f190b44",
+ "property_summary": "After a Command call with a non-zero msg.value that is routed through a callee whose fallback reverts, the contract's ETH balance must equal the sent msg.value (since the reverted call returns the value to the contract), but the buggy version drains all balance to Owner, leaving 0.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace `adr.call{value: msg.value}(data)` with `payable(Owner).transfer(address(this).balance)`, changing the observable balance after Command.",
+ "mutated_unit_code": "function Command(address adr,bytes memory data)\n    payable\n    public\n    {\n        require(msg.sender == Owner);\n\n        payable(Owner).transfer(address(this).balance);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MultiplicatorX3} from \"../src/MultiplicatorX3.sol\";\n\ncontract InvMutTest is Test {\n    MultiplicatorX3 c;\n    function setUp() public { c = new MultiplicatorX3(); }\n    function testFuzz_property(uint256 amount, address adr) public {\n        vm.assume(amount > 0 && adr != address(0) && adr != address(c) && adr != c.Owner());\n        Reverter r = new Reverter();\n        vm.deal(c.Owner(), amount);\n        vm.prank(c.Owner());\n        c.Command{value: amount}(address(r), hex\"\");\n        assertTrue(address(c).balance == amount);\n    }\n}\n\ncontract Reverter {\n    fallback() external payable { revert(); }\n}"
+}

@@ -1,0 +1,58 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m430ce10b of PoCGame.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PoCGame.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PoCGame:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PoCGame reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PoCGame by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PoCGame"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PoCGame mutant m430ce10b test", function () {
+  it("should kill mutant by calling play() exactly one block after wager()", async function () {
+    const [owner, player] = await ethers.getSigners();
+    
+    // Deploy with constructor arguments: whale address and bet limit
+    const betLimit = ethers.parseEther("1.0");
+    const Factory = await ethers.getContractFactory("PoCGame");
+    const instance = await Factory.deploy(player.address, betLimit);
+    await instance.waitForDeployment();
+
+    // Owner opens to public
+    await (await instance.connect(owner).OpenToThePublic()).wait();
+
+    // Set difficulty to a known value so we can compute winning conditions if needed
+    await (await instance.connect(owner).AdjustDifficulty(10)).wait();
+
+    // Player makes a wager in block N
+    const txWager = await instance.connect(player).wager({ value: betLimit });
+    const receiptWager = await txWager.wait();
+    const wagerBlockNumber = receiptWager.blockNumber;
+
+    // Mine one additional block to be in block N+1
+    await ethers.provider.send("evm_mine", []);
+
+    // Verify we are now in block N+1
+    const currentBlock = await ethers.provider.getBlockNumber();
+    expect(currentBlock).to.equal(wagerBlockNumber + 1);
+
+    // Attempt to play - this should pass on original (blockNumber < block.number)
+    // but should fail/revert on mutant (blockNumber < block.number-1 is false when blockNumber == block.number-1)
+    await expect(
+      instance.connect(player).play()
+    ).to.be.reverted;
+  });
+});
+```

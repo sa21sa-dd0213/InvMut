@@ -1,0 +1,12 @@
+{
+ "difference_id": "T77e245ef",
+ "property_summary": "After go() succeeds, the contract balance is zero and the stored owner's balance increases by at least the excess; the bug sends the excess to msg.sender instead, leaving owner's balance unchanged.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change the transfer recipient from owner to msg.sender, so the final balance goes to the caller instead of the stored owner.",
+ "mutated_unit_code": "function go () public payable {\naddress     target = 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C;\n(bool __sent_result100, ) = target.call{value: msg.value}(\"\");\nrequire(__sent_result100);\npayable(msg.sender).transfer(address(this).balance);\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {B} from \"../src/B.sol\";\n\ncontract InvMutTest is Test {\n    B c;\n    function setUp() public { c = new B(); }\n    function testFuzz_property(uint256 amount, address actor) public {\n        vm.assume(actor != address(0) && actor != c.owner());\n        amount = bound(amount, 1, 1_000_000 ether);\n\n        uint256 ownerBefore = c.owner().balance;\n        vm.deal(actor, amount);\n        vm.prank(actor);\n        try c.go{value: amount}() {\n            assertEq(address(c).balance, 0);\n            assertGt(c.owner().balance, ownerBefore);\n        } catch {\n        }\n    }\n}\n"
+}

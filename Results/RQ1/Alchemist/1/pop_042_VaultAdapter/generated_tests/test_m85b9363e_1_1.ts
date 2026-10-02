@@ -1,0 +1,93 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("VaultAdapter - Kill mutant m85b9363e (division replaced with addition in _applySlopes)", function () {
+  let vaultAdapter: any;
+  let vault: any;
+  let owner: any;
+  let addr1: any;
+
+  before(async function () {
+    [owner, addr1] = await ethers.getSigners();
+
+    // Deploy VaultAdapter (constructor has no arguments - it's a constructor() with _disableInitializers())
+    const VaultAdapterFactory = await ethers.getContractFactory("VaultAdapter");
+    vaultAdapter = await VaultAdapterFactory.deploy();
+    await vaultAdapter.waitForDeployment();
+
+    // Deploy a mock vault for testing (simplified vault that returns utilization data)
+    const VaultFactory = await ethers.getContractFactory("VaultMock");
+    vault = await VaultFactory.deploy();
+    await vault.waitForDeployment();
+  });
+
+  it("should detect mutant by verifying correct interest rate calculation when utilization is below kink", async function () {
+    // Deploy access control contract needed for initialization
+    const AccessControlFactory = await ethers.getContractFactory("AccessControlMock");
+    const accessControl = await AccessControlFactory.deploy();
+    await accessControl.waitForDeployment();
+
+    // Initialize vault adapter
+    await vaultAdapter.initialize(await accessControl.getAddress());
+
+    // Grant access to the test caller for setSlopes
+    const setSlopesSelector = vaultAdapter.interface.getFunction("setSlopes").selector;
+    await accessControl.grantAccess(setSlopesSelector, await vaultAdapter.getAddress(), owner.address);
+
+    // Set slopes with specific values for deterministic calculation
+    const kink = ethers.parseEther("0.5"); // 50% utilization kink
+    const slope0 = ethers.parseEther("0.1"); // 10% base slope
+    const slope1 = ethers.parseEther("0.2"); // 20% slope above kink
+
+    await vaultAdapter.setSlopes(await vault.getAddress(), {
+      kink: kink,
+      slope0: slope0,
+      slope1: slope1
+    });
+
+    // Set limits
+    const setLimitsSelector = vaultAdapter.interface.getFunction("setLimits").selector;
+    await accessControl.grantAccess(setLimitsSelector, await vaultAdapter.getAddress(), owner.address);
+
+    const maxMultiplier = ethers.parseEther("2");
+    const minMultiplier = ethers.parseEther("0.5");
+    const rate = ethers.parseEther("0.1");
+    await vaultAdapter.setLimits(maxMultiplier, minMultiplier, rate);
+
+    // Configure mock vault to return specific utilization values
+    // Set utilization to 30% (0.3e18) which is below kink (0.5e18)
+    const utilization = ethers.parseEther("0.3");
+    await vault.setUtilization(utilization);
+    await vault.setCurrentUtilizationIndex(ethers.parseEther("1.0"));
+
+    // Call rate function - this will trigger the _applySlopes function in the else branch
+    // (utilization < kink)
+    const rateResult = await vaultAdapter.rate(await vault.getAddress(), await vault.getAddress());
+
+    // Calculate expected interest rate for original contract:
+    // interestRate = (slope0 * utilization / kink) * multiplier / 1e27
+    // With initial multiplier = 1e27 (default), this equals:
+    // (0.1e18 * 0.3e18 / 0.5e18) * 1e27 / 1e27 = 0.06e18 = 60000000000000000
+
+    // For the mutant: interestRate = (slope0 * utilization + kink) * multiplier / 1e27
+    // = (0.1e18 * 0.3e18 + 0.5e18) * 1e27 / 1e27 = (0.03e36 + 0.5e18) which overflows or gives wrong value
+
+    const expectedRate = ethers.parseEther("0.06"); // 6% expected for original
+
+    // The mutant will produce a significantly different value (either overflow or incorrect calculation)
+    // This assertion should pass on original but fail on mutant
+    expect(rateResult).to.equal(expectedRate);
+  });
+});
+
+// Simple mock vault contract for testing
+// Note: In a real test, this would be deployed separately
+const vaultMockArtifact = {
+  abi: [
+    "function currentUtilizationIndex(address) external view returns (uint256)",
+    "function utilization(address) external view returns (uint256)",
+    "function setUtilization(uint256) external",
+    "function setCurrentUtilizationIndex(uint256) external"
+  ],
+  bytecode: "0x6080604052348015600f57600080fd5b5061012a8061001f6000396000f3fe608060405260043610603f5760003560e01c80637b103999146044578063b4b2f3d6146078578063f09a40161460a757600080fd5b36603f57005b600080fd5b348015604f57600080fd5b506056600081565b60405190815260200160405180910390f35b348015608357600080fd5b50605660015481565b34801560b557600080fd5b5060c860b436600460e1565b60005481565b60405190815260200160405180910390f35b60006020828403121560f257600080fd5b5035919050565b60006020828403121561010457600080fd5b503591905056fea2646970667358221220a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a64736f6c63430008110033"
+};

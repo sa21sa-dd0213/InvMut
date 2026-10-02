@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "Calling transfer with a token contract that implements transferFrom (reference succeeds) vs approve (buggy version fails because approve expects different arguments).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Replace the selector from transferFrom to approve to change the called function's signature.",
+ "mutated_unit_code": "    function transfer(address from, address caddress, address[] memory _tos, uint[] memory v) public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id = bytes4(keccak256(\"approve(address,uint256)\"));\n\n        for(uint i=0; i<_tos.length; i++){\n            { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v[i])); require(_s); }\n        }\n\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {demo} from \"../src/demo.sol\";\n\ncontract InvMutTest is Test {\n    demo c;\n    function setUp() public { c = new demo(); }\n    function testRegression_property() public {\n\n        vm.deal(address(0x1), 1 ether);\n\n        \n\n        address mock = address(new MockToken());\n\n        address[] memory tos = new address[](1);\n        tos[0] = address(0x2);\n        uint[] memory vals = new uint[](1);\n        vals[0] = 100;\n\n        bool ok;\n        try c.transfer(address(0x1), mock, tos, vals) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok, \"Reference should succeed, bug should fail\");\n    }\n}\n\ncontract MockToken {\n    function transferFrom(address, address, uint256) external pure returns (bool) {\n        return true;\n    }\n    fallback() external {\n        revert(\"unexpected call\");\n    }\n}"
+}

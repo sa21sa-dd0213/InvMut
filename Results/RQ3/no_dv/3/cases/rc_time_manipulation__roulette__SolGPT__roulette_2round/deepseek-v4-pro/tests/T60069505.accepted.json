@@ -1,0 +1,12 @@
+{
+ "difference_id": "T60069505",
+ "property_summary": "For any sequence of admissible calls, if a call does not result in a full transfer (i.e., no transfer occurs), then the contract's balance does not decrease; the buggy version violates this because removing the msg.value requirement allows pastBlockTime to be updated and a transfer to be triggered even without 10 ether, causing an unexpected balance decrease when block.number % 15 == 0.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Remove the msg.value requirement so fallback can be called with any amount or plain Ether transfers, changing when pastBlockTime is updated and transfers happen.",
+ "mutated_unit_code": "fallback() external payable {\n        require(true);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 amount, uint256 blockNum) public {\n        vm.assume(amount < 10 ether);\n        vm.assume(blockNum > 0);\n        address sender = address(0x1234);\n        vm.deal(sender, amount);\n        vm.roll(blockNum);\n        vm.warp(1);\n        uint256 balBefore = address(c).balance;\n        vm.prank(sender);\n        (bool success, ) = address(c).call{value: amount}(\"\");\n        if (!success || blockNum % 15 != 0) {\n            assertEq(address(c).balance, balBefore, \"balance should not decrease when transfer did not happen\");\n        }\n    }\n}\n"
+}

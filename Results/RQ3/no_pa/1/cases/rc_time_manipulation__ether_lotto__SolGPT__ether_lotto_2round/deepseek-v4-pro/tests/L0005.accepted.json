@@ -1,0 +1,11 @@
+{
+ "difference_id": "L0005",
+ "property_summary": "After a single play() call from an account with 10 wei, the reference contract returns 9 wei to the caller and 1 wei to the bank, leaving the pot zero; the buggy contract also does the same. However, after two calls (first from Alice, then from Bob), the reference may skip the if-block on the second call (random = 1) and the pot accumulates, while the buggy contract always executes the if-block and transfers everything on the second call. We concretely set block.timestamp and block.difficulty via vm.warp and vm.roll such that the reference's second call random = 1 (skips transfer) while the buggy random = 0 (transfers). After two calls from distinct addresses with 10 wei each, the reference's pot is 20 wei and bank balance is 1 wei, while buggy's pot is 0 and bank balance is 2 wei. The assertion checks that after the second call, c.pot() > 0 (reference) vs c.pot() == 0 (buggy).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "change_summary": "Replace 'uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 2;' with 'uint random = 0;' to always execute the if block.",
+ "mutated_unit_code": "    function play()  public payable {\n        require(msg.value == TICKET_AMOUNT);\n\n        pot += msg.value;\n\n        uint random = 0;\n\n        if (random == 0) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    function setUp() public { c = new EtherLotto(); }\n    function testRegression_property() public {\n        address alice = address(0x1111);\n        address bob = address(0x2222);\n        vm.deal(alice, 20);\n        vm.deal(bob, 20);\n\n        vm.warp(1);\n        vm.roll(2);\n        vm.prank(alice);\n        c.play{value: 10}();\n\n        vm.warp(2);\n        vm.roll(1);\n        vm.prank(bob);\n        c.play{value: 10}();\n\n        assertTrue(c.pot() > 0);\n    }\n}\n"
+}

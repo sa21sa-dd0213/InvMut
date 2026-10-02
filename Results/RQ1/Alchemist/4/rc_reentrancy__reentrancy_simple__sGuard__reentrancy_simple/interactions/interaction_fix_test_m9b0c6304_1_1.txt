@@ -1,0 +1,85 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Reentrance mutant m9b0c6304 - reentrancy guard removal in addToBalance", function () {   it("should detect reentrancy when addToBalance is called during withdrawBalance", async function () {     const [owner, attacker] = await ethers.getSigners();          // Deploy the Reentrance contract (no constructor arguments)     const Factory = await ethers.getContractFactory("Reentrance");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Deploy the attacker contract that will perform reentrancy     const AttackerFactory = await ethers.getContractFactory("ReentrancyAttacker");     const attackerContract = await AttackerFactory.deploy(await instance.getAddress());     await attackerContract.waitForDeployment();          // Fund the attacker contract with 1 ether     await owner.sendTransaction({       to: await attackerContract.getAddress(),       value: ethers.parseEther("1.0")     });          // Attacker contract deposits 0.5 ether into Reentrance     const depositAmount = ethers.parseEther("0.5");     await attackerContract.connect(attacker).deposit({ value: depositAmount });          // Verify initial balance     expect(await instance.getBalance(await attackerContract.getAddress())).to.equal(depositAmount);          // Now call attack - this should trigger reentrancy on the mutant     // On the original (with guard), it would revert     // On the mutant (without guard), it might succeed and drain funds     const attackTx = attackerContract.connect(attacker).attack();          // If the original guard were present, this would revert     // The mutant allows the reentrancy, so the balance should be manipulated     await expect(attackTx).to.changeEtherBalance(       attackerContract,       depositAmount * 2n, // attacker should get original deposit + reentered amount       { includeTransaction: true }     );   }); });  // Attacker contract for reentrancy test contract ReentrancyAttacker {   Reentrance public target;   uint256 public depositAmount;      constructor(address _target) {     target = Reentrance(_target);   }      function deposit() external payable {     depositAmount = msg.value;     target.addToBalance{value: msg.value}();   }      function attack() external {     target.withdrawBalance();   }      receive() external payable {     if (address(target).balance >= depositAmount) {       target.addToBalance{value: depositAmount}();     }   } }
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } } contract Reentrance  is sGuard { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public nonReentrant_ payable { userBalance[msg.sender] = add_uint256(userBalance[msg.sender], msg.value); } function withdrawBalance()  public nonReentrant_ { { (bool _s, bytes memory _d) = msg.sender.call{value: userBalance[msg.sender]}(""); _d; if (! _s) { revert(); } } userBalance[msg.sender] = 0; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Reentrance mutant m9b0c6304 - reentrancy guard removal in addToBalance", function () {
+  it("should detect reentrancy when addToBalance is called during withdrawBalance", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+
+    // Deploy the Reentrance contract (no constructor arguments)
+    const Factory = await ethers.getContractFactory("Reentrance");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy the attacker contract that will perform reentrancy
+    const AttackerFactory = await ethers.getContractFactory("ReentrancyAttacker");
+    const attackerContract = await AttackerFactory.deploy(await instance.getAddress());
+    await attackerContract.waitForDeployment();
+
+    // Fund the attacker contract with 1 ether
+    await owner.sendTransaction({
+      to: await attackerContract.getAddress(),
+      value: ethers.parseEther("1.0")
+    });
+
+    // Attacker contract deposits 0.5 ether into Reentrance
+    const depositAmount = ethers.parseEther("0.5");
+    await attackerContract.connect(attacker).deposit({ value: depositAmount });
+
+    // Verify initial balance
+    expect(await instance.getBalance(await attackerContract.getAddress())).to.equal(depositAmount);
+
+    // Now call attack - this should trigger reentrancy on the mutant
+    // On the original (with guard), it would revert
+    // On the mutant (without guard), it might succeed and drain funds
+    const attackTx = await attackerContract.connect(attacker).attack();
+
+    // If the original guard were present, this would revert
+    // The mutant allows the reentrancy, so the balance should be manipulated
+    await expect(attackTx).to.changeEtherBalance(
+      attackerContract,
+      depositAmount * 2n, // attacker should get original deposit + reentered amount
+      { includeTransaction: true }
+    );
+  });
+});
+
+// Attacker contract for reentrancy test
+contract ReentrancyAttacker {
+  Reentrance public target;
+  uint256 public depositAmount;
+
+  constructor(address _target) {
+    target = Reentrance(_target);
+  }
+
+  function deposit() external payable {
+    depositAmount = msg.value;
+    target.addToBalance{value: msg.value}();
+  }
+
+  function attack() external {
+    target.withdrawBalance();
+  }
+
+  receive() external payable {
+    if (address(target).balance >= depositAmount) {
+      target.addToBalance{value: depositAmount}();
+    }
+  }
+}
+```

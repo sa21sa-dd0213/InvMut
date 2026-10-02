@@ -1,0 +1,113 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: 
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract SimpleWallet  { address  public   owner = payable(msg.sender); uint  public   depositsCount; modifier onlyOwner { require(msg.sender==owner); _; } fallback() external payable { depositsCount ++ ; } function withdrawAll () public onlyOwner  { withdraw(address(this).balance); } function withdraw (uint    _value) public onlyOwner  { payable(msg.sender).transfer(_value); } function sendMoney (address    _target,uint    _value) public onlyOwner  { (bool __sent_result100, ) = _target.call{value: _value}(""); require(__sent_result100); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("SimpleWallet", function () {
+  let simpleWallet: any;
+  let owner: any;
+  let addr1: any;
+  let addr2: any;
+
+  beforeEach(async function () {
+    [owner, addr1, addr2] = await ethers.getSigners();
+    
+    const SimpleWallet = await ethers.getContractFactory("SimpleWallet");
+    simpleWallet = await SimpleWallet.deploy();
+    await simpleWallet.deployed();
+  });
+
+  describe("Deployment", function () {
+    it("Should set the right owner", async function () {
+      expect(await simpleWallet.owner()).to.equal(owner.address);
+    });
+
+    it("Should start with depositsCount = 0", async function () {
+      expect(await simpleWallet.depositsCount()).to.equal(0);
+    });
+  });
+
+  describe("Transactions", function () {
+    it("Should accept ether and increase depositsCount", async function () {
+      const tx = {
+        to: simpleWallet.address,
+        value: ethers.utils.parseEther("1.0"),
+      };
+      
+      await owner.sendTransaction(tx);
+      
+      expect(await simpleWallet.depositsCount()).to.equal(1);
+      expect(await ethers.provider.getBalance(simpleWallet.address)).to.equal(
+        ethers.utils.parseEther("1.0")
+      );
+    });
+
+    it("Should withdraw all ether correctly", async function () {
+      // Send ether to contract first
+      await owner.sendTransaction({
+        to: simpleWallet.address,
+        value: ethers.utils.parseEther("2.0"),
+      });
+
+      const initialBalance = await ethers.provider.getBalance(owner.address);
+      
+      const tx = await simpleWallet.withdrawAll();
+      const receipt = await tx.wait();
+      const gasCost = receipt.gasUsed.mul(receipt.effectiveGasPrice);
+      
+      const finalBalance = await ethers.provider.getBalance(owner.address);
+      
+      expect(finalBalance).to.equal(
+        initialBalance.sub(gasCost).add(ethers.utils.parseEther("2.0"))
+      );
+      expect(await ethers.provider.getBalance(simpleWallet.address)).to.equal(0);
+    });
+
+    it("Should allow owner to send ether to another address", async function () {
+      // Fund the contract
+      await owner.sendTransaction({
+        to: simpleWallet.address,
+        value: ethers.utils.parseEther("3.0"),
+      });
+
+      const initialAddr1Balance = await ethers.provider.getBalance(addr1.address);
+      
+      await simpleWallet.sendMoney(
+        addr1.address,
+        ethers.utils.parseEther("1.5")
+      );
+      
+      const finalAddr1Balance = await ethers.provider.getBalance(addr1.address);
+      
+      expect(finalAddr1Balance).to.equal(
+        initialAddr1Balance.add(ethers.utils.parseEther("1.5"))
+      );
+    });
+
+    it("Should revert if non-owner tries to withdraw", async function () {
+      await expect(
+        simpleWallet.connect(addr1).withdrawAll()
+      ).to.be.revertedWith(""); // No error message in the modifier
+    });
+
+    it("Should revert if non-owner tries to send money", async function () {
+      await expect(
+        simpleWallet.connect(addr1).sendMoney(addr2.address, 100)
+      ).to.be.revertedWith(""); // No error message in the modifier
+    });
+  });
+});
+```

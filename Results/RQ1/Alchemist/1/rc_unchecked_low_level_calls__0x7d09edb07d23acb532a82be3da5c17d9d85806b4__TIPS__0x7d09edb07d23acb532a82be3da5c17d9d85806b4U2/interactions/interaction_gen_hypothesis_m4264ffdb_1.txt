@@ -1,0 +1,30 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract PoCGame:
+        Contract Code: pragma solidity ^0.8.0; contract PoCGame { modifier onlyOwner(){ require(msg.sender == owner); _;} modifier isOpenToPublic(){ require(openToPublic); _;} modifier onlyRealPeople(){ require(msg.sender == tx.origin); _;} modifier onlyPlayers(){ require(wagers[msg.sender] > 0); _;} event Wager(uint256 amount, address depositer); event Win(uint256 amount, address paidTo); event Lose(uint256 amount, address loser); event Donate(uint256 amount, address paidTo, address donator); event DifficultyChanged(uint256 currentDifficulty); event BetLimitChanged(uint256 currentBetLimit); address private whale; uint256 betLimit; uint difficulty; uint private randomSeed; address owner; mapping(address => uint256) timestamps; mapping(address => uint256) wagers; bool openToPublic; uint256 totalDonated; constructor(address whaleAddress, uint256 wagerLimit) onlyRealPeople public { openToPublic = false; owner = payable(msg.sender); whale = whaleAddress; totalDonated = 0; betLimit = wagerLimit; } function OpenToThePublic()  public onlyOwner { openToPublic = true; } function AdjustBetAmounts(uint256 amount)  public onlyOwner { betLimit = amount; emit BetLimitChanged(betLimit); } function AdjustDifficulty(uint256 amount)  public onlyOwner { difficulty = amount; emit DifficultyChanged(difficulty); } fallback() external payable { } function wager()  public isOpenToPublic onlyRealPeople payable { require(msg.value == betLimit); timestamps[msg.sender] = block.number; wagers[msg.sender] = msg.value; emit Wager(msg.value, msg.sender); } function play()  public isOpenToPublic onlyRealPeople onlyPlayers { uint256 blockNumber = timestamps[msg.sender]; if(blockNumber < block.number){ timestamps[msg.sender] = 0; wagers[msg.sender] = 0; uint256 winningNumber = uint256(keccak256(abi.encodePacked(blockhash(blockNumber), msg.sender))) % difficulty + 1; if(winningNumber == difficulty / 2){ payout(msg.sender); } else{ loseWager(betLimit / 2); } } else{ revert(); } } function donate()  public isOpenToPublic payable { donateToWhale(msg.value); } function payout(address winner) internal { uint256 ethToTransfer = address(this).balance / 2; payable(winner).transfer(ethToTransfer); emit Win(ethToTransfer, winner); } function donateToWhale(uint256 amount) internal { payable(whale).transfer(amount); totalDonated += amount; emit Donate(amount, whale, msg.sender); } function loseWager(uint256 amount) internal { payable(whale).transfer(amount); totalDonated += amount; emit Lose(amount, msg.sender); } function ethBalance()  public view returns (uint256) { return address(this).balance; } function currentDifficulty()  public view returns (uint256) { return difficulty; } function currentBetLimit()  public view returns (uint256) { return betLimit; } function hasPlayerWagered(address player)  public view returns (bool) { if(wagers[player] > 0){ return true; } else{ return false; } } function winnersPot()  public view returns (uint256) { return address(this).balance / 2; } function transferAnyERC20Token(address tokenAddress, address tokenOwner, uint tokens)  public onlyOwner returns (bool success) { return ERC20Interface(tokenAddress).transfer(tokenOwner, tokens); } } abstract contract ERC20Interface { function transfer(address to, uint256 tokens) virtual public returns (bool success); }
+
+    Consider the following mutant of PoCGame:
+        Mutant m4264ffdb of function play replaces blockNumber < block.number with true
+        Mutant Diff: ---| 	if(blockNumber < block.number){ +++| 	if(true){
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let’s walk through the logic step by step:
+
+1. **Original behavior** – In the `play()` function, the condition `blockNumber < block.number` ensures that the player cannot call `play()` in the same block they called `wager()`. The player must wait at least one block before playing. If they try to play too soon (same block), the transaction reverts.
+
+2. **Mutant behavior** – The mutant changes this condition to `if (true)`, meaning the block number check is completely removed. A player can now call `play()` in the **same block** as `wager()` without a revert.
+
+3. **What should the test do?** – A test that specifically calls `wager()` and then immediately calls `play()` in the **same block** (e.g., by bundling both calls in a single transaction or using a contract that calls both in one function) should:
+   - **Pass on the original** – revert because `blockNumber < block.number` is false.
+   - **Fail on the mutant** – succeed because the condition is always true, bypassing the intended delay.
+
+**Hypothesis**:  
+A test case that calls `wager()` and then `play()` in the same block (e.g., via a helper contract that executes both in one transaction) and expects a revert should kill the mutant, because the mutant incorrectly allows immediate play without waiting for the next block.

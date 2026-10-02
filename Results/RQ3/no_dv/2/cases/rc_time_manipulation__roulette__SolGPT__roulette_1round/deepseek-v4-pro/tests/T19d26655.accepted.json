@@ -1,0 +1,12 @@
+{
+ "difference_id": "T19d26655",
+ "property_summary": "After any valid fallback call with block.timestamp > pastBlockTime and msg.value == 10 ether, the contract's balance is zero if and only if block.number is a multiple of 15; the mutant breaks this by always zeroing the balance regardless of block.number.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Delete the if condition block so that payout always occurs on every valid call.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        payable(msg.sender).transfer(address(this).balance);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 blockNumber, uint256 timestamp, address sender) public {\n        vm.assume(blockNumber > 0);\n        vm.assume(timestamp > 0);\n        vm.assume(sender != address(0));\n        vm.roll(blockNumber);\n        vm.warp(timestamp);\n        vm.deal(sender, 10 ether);\n        vm.prank(sender);\n        (bool ok, ) = address(c).call{value: 10 ether}(\"\");\n        assertTrue(ok);\n        bool balanceZero = address(c).balance == 0;\n        bool blockMultipleOf15 = (block.number % 15 == 0);\n        assertTrue(balanceZero == blockMultipleOf15);\n    }\n}"
+}

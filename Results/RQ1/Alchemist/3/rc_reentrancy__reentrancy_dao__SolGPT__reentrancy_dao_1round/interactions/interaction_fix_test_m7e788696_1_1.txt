@@ -1,0 +1,49 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("ReentrancyDAO mutant kill test - m7e788696", function () {   it("should revert when user with zero credit calls withdrawAll on original, but succeed on mutant", async function () {     const [owner, attacker] = await ethers.getSigners();          // Deploy the contract (no constructor arguments needed)     const Factory = await ethers.getContractFactory("ReentrancyDAO");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Get initial balance of attacker     const initialBalance = await ethers.provider.getBalance(attacker.address);          // Attacker has never deposited, so their credit is 0     // On the original contract, this should revert because oCredit > 0 is false     // On the mutant, this should succeed because condition is always true          // Try to call withdrawAll from attacker (zero credit account)     const tx = instance.connect(attacker).withdrawAll();          // The original contract would revert because the require(callResult) would fail     // when trying to send 0 ether (or the call would succeed with 0 value)     // Either way, the state should not change on the original          // We expect the transaction to revert on the original contract     await expect(tx).to.be.reverted;          // Verify attacker's balance hasn't changed (no ether was sent)     expect(await ethers.provider.getBalance(attacker.address)).to.equal(initialBalance);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract ReentrancyDAO { mapping (address => uint) credit; uint balance; function withdrawAll() public { uint oCredit = credit[msg.sender]; if (oCredit > 0) { balance -= oCredit; credit[msg.sender] = 0; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); } } function deposit() public payable { credit[msg.sender] += msg.value; balance += msg.value; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ReentrancyDAO mutant kill test - m7e788696", function () {
+  it("should revert when user with zero credit calls withdrawAll on original, but succeed on mutant", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+
+    // Deploy the contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("ReentrancyDAO");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get initial balance of attacker
+    const initialBalance = await ethers.provider.getBalance(attacker.address);
+
+    // Attacker has never deposited, so their credit is 0
+    // On the original contract, this should revert because oCredit > 0 is false
+    // On the mutant, this should succeed because condition is always true
+
+    // Try to call withdrawAll from attacker (zero credit account)
+    const tx = instance.connect(attacker).withdrawAll();
+
+    // The original contract would revert because the require(callResult) would fail
+    // when trying to send 0 ether (or the call would succeed with 0 value)
+    // Either way, the state should not change on the original
+
+    // We expect the transaction to revert on the original contract
+    await expect(tx).to.be.reverted;
+
+    // Verify attacker's balance hasn't changed (no ether was sent)
+    expect(await ethers.provider.getBalance(attacker.address)).to.equal(initialBalance);
+  });
+});
+```

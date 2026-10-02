@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0004",
+ "property_summary": "After sendMoney is called with any target and value, the call must revert if the low-level call to the target fails; the mutant breaks this by silently succeeding on a failing target.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Remove the revert on failure, so sendMoney succeeds silently even if the external call fails, thus changing `sendMoney`'s observable effect (no revert).",
+ "mutated_unit_code": "function sendMoney(address _target, uint _value)  public onlyOwner {\n\t{ (bool _s, bytes memory _d) = _target.call{value: _value}(\"\"); _d; }\n\t}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n    function testFuzz_property(uint256 _value, address _target) public {\n        Reverter reverter = new Reverter();\n        address target = address(reverter);\n\n        vm.assume(_value > 0);\n        vm.deal(address(c), _value);\n\n        bool reverted;\n        (bool success, ) = address(c).call(abi.encodeWithSignature(\"sendMoney(address,uint256)\", target, _value));\n        if (!success) {\n            reverted = true;\n        } else {\n            reverted = false;\n        }\n\n        assertTrue(reverted);\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert();\n    }\n}"
+}

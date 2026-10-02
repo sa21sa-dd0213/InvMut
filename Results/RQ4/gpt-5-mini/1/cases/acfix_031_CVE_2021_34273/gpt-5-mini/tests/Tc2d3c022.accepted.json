@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tc2d3c022",
+ "property_summary": "For all callers, invoking owned() does not change the contract's owner in the correct contract (onlyOwner prevents non-owners from performing owner-affecting actions); the mutant that removes the require allows a non-owner caller to execute owned() and, via a reentrant attacker helper, change owner for some fuzzed caller address.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replace the onlyOwner modifier body to remove the require check so any caller can pass the guard, allowing non-owners to call owned() which may lead to ownership changes observable via owner state.",
+ "mutated_unit_code": "modifier onlyOwner {\n        _;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Owned} from \"../src/Owned.sol\";\n\ncontract InvMutTest is Test {\n    Owned c;\n\n    function setUp() public { c = new Owned(); }\n\n    function testFuzz_property(address attacker) public {\n        if (attacker == address(0)) return;\n\n        AttackerHelper helper = new AttackerHelper(address(c));\n\n        vm.deal(address(helper), 1 ether);\n\n        address ownerBefore = c.owner();\n\n        vm.prank(address(helper));\n        try helper.triggerOwned(attacker) {\n        } catch {\n        }\n\n        assertTrue(c.owner() == ownerBefore);\n    }\n}\n\ncontract AttackerHelper {\n    Owned immutable target;\n    constructor(address _target) { target = Owned(_target); }\n\n    function triggerOwned(address to) external {\n        target.owned();\n        target.transferOwnership(to);\n    }\n}\n"
+}

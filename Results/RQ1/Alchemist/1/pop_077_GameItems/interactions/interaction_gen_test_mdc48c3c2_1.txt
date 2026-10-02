@@ -1,0 +1,68 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mdc48c3c2 of GameItems.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test GameItems.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for GameItems:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("GameItems reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy GameItems by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("GameItems"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("GameItems reference (ethers v6; deploy may require constructor arguments)", function () {
+  it("should detect mutant mdc48c3c2 by triggering out-of-bounds access in safeBatchTransferFrom", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("GameItems");
+    const instance = await Factory.deploy(owner.address, owner.address);
+    await instance.waitForDeployment();
+
+    // Create a game item first
+    await instance.createGameItem(
+      "TestItem",
+      "ipfs://test",
+      false, // finiteSupply = false
+      true,  // transferable = true
+      100,
+      ethers.parseEther("1"),
+      10
+    );
+
+    // Mint some tokens to addr1
+    await instance.connect(addr1).mint(0, 5, {
+      value: 0
+    });
+
+    // Approve operator for addr1
+    await instance.connect(addr1).setApprovalForAll(addr2.address, true);
+
+    // Create arrays for batch transfer
+    const ids = [0];
+    const amounts = [1];
+
+    // The mutant changes i < ids.length to i <= ids.length
+    // This will cause an out-of-bounds access when i equals ids.length
+    // Original: should succeed with valid transfer
+    // Mutant: should revert with out-of-bounds error
+    await expect(
+      instance.connect(addr2).safeBatchTransferFrom(
+        addr1.address,
+        addr2.address,
+        ids,
+        amounts,
+        "0x"
+      )
+    ).to.be.reverted;
+  });
+});
+```

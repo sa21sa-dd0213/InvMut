@@ -1,0 +1,67 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m4588ed43 of RoundFactory.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test RoundFactory.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for RoundFactory:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("RoundFactory reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy RoundFactory by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("RoundFactory"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("RoundFactory mutant detection - return clone", function () {
+  it("should return the clone address when create is called", async function () {
+    const [owner, programOperator, addr1] = await ethers.getSigners();
+    
+    // Deploy RoundFactory
+    const Factory = await ethers.getContractFactory("RoundFactory");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Initialize the factory
+    await instance.initialize();
+    
+    // Set up program operator
+    await instance.connect(owner).updateProgramOperator(programOperator.address, true);
+    
+    // Deploy a mock round implementation
+    const RoundImplementation = await ethers.getContractFactory("RoundImplementation");
+    const roundImpl = await RoundImplementation.deploy();
+    await roundImpl.waitForDeployment();
+    
+    // Set round implementation and alloSettings
+    const alloSettingsAddress = ethers.ZeroAddress; // Using zero address for testing
+    await instance.connect(owner).updateRoundImplementation(await roundImpl.getAddress());
+    await instance.connect(owner).updateAlloSettings(alloSettingsAddress);
+    
+    // Prepare encoded parameters (empty bytes for testing)
+    const encodedParameters = "0x";
+    
+    // Call create as program operator and expect a non-zero address to be returned
+    const tx = await instance.connect(programOperator).create(encodedParameters, addr1.address);
+    const receipt = await tx.wait();
+    
+    // Decode the return value from the transaction
+    const iface = new ethers.Interface(Factory.interface.format());
+    const decoded = iface.decodeFunctionResult("create", receipt.logs[0].data);
+    
+    // The returned address should not be zero
+    expect(decoded[0]).to.not.equal(ethers.ZeroAddress);
+    
+    // Alternative approach: call static to get return value
+    const returnedAddress = await instance.connect(programOperator).create.staticCall(encodedParameters, addr1.address);
+    expect(returnedAddress).to.not.equal(ethers.ZeroAddress);
+  });
+});
+```

@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0002",
+ "property_summary": "Owner calls Command with msg.value=1 ether to an EOA, then calls multiplicate with msg.value=0 to transfer all balance: reference forwards 1 ether to target, so multiplicate sends remaining balance (0) and contract balance becomes 0; buggy sends 0 to target, so multiplicate sends remaining balance (1 ether) and contract balance becomes 0. Finally, checking target's balance shows difference: reference gives 1 ether, buggy gives 0.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Replace `adr.call{value: msg.value}(data)` with `adr.call{value: 0}(data)` to ignore the sent value.",
+ "mutated_unit_code": "    function Command(address adr,bytes memory data)\n    payable\n    public\n    {\n        require(msg.sender == Owner);\n\n        adr.call{value: 0}(data);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MultiplicatorX4} from \"../src/MultiplicatorX4.sol\";\n\ncontract InvMutTest is Test {\n    MultiplicatorX4 c;\n    function setUp() public { c = new MultiplicatorX4(); }\n    function testRegression_property() public {\n        address owner = address(this);\n        address target = address(0x1234);\n        vm.deal(owner, 2 ether);\n        vm.startPrank(owner);\n        (bool ok, ) = address(c).call{value: 1 ether}(\"\");\n        assertTrue(ok);\n        bytes memory data = \"\";\n        c.Command{value: 1 ether}(target, data);\n        c.multiplicate{value: 0 ether}(address(0x5678));\n        vm.stopPrank();\n        uint256 targetBalance = target.balance;\n        assertTrue(targetBalance == 1 ether);\n    }\n}"
+}

@@ -1,0 +1,64 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant m916b9143", function () {
+  it("should detect mutation by testing timestamp vs prevrandao behavior", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Fund the contract with 10 ether to allow transfers
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+
+    // First call - should succeed in original, sets pastBlockTime
+    await instance.fallback({ value: ethers.parseEther("10") });
+
+    // Record the pastBlockTime after first call
+    const pastBlockTime = await instance.pastBlockTime();
+
+    // Mine a new block with the SAME timestamp as pastBlockTime
+    // This ensures block.timestamp is NOT greater than pastBlockTime in original
+    await ethers.provider.send("evm_setNextBlockTimestamp", [Number(pastBlockTime)]);
+    await ethers.provider.send("evm_mine");
+
+    // Second call with same timestamp - original reverts, mutant may pass due to prevrandao
+    const tx = instance.fallback({ value: ethers.parseEther("10") });
+
+    // If the call does NOT revert, the mutant is alive (prevrandao > pastBlockTime)
+    // If it reverts, the mutant is killed because original would also revert
+    // But we want to detect the mutant: the mutant allows calls when original reverts
+    // So we expect the call to succeed (no revert) for the mutant to be alive
+    // To kill the mutant, we need a case where original passes but mutant fails
+    // Instead: set timestamp > pastBlockTime so original passes
+    await ethers.provider.send("evm_setNextBlockTimestamp", [Number(pastBlockTime) + 100]);
+    await ethers.provider.send("evm_mine");
+
+    // Now call again - original passes (timestamp > pastBlockTime)
+    // Mutant compares prevrandao > pastBlockTime - prevrandao is NOT a timestamp
+    // prevrandao is usually a huge number, so it will likely be > pastBlockTime
+    // But to reliably kill the mutant, we need prevrandao <= pastBlockTime
+    // We can't control prevrandao directly, but we know prevrandao is the randomness from previous block
+    // After mining a block, prevrandao gets set. We can mine a block with a known prevrandao?
+    // Actually we can use hardhat_setPrevRandao to set prevrandao to a low value
+    await ethers.provider.send("hardhat_setPrevRandao", ["0x1"]); // Set prevrandao to 1
+    await ethers.provider.send("evm_mine");
+
+    // Now prevrandao is 1, and pastBlockTime is a large timestamp (like 1700000000)
+    // So prevrandao (1) is NOT > pastBlockTime, so mutant will revert
+    // Original would pass because we set timestamp > pastBlockTime earlier
+    // But wait - we need to set timestamp for this block too
+    const currentTime = await ethers.provider.getBlock("latest").then(b => b.timestamp);
+    await ethers.provider.send("evm_setNextBlockTimestamp", [currentTime + 1000]);
+    await ethers.provider.send("hardhat_setPrevRandao", ["0x1"]);
+    await ethers.provider.send("evm_mine");
+
+    // Now call - original passes (timestamp > pastBlockTime), mutant reverts (prevrandao <= pastBlockTime)
+    await expect(
+      instance.fallback({ value: ethers.parseEther("10") })
+    ).to.be.reverted; // Mutant reverts, original would pass - this kills the mutant
+  });
+});

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T2ca1c686",
+ "property_summary": "After any call to addToBalance (whether it succeeds or reverts), the internal lock must eventually be released so that a subsequent call to withdrawBalance does not revert due to a locked guard. The buggy modifier requires locked_ to be true to enter, so the initial addToBalance reverts, never sets locked_ to false, and a later withdrawBalance always reverts.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the assertion require(!locked_) with a negation require(locked_), inverting the reentrancy guard logic so the function can only be called when locked is already true (i.e., during reentrancy or after lock is manually set).",
+ "mutated_unit_code": "modifier nonReentrant_() {\n    require(locked_);\n    locked_ = true;\n    _;\n    locked_ = false;\n  }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n    function testFuzz_property(uint256 amount) public {\n        vm.assume(amount > 0);\n        address actor = address(0x1234);\n        vm.deal(actor, amount);\n        vm.prank(actor);\n        c.addToBalance{value: amount}();\n        bool ok;\n        vm.prank(actor);\n        try c.withdrawBalance() { ok = true; } catch { ok = false; }\n        assertTrue(ok);\n    }\n}"
+}

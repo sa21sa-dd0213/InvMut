@@ -1,0 +1,89 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mccf6f859 of TimelockController.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test TimelockController.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for TimelockController:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("TimelockController reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy TimelockController by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("TimelockController"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("TimelockController mutant kill test - mccf6f859", function () {
+  it("should revert when executing an operation that fails, because _call must validate success", async function () {
+    const [owner, proposer, executor] = await ethers.getSigners();
+    
+    // Deploy TimelockController with proposer and executor roles
+    const Factory = await ethers.getContractFactory("TimelockController");
+    const instance = await Factory.deploy(
+      3600, // minDelay: 1 hour
+      [proposer.address], // proposers
+      [executor.address]  // executors
+    );
+    await instance.waitForDeployment();
+
+    // Grant TIMELOCK_ADMIN_ROLE to executor for _afterCall to succeed
+    const TIMELOCK_ADMIN_ROLE = await instance.TIMELOCK_ADMIN_ROLE();
+    await instance.connect(owner).grantRole(TIMELOCK_ADMIN_ROLE, executor.address);
+
+    // Deploy a simple target contract that will always revert
+    const TargetFactory = await ethers.getContractFactory("RevertingTarget");
+    const target = await TargetFactory.deploy();
+    await target.waitForDeployment();
+
+    // Prepare operation data - call the reverting function
+    const value = ethers.parseEther("0");
+    const data = target.interface.encodeFunctionData("alwaysRevert");
+    const predecessor = ethers.ZeroHash;
+    const salt = ethers.ZeroHash;
+    const delay = 3600;
+
+    // Schedule the operation as proposer
+    await instance.connect(proposer).schedule(
+      await target.getAddress(),
+      value,
+      data,
+      predecessor,
+      salt,
+      delay
+    );
+
+    // Fast forward time to make operation ready
+    await ethers.provider.send("evm_increaseTime", [3600]);
+    await ethers.provider.send("evm_mine", []);
+
+    // Execute should revert because underlying call fails
+    // In the original contract, _call requires success, so this reverts
+    // In the mutant, the require is removed, so it would succeed silently
+    await expect(
+      instance.connect(executor).execute(
+        await target.getAddress(),
+        value,
+        data,
+        predecessor,
+        salt,
+        { value: 0 }
+      )
+    ).to.be.revertedWith("TimelockController: underlying transaction reverted");
+  });
+});
+
+// Helper contract to provide a reverting target
+// This would be deployed as a separate Solidity file in the contracts folder
+contract RevertingTarget {
+  function alwaysRevert() external pure {
+    revert("Target function reverted");
+  }
+}
+```

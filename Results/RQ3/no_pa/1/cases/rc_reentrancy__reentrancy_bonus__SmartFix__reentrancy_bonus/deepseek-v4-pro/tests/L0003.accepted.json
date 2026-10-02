@@ -1,0 +1,11 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "After getFirstWithdrawalBonus(address) call on account A, the buggy contract leaves _locked=true, preventing a second call from a different account B from succeeding (reverts), while the reference contract allows it.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "change_summary": "Remove the reset of _locked to false after the function body, causing reentrancy lock to persist.",
+ "mutated_unit_code": "  modifier _nonReentrant() {\n    require(!_locked);\n    _locked = true;\n    _;\n  }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrancy_bonus} from \"../src/Reentrancy_bonus.sol\";\n\ncontract InvMutTest is Test {\n    Reentrancy_bonus c;\n    bool attacking;\n    uint256 got;\n\n    function setUp() public {\n        c = new Reentrancy_bonus();\n    }\n\n    function testFuzz_run() public {\n        vm.deal(address(c), 1000);\n        attacking = true;\n        c.getFirstWithdrawalBonus(address(this));\n        assertTrue(got <= 100);\n    }\n\n    receive() external payable {\n        got += msg.value;\n        if (attacking) {\n            attacking = false;\n            try c.getFirstWithdrawalBonus(address(this)) {} catch {}\n        }\n    }\n}"
+}

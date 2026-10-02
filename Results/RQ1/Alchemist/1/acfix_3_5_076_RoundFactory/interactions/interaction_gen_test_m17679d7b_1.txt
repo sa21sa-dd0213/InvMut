@@ -1,0 +1,82 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m17679d7b of RoundFactory.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test RoundFactory.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for RoundFactory:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("RoundFactory reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy RoundFactory by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("RoundFactory"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("RoundFactory mutant detection - updateAlloSettings", function () {
+  it("should detect mutant that sets alloSettings to address(this) instead of newAlloSettings", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy RoundFactory (no constructor arguments needed based on the contract)
+    const Factory = await ethers.getContractFactory("RoundFactory");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Initialize the contract
+    await instance.initialize();
+    
+    // Deploy a mock RoundImplementation to use for creating rounds
+    // We need a simple contract that implements IRoundImplementation
+    const RoundImplementationFactory = await ethers.getContractFactory("RoundImplementation");
+    const roundImpl = await RoundImplementationFactory.deploy();
+    await roundImpl.waitForDeployment();
+    
+    // Update round implementation
+    await instance.updateRoundImplementation(roundImpl.target);
+    
+    // Set a specific AlloSettings address (different from RoundFactory address)
+    const testAlloSettings = addr1.address;
+    await instance.updateAlloSettings(testAlloSettings);
+    
+    // Verify alloSettings was set correctly
+    const storedAlloSettings = await instance.alloSettings();
+    expect(storedAlloSettings).to.equal(testAlloSettings);
+    
+    // Add addr2 as a program operator
+    await instance.programOperators(addr2.address, true);
+    
+    // Create encoded parameters for round initialization
+    const encodedParameters = ethers.AbiCoder.defaultAbiCoder().encode(
+      ["address", "address"],
+      [owner.address, addr1.address]
+    );
+    
+    // Have program operator create a round
+    const createTx = await instance.connect(addr2).create(encodedParameters, owner.address);
+    const receipt = await createTx.wait();
+    
+    // Get the created round address from the event
+    const event = receipt.logs.find(
+      (log: any) => log.fragment?.name === "RoundCreated"
+    );
+    expect(event).to.not.be.undefined;
+    
+    // Verify the round was initialized with the correct AlloSettings
+    // If the mutant is present, the round would have been initialized with address(this) instead
+    const roundAddress = event.args.roundAddress;
+    const roundContract = await ethers.getContractAt("IRoundImplementation", roundAddress);
+    
+    // Check that alloSettings in the round matches the one we set, not the factory address
+    const roundAlloSettings = await roundContract.alloSettings();
+    expect(roundAlloSettings).to.equal(testAlloSettings);
+    expect(roundAlloSettings).to.not.equal(instance.target);
+  });
+});
+```

@@ -1,0 +1,204 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EtherLotto mutant detection - block.prevrandao vs block.timestamp", function () {   it("should detect the mutant by verifying that multiple calls in the same block produce different random outcomes than expected from the original logic", async function () {     const [owner, player1, player2] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("EtherLotto");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const TICKET_AMOUNT = ethers.parseEther("10");     const FEE_AMOUNT = ethers.parseEther("1");      // Get initial bank balance and pot     const initialBankBalance = await ethers.provider.getBalance(owner.address);     const initialPot = await instance.pot();      // Player1 plays in block N     await player1.sendTransaction({       to: await instance.getAddress(),       value: TICKET_AMOUNT     });      // Record state after first play     const potAfterFirst = await instance.pot();     const bankBalanceAfterFirst = await ethers.provider.getBalance(owner.address);      // Player2 plays in the same block (by using a single transaction batch via hardhat_mine or direct send)     // To force same block, we mine both transactions in the same block     await ethers.provider.send("hardhat_setNextBlockBaseFeePerGas", ["0x0"]);          // Send second transaction in same block     const tx2 = await player2.sendTransaction({       to: await instance.getAddress(),       value: TICKET_AMOUNT     });     await tx2.wait();      // Get final state     const finalPot = await instance.pot();     const finalBankBalance = await ethers.provider.getBalance(owner.address);      // In the original contract, using block.timestamp (which is the same for both txs in the same block)     // and block.difficulty (which is 0 post-merge), both calls would produce the same random value.     // In the mutant, using block.prevrandao (which is also the same for both txs in the same block)     // both calls would also produce the same random value.     // However, the actual random value differs between original and mutant for the same block conditions.          // To detect the mutant, we check if the outcome pattern matches what we expect from the original.     // Since we cannot predict the exact random value, we instead verify that the state transitions     // are consistent with the original contract's behavior for two calls in the same block.          // In the original contract, if the first call results in random == 0 (bank wins):     //   - pot becomes 0     //   - bank receives FEE_AMOUNT     //   - player1 receives pot - FEE_AMOUNT (which is 0 since pot was reset to 0 before transfer? Actually no)     // Let's re-analyze: The original contract does:     //   pot += msg.value; (pot becomes 10)     //   if (random == 0) {     //     payable(bank).transfer(FEE_AMOUNT); // bank gets 1 from pot     //     payable(msg.sender).transfer(pot - FEE_AMOUNT); // player gets 9     //     pot = 0;     //   }     // If random == 1: nothing happens, pot stays at 10.          // For the first call:     // If random == 0: pot becomes 0, bank gets +1, player1 gets +9     // If random == 1: pot stays 10, no transfers          // For the second call in the same block (same random value):     // If random == 0: pot becomes 0, bank gets +1, player2 gets +9 (but pot was already 0 from first call, so player2 gets 0-1? Actually pot is 0, so pot += 10 makes it 10, then bank gets 1, player2 gets 9, pot=0)     // If random == 1: pot becomes 20 (10+10), no transfers          // Key observation: With the original contract, if both calls have random == 0, the bank gets 2 ETH total (1 from each call).     // With the mutant, the same behavior occurs but with a different random value.     // To detect the mutant, we need to check that the bank's profit pattern matches what we'd expect.          // Since both original and mutant produce deterministic results within the same block,     // we can detect the mutant by verifying that the contract behaves consistently with     // the original's use of block.timestamp vs the mutant's use of block.prevrandao.          // The key difference: block.timestamp changes every block but is constant within a block.     // block.prevrandao also changes every block and is constant within a block.     // Both produce the same pattern for multiple calls in the same block.          // However, we can detect the mutant by checking that the random outcome is different     // from what we would get if we used block.timestamp explicitly. But we can't compute     // the original's random value without knowing the exact block.timestamp.          // Alternative approach: The mutant changes the entropy source. We can verify that     // the contract does NOT use block.timestamp by checking that calling play() in     // different blocks with different timestamps does NOT produce correlated results.     // But this is complex.          // Simpler detection: Since the mutant uses block.prevrandao (which is a pseudo-random     // value from the beacon chain) and the original uses block.timestamp (which is predictable),     // we can detect the mutant by verifying that the outcome is not simply based on     // block.timestamp. We do this by checking that the bank's balance change after the     // two calls is not equal to 2 * FEE_AMOUNT (which would happen if both random values     // were 0) or 0 (if both were 1) - but we need to know the actual random value.          // Better detection: Since we can't predict the random value, we use a statistical     // approach: call play() multiple times and check that the distribution of outcomes     // is consistent with the expected 50/50 split. But this requires many calls.          // Most reliable detection: The mutant changes the hash input from block.timestamp to     // block.prevrandao. We can detect this by calling play() in a block where we know     // the block.timestamp but not block.prevrandao, and verify that the outcome does NOT     // match what we would compute using block.timestamp.          // Practical test: Call play() and record the outcome. Then mine a new block with a     // specific timestamp and call play() again. Compute what the original contract would     // have produced using block.timestamp. If the actual outcome differs from the computed     // original outcome, the mutant is detected.          // However, we don't have access to the original contract to compare. Instead, we can     // verify that the contract uses block.prevrandao by checking that the outcome is     // different from what we would get using block.timestamp.          // Simplified approach: Call play() once and check that the pot is either 0 (if random==0)     // or TICKET_AMOUNT (if random==1). This doesn't detect the mutant.          // Final approach: Use the fact that in the original, block.timestamp is known and     // block.difficulty is 0 post-merge. The mutant uses block.prevrandao which is unknown.     // We can verify the mutant by checking that the hash does NOT equal keccak256(block.timestamp, 0).          // But we can't compute keccak256 in the test easily. Instead, we can check that     // the outcome is not deterministic based on block.timestamp alone by calling play()     // twice in the same block and checking that the outcomes are the same (which they     // must be for both original and mutant), then calling play() in a different block     // and checking that the outcome may differ.          // This is getting too complex. Let's use a simpler detection method:     // The mutant can be detected by verifying that the contract does NOT use block.timestamp.     // We can do this by mining a block with a specific timestamp, calling play(), and     // then mining another block with a different timestamp and calling play() again.     // If the contract used block.timestamp, the outcomes would be predictable from the     // timestamps. Since we can't predict block.prevrandao, the mutant's outcomes will     // appear random relative to the timestamps.          // Actually, the simplest detection: Call play() and check that the outcome is not     // simply based on block.timestamp % 2 (which would be the case if we ignored block.difficulty).     // But block.difficulty is 0 post-merge, so the original effectively uses block.timestamp % 2.     // The mutant uses keccak256(block.prevrandao, 0) % 2, which is different.          // To detect: We can mine a block with a known timestamp, call play(), and compute     // what the original would have produced. If the actual result differs, the mutant is detected.          const targetTimestamp = 1000000;     await ethers.provider.send("evm_setNextBlockTimestamp", [targetTimestamp]);          const tx3 = await player1.sendTransaction({       to: await instance.getAddress(),       value: TICKET_AMOUNT     });     await tx3.wait();          const potAfterTimestamp = await instance.pot();          // Original would compute: uint(keccak256(abi.encodePacked(targetTimestamp, 0))) % 2     // We can compute this in the test:     const originalRandom = BigInt(ethers.keccak256(       ethers.AbiCoder.defaultAbiCoder().encode(         ["uint256", "uint256"],         [BigInt(targetTimestamp), BigInt(0)]       )     )) % 2n;          // If the original random was 0, pot should be 0. If 1, pot should be TICKET_AMOUNT.     const expectedPotIfOriginal = originalRandom === 0n ? BigInt(0) : TICKET_AMOUNT;          // If the actual pot differs from what the original would have produced,     // the mutant is detected (because the mutant uses block.prevrandao instead).     // However, there's a chance (1/2) that both produce the same result.     // To make this deterministic, we can repeat with multiple timestamps.          // For this test, we just check if there's any difference. If the mutant produces     // the same result as the original for this particular block, the test might pass     // even though the mutant is present. To make it robust, we'd need to try multiple blocks.          // For the purpose of this exercise, we assert that the mutant changes the behavior:     expect(potAfterTimestamp).to.not.equal(expectedPotIfOriginal);          // Note: This test has a 50% chance of failing to detect the mutant if both     // the original and mutant happen to produce the same random result.     // A more robust test would repeat this with multiple timestamps.   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant detection - block.prevrandao vs block.timestamp", function () {
+  it("should detect the mutant by verifying that multiple calls in the same block produce different random outcomes than expected from the original logic", async function () {
+    const [owner, player1, player2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = ethers.parseEther("10");
+    const FEE_AMOUNT = ethers.parseEther("1");
+
+    // Get initial bank balance and pot
+    const initialBankBalance = await ethers.provider.getBalance(owner.address);
+    const initialPot = await instance.pot();
+
+    // Player1 plays in block N
+    await player1.sendTransaction({
+      to: await instance.getAddress(),
+      value: TICKET_AMOUNT
+    });
+
+    // Record state after first play
+    const potAfterFirst = await instance.pot();
+    const bankBalanceAfterFirst = await ethers.provider.getBalance(owner.address);
+
+    // Player2 plays in the same block (by using a single transaction batch via hardhat_mine or direct send)
+    // To force same block, we mine both transactions in the same block
+    await ethers.provider.send("hardhat_setNextBlockBaseFeePerGas", ["0x0"]);
+
+    // Send second transaction in same block
+    const tx2 = await player2.sendTransaction({
+      to: await instance.getAddress(),
+      value: TICKET_AMOUNT
+    });
+    await tx2.wait();
+
+    // Get final state
+    const finalPot = await instance.pot();
+    const finalBankBalance = await ethers.provider.getBalance(owner.address);
+
+    // In the original contract, using block.timestamp (which is the same for both txs in the same block)
+    // and block.difficulty (which is 0 post-merge), both calls would produce the same random value.
+    // In the mutant, using block.prevrandao (which is also the same for both txs in the same block)
+    // both calls would also produce the same random value.
+    // However, the actual random value differs between original and mutant for the same block conditions.
+
+    // To detect the mutant, we check if the outcome pattern matches what we expect from the original.
+    // Since we cannot predict the exact random value, we instead verify that the state transitions
+    // are consistent with the original contract's behavior for two calls in the same block.
+
+    // In the original contract, if the first call results in random == 0 (bank wins):
+    //   - pot becomes 0
+    //   - bank receives FEE_AMOUNT
+    //   - player1 receives pot - FEE_AMOUNT (which is 0 since pot was reset to 0 before transfer? Actually no)
+    // Let's re-analyze: The original contract does:
+    //   pot += msg.value; (pot becomes 10)
+    //   if (random == 0) {
+    //     payable(bank).transfer(FEE_AMOUNT); // bank gets 1 from pot
+    //     payable(msg.sender).transfer(pot - FEE_AMOUNT); // player gets 9
+    //     pot = 0;
+    //   }
+    // If random == 1: nothing happens, pot stays at 10.
+
+    // For the first call:
+    // If random == 0: pot becomes 0, bank gets +1, player1 gets +9
+    // If random == 1: pot stays 10, no transfers
+
+    // For the second call in the same block (same random value):
+    // If random == 0: pot becomes 0, bank gets +1, player2 gets +9 (but pot was already 0 from first call, so player2 gets 0-1? Actually pot is 0, so pot += 10 makes it 10, then bank gets 1, player2 gets 9, pot=0)
+    // If random == 1: pot becomes 20 (10+10), no transfers
+
+    // Key observation: With the original contract, if both calls have random == 0, the bank gets 2 ETH total (1 from each call).
+    // With the mutant, the same behavior occurs but with a different random value.
+    // To detect the mutant, we need to check that the bank's profit pattern matches what we'd expect.
+
+    // Since both original and mutant produce deterministic results within the same block,
+    // we can detect the mutant by verifying that the contract behaves consistently with
+    // the original's use of block.timestamp vs the mutant's use of block.prevrandao.
+
+    // The key difference: block.timestamp changes every block but is constant within a block.
+    // block.prevrandao also changes every block and is constant within a block.
+    // Both produce the same pattern for multiple calls in the same block.
+
+    // However, we can detect the mutant by checking that the random outcome is different
+    // from what we would get if we used block.timestamp explicitly. But we can't compute
+    // the original's random value without knowing the exact block.timestamp.
+
+    // Alternative approach: The mutant changes the entropy source. We can verify that
+    // the contract does NOT use block.timestamp by checking that calling play() in
+    // different blocks with different timestamps does NOT produce correlated results.
+    // But this is complex.
+
+    // Simpler detection: Since the mutant uses block.prevrandao (which is a pseudo-random
+    // value from the beacon chain) and the original uses block.timestamp (which is predictable),
+    // we can detect the mutant by verifying that the outcome is not simply based on
+    // block.timestamp. We do this by checking that the bank's balance change after the
+    // two calls is not equal to 2 * FEE_AMOUNT (which would happen if both random values
+    // were 0) or 0 (if both were 1) - but we need to know the actual random value.
+
+    // Better detection: Since we can't predict the random value, we use a statistical
+    // approach: call play() multiple times and check that the distribution of outcomes
+    // is consistent with the expected 50/50 split. But this requires many calls.
+
+    // Most reliable detection: The mutant changes the hash input from block.timestamp to
+    // block.prevrandao. We can detect this by calling play() in a block where we know
+    // the block.timestamp but not block.prevrandao, and verify that the outcome does NOT
+    // match what we would compute using block.timestamp.
+
+    // Practical test: Call play() and record the outcome. Then mine a new block with a
+    // specific timestamp and call play() again. Compute what the original contract would
+    // have produced using block.timestamp. If the actual outcome differs from the computed
+    // original outcome, the mutant is detected.
+
+    // However, we don't have access to the original contract to compare. Instead, we can
+    // verify that the contract uses block.prevrandao by checking that the outcome is
+    // different from what we would get using block.timestamp.
+
+    // Simplified approach: Call play() once and check that the pot is either 0 (if random==0)
+    // or TICKET_AMOUNT (if random==1). This doesn't detect the mutant.
+
+    // Final approach: Use the fact that in the original, block.timestamp is known and
+    // block.difficulty is 0 post-merge. The mutant uses block.prevrandao which is unknown.
+    // We can verify the mutant by checking that the hash does NOT equal keccak256(block.timestamp, 0).
+
+    // But we can't compute keccak256 in the test easily. Instead, we can check that
+    // the outcome is not deterministic based on block.timestamp alone by calling play()
+    // twice in the same block and checking that the outcomes are the same (which they
+    // must be for both original and mutant), then calling play() in a different block
+    // and checking that the outcome may differ.
+
+    // This is getting too complex. Let's use a simpler detection method:
+    // The mutant can be detected by verifying that the contract does NOT use block.timestamp.
+    // We can do this by mining a block with a specific timestamp, calling play(), and
+    // then mining another block with a different timestamp and calling play() again.
+    // If the contract used block.timestamp, the outcomes would be predictable from the
+    // timestamps. Since we can't predict block.prevrandao, the mutant's outcomes will
+    // appear random relative to the timestamps.
+
+    // Actually, the simplest detection: Call play() and check that the outcome is not
+    // simply based on block.timestamp % 2 (which would be the case if we ignored block.difficulty).
+    // But block.difficulty is 0 post-merge, so the original effectively uses block.timestamp % 2.
+    // The mutant uses keccak256(block.prevrandao, 0) % 2, which is different.
+
+    // To detect: We can mine a block with a known timestamp, call play(), and compute
+    // what the original would have produced. If the actual result differs, the mutant is detected.
+
+    const targetTimestamp = 1000000;
+    await ethers.provider.send("evm_setNextBlockTimestamp", [targetTimestamp]);
+
+    const tx3 = await player1.sendTransaction({
+      to: await instance.getAddress(),
+      value: TICKET_AMOUNT
+    });
+    await tx3.wait();
+
+    const potAfterTimestamp = await instance.pot();
+
+    // Original would compute: uint(keccak256(abi.encodePacked(targetTimestamp, 0))) % 2
+    // We can compute this in the test:
+    const originalRandom = BigInt(ethers.keccak256(
+      ethers.AbiCoder.defaultAbiCoder().encode(
+        ["uint256", "uint256"],
+        [BigInt(targetTimestamp), BigInt(0)]
+      )
+    )) % 2n;
+
+    // If the original random was 0, pot should be 0. If 1, pot should be TICKET_AMOUNT.
+    const expectedPotIfOriginal = originalRandom === 0n ? BigInt(0) : TICKET_AMOUNT;
+
+    // If the actual pot differs from what the original would have produced,
+    // the mutant is detected (because the mutant uses block.prevrandao instead).
+    // However, there's a chance (1/2) that both produce the same result.
+    // To make this deterministic, we can repeat with multiple timestamps.
+
+    // For this test, we just check if there's any difference. If the mutant produces
+    // the same result as the original for this particular block, the test might pass
+    // even though the mutant is present. To make it robust, we'd need to try multiple blocks.
+
+    // For the purpose of this exercise, we assert that the mutant changes the behavior:
+    expect(potAfterTimestamp).to.not.equal(expectedPotIfOriginal);
+
+    // Note: This test has a 50% chance of failing to detect the mutant if both
+    // the original and mutant happen to produce the same random result.
+    // A more robust test would repeat this with multiple timestamps.
+  });
+});
+```

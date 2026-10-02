@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract MultiplicatorX4:
+        Contract Code: pragma solidity ^0.8.0; contract MultiplicatorX4 { address public Owner = msg.sender; receive() external payable {} function withdraw() payable public { require(msg.sender == Owner); payable(Owner).transfer(address(this).balance); } function Command(address adr,bytes memory data) payable public { require(msg.sender == Owner); adr.call{value: msg.value}(data); } function multiplicate(address adr) public payable { if(msg.value>=address(this).balance) { require(((address(this).balance + msg.value) >= address(this).balance)); payable(adr).transfer(address(this).balance+msg.value); } } }
+
+    Consider the following mutant of MultiplicatorX4:
+        Mutant md9b125e9 of function multiplicate replaces msg.value>=address(this).balance with true
+        Mutant Diff: ---|         if(msg.value>=address(this).balance) +++|         if(true)
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the condition `if(msg.value >= address(this).balance)` to `if(true)`, meaning the `multiplicate` function will always execute the transfer logic regardless of the actual amount of ether sent.  
+
+**Hypothesis:** A test case that calls `multiplicate` with a `msg.value` smaller than the current contract balance and expects the function to either do nothing (since the original condition would be false) or revert, should kill the mutant because the mutant will always proceed with the transfer, incorrectly draining the contract's entire balance even when the sender's contribution is insufficient.

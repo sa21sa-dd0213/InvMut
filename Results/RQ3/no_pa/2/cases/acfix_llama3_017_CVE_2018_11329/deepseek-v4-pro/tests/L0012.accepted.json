@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0012",
+ "property_summary": "After Alice calls collectDrugs(ref) for the first time, the reference sets referrals[Alice] = ref, while the buggy version sets it to address(0), causing claimedDrugs[ref] to differ.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Change the referral to always be the zero address regardless of input.",
+ "mutated_unit_code": "    function collectDrugs(address ref) public{\n        require(initialized);\n        if(referrals[msg.sender] == address(0) && referrals[msg.sender]!=msg.sender){\n            referrals[msg.sender]=address(0);\n        }\n        uint256 drugsUsed=getMyDrugs();\n        uint256 newKilo=SafeMath.div(drugsUsed,DRUGS_TO_PRODUCE_1KILO);\n        Kilos[msg.sender]=SafeMath.add(Kilos[msg.sender],newKilo);\n        claimedDrugs[msg.sender]=0;\n        lastCollect[msg.sender]=block.timestamp;\n\n        claimedDrugs[referrals[msg.sender]]=SafeMath.add(claimedDrugs[referrals[msg.sender]],SafeMath.div(drugsUsed,5));\n\n        marketDrugs=SafeMath.add(marketDrugs,SafeMath.div(drugsUsed,10));\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherCartel} from \"../src/EtherCartel.sol\";\n\ncontract InvMutTest is Test {\n    EtherCartel c;\n    function setUp() public { c = new EtherCartel(); }\n    function testRegression_property() public {\n        vm.deal(address(this), 1 ether);\n        c.seedMarket{value: 1 ether}(1000);\n\n        address alice = address(0x123);\n        vm.prank(alice);\n        c.getFreeKilo();\n\n        vm.warp(block.timestamp + c.DRUGS_TO_PRODUCE_1KILO());\n\n        address ref = address(0x456);\n        vm.prank(alice);\n        c.collectDrugs(ref);\n\n        bool referenceBehavior = (c.claimedDrugs(ref) > 0);\n        assertTrue(referenceBehavior);\n    }\n}\n"
+}

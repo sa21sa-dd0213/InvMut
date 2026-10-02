@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0010",
+ "property_summary": "After NETM() sets the owner's balance, owner calls getTokens() and receives value; in the reference, owner is blacklisted so a second getTokens() call reverts, but the buggy version clears blacklist[owner] allowing success.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Insert a statement that sets blacklist[msg.sender] to false before the distribution logic in getTokens.",
+ "mutated_unit_code": "    function getTokens() payable canDistr onlyWhitelist public {\n        if (value > totalRemaining) {\n            value = totalRemaining;\n        }\n\n        require(value <= totalRemaining);\n\n        address investor = msg.sender;\n        uint256 toGive = value;\n\n        distr(investor, toGive);\n\n        if (toGive > 0) {\n            blacklist[investor] = true;\n        }\n\n        if (totalDistributed >= totalSupply) {\n            distributionFinished = true;\n        }\n\n        value = (value / (100000)).mul(99999);\n        blacklist[msg.sender] = false;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {NewIntelTechMedia} from \"../src/NewIntelTechMedia.sol\";\n\ncontract InvMutTest is Test {\n    NewIntelTechMedia c;\n    function setUp() public { c = new NewIntelTechMedia(); }\n    function testRegression_property() public {\n        address owner = address(this);\n\n        c.NETM();\n\n        c.getTokens();\n\n        bool ok;\n        try c.getTokens() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(!ok, \"Expected revert due to blacklist\");\n    }\n}"
+}

@@ -1,0 +1,70 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mc6ebb26e of DCF.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test DCF.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for DCF:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("DCF reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy DCF by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("DCF"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DCF mutant mc6ebb26e - buy restriction removal", function () {
+  it("should revert when buying tokens from the pair address, but mutant allows it", async function () {
+    const [owner, buyer] = await ethers.getSigners();
+    
+    // Deploy DCF with a liquidity receive address
+    const liquidityReceiveAddress = buyer.address;
+    const Factory = await ethers.getContractFactory("DCF");
+    const dcf = await Factory.deploy(liquidityReceiveAddress);
+    await dcf.waitForDeployment();
+    
+    // Get the pair address from the contract
+    const pairAddress = await dcf.pairAddress();
+    
+    // Get the USDT token address
+    const usdtAddress = await dcf.USDT();
+    
+    // Deploy a mock USDT for testing (since we can't use real USDT on testnet)
+    const USDTFactory = await ethers.getContractFactory("IERC20");
+    const usdt = await ethers.getContractAt("IERC20", usdtAddress);
+    
+    // Fund the buyer with some DCF tokens to simulate a swap
+    const transferAmount = ethers.parseEther("100");
+    await dcf.connect(owner).transfer(buyer.address, transferAmount);
+    
+    // Approve DCF tokens for the pair address to simulate a buy
+    await dcf.connect(buyer).approve(pairAddress, transferAmount);
+    
+    // Attempt to transfer from pair address (simulating a buy)
+    // In the original contract, this should revert with "buy error"
+    // In the mutant, this should succeed (no revert)
+    
+    try {
+      // This simulates a transfer where from = pairAddress (buying from pool)
+      await dcf.connect(buyer).transferFrom(pairAddress, buyer.address, transferAmount);
+      
+      // If we get here, the mutant is live (no revert)
+      // We should fail the test because the original would have reverted
+      // But for mutant detection, we need to verify it didn't revert
+      const buyerBalance = await dcf.balanceOf(buyer.address);
+      expect(buyerBalance).to.be.gt(transferAmount);
+    } catch (error: any) {
+      // If it reverts, the original contract behavior is preserved
+      // The mutant would have killed this behavior
+      expect(error.message).to.include("buy error");
+    }
+  });
+});
+```

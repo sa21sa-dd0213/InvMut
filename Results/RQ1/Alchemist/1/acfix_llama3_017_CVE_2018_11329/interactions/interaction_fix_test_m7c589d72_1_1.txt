@@ -1,0 +1,68 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EtherCartel mutant m7c589d72 - devFee calculation on buyDrugs", function () {   it("should detect mutant that adds 1 wei to msg.value when calculating devFee", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("EtherCartel");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Seed the market first     const seedAmount = ethers.parseEther("10");     await instance.connect(addr1).seedMarket(1000, { value: seedAmount });          // Get initial balances     const initialContractBalance = await ethers.provider.getBalance(await instance.getAddress());     const initialCEOBalance = await ethers.provider.getBalance(owner.address);          // addr2 buys drugs with exact amount     const buyAmount = ethers.parseEther("1");     const tx = await instance.connect(addr2).buyDrugs({ value: buyAmount });     const receipt = await tx.wait();          // Calculate expected fee: 4% of msg.value (original) vs 4% of (msg.value + 1) (mutant)     const expectedFeeOriginal = buyAmount * 4n / 100n;     const expectedFeeMutant = (buyAmount + 1n) * 4n / 100n;          // Get final balances     const finalContractBalance = await ethers.provider.getBalance(await instance.getAddress());     const finalCEOBalance = await ethers.provider.getBalance(owner.address);          // The CEO should have received exactly 4% of msg.value     // If mutant is present, CEO received 4% of (msg.value + 1), which means extra 1 wei fee     const ceoReceived = finalCEOBalance - initialCEOBalance;          // The contract balance should decrease by exactly msg.value (sent to contract)     // minus what was paid to CEO as fee     // Original: contractBalance decrease = buyAmount - expectedFeeOriginal     // Mutant: contractBalance decrease = buyAmount - expectedFeeMutant (extra 1 wei taken from contract)     const contractBalanceChange = initialContractBalance - finalContractBalance;          // For the original: contract should lose buyAmount - expectedFeeOriginal (rest goes to user as drugs)     // For mutant: contract loses buyAmount - expectedFeeMutant (extra wei stolen from contract)          // Assert that CEO received exactly 4% of buyAmount (not buyAmount + 1)     expect(ceoReceived).to.equal(expectedFeeOriginal);          // Also verify the contract balance changed correctly for original logic     // Original: contract loses buyAmount - expectedFeeOriginal (since buyAmount sent in, expectedFeeOriginal paid to CEO)     expect(contractBalanceChange).to.equal(buyAmount - expectedFeeOriginal);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EtherCartel{ uint256 public DRUGS_TO_PRODUCE_1KILO=86400; uint256 public STARTING_KILOS=300; uint256 PSN=10000; uint256 PSNH=5000; bool public initialized=false; address public ceoAddress=0x85abE8E3bed0d4891ba201Af1e212FE50bb65a26; mapping (address => uint256) public Kilos; mapping (address => uint256) public claimedDrugs; mapping (address => uint256) public lastCollect; mapping (address => address) public referrals; uint256 public marketDrugs; function DrugDealer() public { require(msg.sender == ceoAddress, "Only CEO can set new address"); ceoAddress = msg.sender; } function collectDrugs(address ref) public{ require(initialized); if(referrals[msg.sender] == address(0) && referrals[msg.sender]!=msg.sender){ referrals[msg.sender]=ref; } uint256 drugsUsed=getMyDrugs(); uint256 newKilo=SafeMath.div(drugsUsed,DRUGS_TO_PRODUCE_1KILO); Kilos[msg.sender]=SafeMath.add(Kilos[msg.sender],newKilo); claimedDrugs[msg.sender]=0; lastCollect[msg.sender]=block.timestamp; claimedDrugs[referrals[msg.sender]]=SafeMath.add(claimedDrugs[referrals[msg.sender]],SafeMath.div(drugsUsed,5)); marketDrugs=SafeMath.add(marketDrugs,SafeMath.div(drugsUsed,10)); } function sellDrugs() public{ require(initialized); uint256 hasDrugs=getMyDrugs(); uint256 drugValue=calculateDrugSell(hasDrugs); uint256 fee=devFee(drugValue); claimedDrugs[msg.sender]=0; lastCollect[msg.sender]=block.timestamp; marketDrugs=SafeMath.add(marketDrugs,hasDrugs); payable(ceoAddress).transfer(fee); payable(msg.sender).transfer(SafeMath.sub(drugValue,fee)); } function buyDrugs() public payable{ require(initialized); uint256 drugsBought=calculateDrugBuy(msg.value,SafeMath.sub(address(this).balance,msg.value)); drugsBought=SafeMath.sub(drugsBought,devFee(drugsBought)); payable(ceoAddress).transfer(devFee(msg.value)); claimedDrugs[msg.sender]=SafeMath.add(claimedDrugs[msg.sender],drugsBought); } function calculateTrade(uint256 rt,uint256 rs, uint256 bs) public view returns(uint256){ return SafeMath.div(SafeMath.mul(PSN,bs),SafeMath.add(PSNH,SafeMath.div(SafeMath.add(SafeMath.mul(PSN,rs),SafeMath.mul(PSNH,rt)),rt))); } function calculateDrugSell(uint256 drugs) public view returns(uint256){ return calculateTrade(drugs,marketDrugs,address(this).balance); } function calculateDrugBuy(uint256 eth,uint256 contractBalance) public view returns(uint256){ return calculateTrade(eth,contractBalance,marketDrugs); } function calculateDrugBuySimple(uint256 eth) public view returns(uint256){ return calculateDrugBuy(eth,address(this).balance); } function devFee(uint256 amount) public view returns(uint256){ return SafeMath.div(SafeMath.mul(amount,4),100); } function seedMarket(uint256 drugs) public payable{ require(marketDrugs==0); initialized=true; marketDrugs=drugs; } function getFreeKilo() public{ require(initialized); require(Kilos[msg.sender]==0); lastCollect[msg.sender]=block.timestamp; Kilos[msg.sender]=STARTING_KILOS; } function getBalance() public view returns(uint256){ return address(this).balance; } function getMyKilo() public view returns(uint256){ return Kilos[msg.sender]; } function getMyDrugs() public view returns(uint256){ return SafeMath.add(claimedDrugs[msg.sender],getDrugsSinceLastCollect(msg.sender)); } function getDrugsSinceLastCollect(address adr) public view returns(uint256){ uint256 secondsPassed=min(DRUGS_TO_PRODUCE_1KILO,SafeMath.sub(block.timestamp,lastCollect[adr])); return SafeMath.mul(secondsPassed,Kilos[adr]); } function min(uint256 a, uint256 b) private pure returns (uint256) { return a < b ? a : b; } } library SafeMath { function mul(uint256 a, uint256 b) internal pure returns (uint256) { if (a == 0) { return 0; } uint256 c = a * b; assert(c / a == b); return c; } function div(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a / b; return c; } function sub(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } function add(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherCartel mutant m7c589d72 - devFee calculation on buyDrugs", function () {
+  it("should detect mutant that adds 1 wei to msg.value when calculating devFee", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherCartel");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Seed the market first
+    const seedAmount = ethers.parseEther("10");
+    await instance.connect(addr1).seedMarket(1000, { value: seedAmount });
+
+    // Get initial balances
+    const initialContractBalance = await ethers.provider.getBalance(await instance.getAddress());
+    const initialCEOBalance = await ethers.provider.getBalance(owner.address);
+
+    // addr2 buys drugs with exact amount
+    const buyAmount = ethers.parseEther("1");
+    const tx = await instance.connect(addr2).buyDrugs({ value: buyAmount });
+    const receipt = await tx.wait();
+
+    // Calculate expected fee: 4% of msg.value (original) vs 4% of (msg.value + 1) (mutant)
+    const expectedFeeOriginal = buyAmount * 4n / 100n;
+    const expectedFeeMutant = (buyAmount + 1n) * 4n / 100n;
+
+    // Get final balances
+    const finalContractBalance = await ethers.provider.getBalance(await instance.getAddress());
+    const finalCEOBalance = await ethers.provider.getBalance(owner.address);
+
+    // The CEO should have received exactly 4% of msg.value
+    // If mutant is present, CEO received 4% of (msg.value + 1), which means extra 1 wei fee
+    const ceoReceived = finalCEOBalance - initialCEOBalance;
+
+    // The contract balance should decrease by exactly msg.value (sent to contract)
+    // minus what was paid to CEO as fee
+    // Original: contractBalance decrease = buyAmount - expectedFeeOriginal
+    // Mutant: contractBalance decrease = buyAmount - expectedFeeMutant (extra 1 wei taken from contract)
+    const contractBalanceChange = initialContractBalance - finalContractBalance;
+
+    // For the original: contract should lose buyAmount - expectedFeeOriginal (rest goes to user as drugs)
+    // For mutant: contract loses buyAmount - expectedFeeMutant (extra wei stolen from contract)
+
+    // Assert that CEO received exactly 4% of buyAmount (not buyAmount + 1)
+    expect(ceoReceived).to.equal(expectedFeeOriginal);
+
+    // Also verify the contract balance changed correctly for original logic
+    // Original: contract loses buyAmount - expectedFeeOriginal (since buyAmount sent in, expectedFeeOriginal paid to CEO)
+    expect(contractBalanceChange).to.equal(buyAmount - expectedFeeOriginal);
+  });
+});
+```

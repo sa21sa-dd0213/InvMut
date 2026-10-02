@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "For all callers and inputs, only the contract owner can successfully invoke sendTo (calls by non-owners must not change contract balance); the mutant removing the owner check allows non-owners to make transfers and thus can change address(c).balance for some fuzzed inputs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the ownership check to allow anyone to call sendTo (remove require(msg.sender == owner)).",
+ "mutated_unit_code": "function sendTo(address receiver, uint amount) public {\n        // owner check removed to allow any caller to send\n        require(receiver != address(0));\n        require(amount > 0);\n        payable(receiver).transfer(amount);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MyContract} from \"../src/MyContract.sol\";\n\ncontract InvMutTest is Test {\n    MyContract c;\n    function setUp() public { c = new MyContract(); }\n\n    function testFuzz_property(address caller, uint256 amount) public {\n        vm.assume(caller != address(0));\n        amount = bound(amount, 0, 1 ether);\n\n        vm.deal(address(this), 1 ether);\n        (bool s,) = address(c).call{value: 1 ether}(abi.encodeWithSignature(\"sendTo(address,uint256)\", address(this), uint256(0)));\n        FundSender fs = new FundSender{value: 1 ether}();\n        fs.sendTo(address(c));\n\n        uint256 balBefore = address(c).balance;\n\n        vm.deal(caller, amount);\n\n        bool ok;\n        vm.prank(caller);\n        try c.sendTo(caller, amount) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        uint256 balAfter = address(c).balance;\n\n        assertTrue(!ok || caller == address(this));\n    }\n}\n\ncontract FundSender {\n    constructor() payable {}\n    function sendTo(address target) public {\n        selfdestruct(payable(target));\n    }\n}\n"
+}

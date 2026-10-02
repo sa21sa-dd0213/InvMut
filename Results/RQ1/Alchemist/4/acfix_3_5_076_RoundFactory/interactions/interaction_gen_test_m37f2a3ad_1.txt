@@ -1,0 +1,69 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m37f2a3ad of RoundFactory.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test RoundFactory.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for RoundFactory:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("RoundFactory reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy RoundFactory by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("RoundFactory"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("RoundFactory mutant kill test - m37f2a3ad", function () {
+  it("should kill mutant by verifying create succeeds when alloSettings is set to non-zero address", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy RoundFactory (no constructor arguments as it's upgradeable)
+    const Factory = await ethers.getContractFactory("RoundFactory");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Initialize the contract
+    await instance.initialize();
+    
+    // Set up program operator
+    await instance.connect(owner).updateProgramOperators(owner.address, true);
+    
+    // Deploy a mock round implementation
+    const RoundImplementation = await ethers.getContractFactory("RoundImplementation");
+    const roundImplementation = await RoundImplementation.deploy();
+    await roundImplementation.waitForDeployment();
+    
+    // Set round implementation
+    await instance.connect(owner).updateRoundImplementation(roundImplementation.target);
+    
+    // Set alloSettings to a non-zero address
+    const mockAlloSettings = addr1.address;
+    await instance.connect(owner).updateAlloSettings(mockAlloSettings);
+    
+    // Verify alloSettings is set
+    expect(await instance.alloSettings()).to.equal(mockAlloSettings);
+    
+    // Prepare encoded parameters for round creation
+    const encodedParameters = ethers.AbiCoder.defaultAbiCoder().encode(
+      ["address", "address", "uint256"],
+      [owner.address, addr2.address, 100]
+    );
+    
+    // Attempt to create a round - this should succeed in original but fail in mutant
+    // because mutant requires alloSettings == address(0) instead of != address(0)
+    const ownedBy = addr2.address;
+    const tx = instance.connect(owner).create(encodedParameters, ownedBy);
+    
+    // The mutant will revert here because alloSettings is non-zero, but the mutant 
+    // checks require(alloSettings == address(0)) which will fail
+    await expect(tx).to.be.revertedWith("alloSettings is 0x");
+  });
+});
+```

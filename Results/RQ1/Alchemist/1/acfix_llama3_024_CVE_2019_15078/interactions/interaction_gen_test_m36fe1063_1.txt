@@ -1,0 +1,93 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m36fe1063 of XBORNID.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test XBORNID.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for XBORNID:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("XBORNID reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy XBORNID by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("XBORNID"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("XBORNID mutant m36fe1063 - transfer payload size", function () {
+  it("should revert when transfer is called with a valid 68-byte payload (original behavior) but accept it in the mutant with 38-byte payload requirement", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("XBORNID");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Fund addr1 with some tokens via distr (owner can call internal distr via getTokens)
+    // First, ensure distribution is not finished and addr1 is not blacklisted
+    await instance.connect(owner).finishDistribution();
+    // Reset distribution for testing
+    // Actually, we need to call getTokens but it requires not finished distribution
+    // Let's use a direct approach: owner transfers tokens to addr1
+    await instance.connect(owner).transfer(addr1.address, ethers.parseEther("100"));
+
+    // Now test the transfer function with a malformed payload
+    // The original requires payload length >= 68 (2*32 + 4)
+    // The mutant requires payload length >= 38 (2+32 + 4)
+    // We'll craft a call with only 50 bytes (missing the second parameter)
+    const transferSelector = ethers.id("transfer(address,uint256)").slice(0, 10);
+    const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+    
+    // Encode only the first parameter (address) - this gives 36 bytes total (4 selector + 32 address)
+    const shortPayload = transferSelector + abiCoder.encode(["address"], [addr1.address]).slice(2);
+    
+    // This short payload (36 bytes) should be rejected by original (needs 68) but accepted by mutant (needs only 38)
+    // However 36 < 38, so even mutant would reject - we need payload between 38 and 68
+    
+    // Encode both parameters but truncate to 50 bytes
+    const fullEncoded = transferSelector + 
+      abiCoder.encode(["address", "uint256"], [addr1.address, ethers.parseEther("10")]).slice(2);
+    const truncatedPayload = fullEncoded.slice(0, 104); // 52 hex chars = 26 bytes? No, let's recalculate
+    
+    // 4 bytes selector + 32 bytes address + 14 bytes of uint256 = 50 bytes total
+    const shortUint = "0x" + "00".repeat(14); // 14 bytes of zeros
+    const fiftyBytePayload = transferSelector + 
+      abiCoder.encode(["address"], [addr1.address]).slice(2) + 
+      shortUint.slice(2);
+    
+    // Send the 50-byte transaction
+    await expect(
+      owner.sendTransaction({
+        to: instance.target,
+        data: fiftyBytePayload
+      })
+    ).to.be.reverted; // Original should revert due to payload size check
+    
+    // Now test with a payload that is exactly 38 bytes (should pass mutant, fail original)
+    const thirtyEightBytePayload = transferSelector + 
+      abiCoder.encode(["address"], [addr1.address]).slice(2).slice(0, 64); // 4 + 32 = 36 bytes? No
+    
+    // Actually 38 bytes = 4 selector + 32 address + 2 bytes of uint256
+    const twoByteUint = "0x" + "00".repeat(2);
+    const thirtyEightPayload = transferSelector + 
+      abiCoder.encode(["address"], [addr1.address]).slice(2) + 
+      twoByteUint.slice(2);
+    
+    // This 38-byte payload should be accepted by mutant (size >= 38) but rejected by original (size < 68)
+    await expect(
+      owner.sendTransaction({
+        to: instance.target,
+        data: thirtyEightPayload
+      })
+    ).to.be.reverted; // Original reverts, mutant would not revert - killing the mutant
+    
+    // To actually kill the mutant, we verify the mutant accepts it (which would be incorrect behavior)
+    // In a real test environment with the mutant deployed, this assertion would fail
+    // because the mutant would NOT revert, demonstrating the bug
+  });
+});
+```

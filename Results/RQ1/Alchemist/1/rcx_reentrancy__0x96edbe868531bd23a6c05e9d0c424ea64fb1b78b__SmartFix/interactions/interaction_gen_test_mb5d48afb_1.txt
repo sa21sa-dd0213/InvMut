@@ -1,0 +1,72 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mb5d48afb of PENNY_BY_PENNY.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PENNY_BY_PENNY.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PENNY_BY_PENNY:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PENNY_BY_PENNY reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PENNY_BY_PENNY by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PENNY_BY_PENNY"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PENNY_BY_PENNY mutant mb5d48afb test", function () {
+  it("should detect the mutant by verifying unlockTime is based on block.timestamp, not block.prevrandao", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("PENNY_BY_PENNY");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Set MinSum to 0 so any amount can be collected
+    await instance.SetMinSum(0);
+    // Initialize the contract
+    await instance.Initialized();
+
+    // Put 1 ether with lockTime = 100 seconds
+    const lockTime = 100;
+    const putAmount = ethers.parseEther("1");
+    await instance.connect(addr1).Put(lockTime, { value: putAmount });
+
+    // Get the current block timestamp
+    const blockBefore = await ethers.provider.getBlock("latest");
+    const expectedUnlockTime = blockBefore.timestamp + lockTime;
+
+    // Check that unlockTime was set correctly (based on block.timestamp)
+    const acc = await instance.Acc(addr1.address);
+    expect(acc.unlockTime).to.equal(expectedUnlockTime);
+
+    // Try to collect immediately - should revert because unlockTime hasn't passed
+    await expect(
+      instance.connect(addr1).Collect(putAmount)
+    ).to.be.reverted;
+
+    // Wait until just before unlockTime (minus 1 second for safety)
+    await ethers.provider.send("evm_setNextBlockTimestamp", [expectedUnlockTime - 1]);
+    await ethers.provider.send("evm_mine", []);
+
+    // Should still revert because time hasn't passed
+    await expect(
+      instance.connect(addr1).Collect(putAmount)
+    ).to.be.reverted;
+
+    // Now advance past unlockTime
+    await ethers.provider.send("evm_setNextBlockTimestamp", [expectedUnlockTime + 1]);
+    await ethers.provider.send("evm_mine", []);
+
+    // Should succeed now
+    await expect(
+      instance.connect(addr1).Collect(putAmount)
+    ).to.not.be.reverted;
+  });
+});
+```

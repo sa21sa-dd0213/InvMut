@@ -1,0 +1,12 @@
+{
+ "difference_id": "T2618e60a",
+ "property_summary": "In a successful burn, the sum of all balances must equal totalSupply; the bug increases the owner's balance while decreasing totalSupply, breaking this invariant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "In burn, replace `balanceOf[msg.sender] -= _value` with `balanceOf[msg.sender] += _value` so that the owner's balance increases instead of decreases, changing totalSupply and subsequent state reads.",
+ "mutated_unit_code": "    function burn(uint256 _value)  public onlyOwner returns (bool success) {\n        require(balanceOf[msg.sender] >= _value);\n        balanceOf[msg.sender] += _value;\n        totalSupply -= _value;\n        emit Burn(msg.sender, _value);\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ERCDDAToken} from \"../src/ERCDDAToken.sol\";\n\ncontract InvMutTest is Test {\n    ERCDDAToken c;\n    function setUp() public { c = new ERCDDAToken(0, \"\", \"\"); }\n    function testFuzz_property(uint256 supply, uint256 burnAmount) public {\n        vm.assume(supply > 0 && supply <= type(uint256).max / 2);\n        vm.assume(burnAmount > 0 && burnAmount <= supply);\n        c = new ERCDDAToken(supply, \"Token\", \"TKN\");\n        uint256 totalSupplyBefore = c.totalSupply();\n        uint256 ownerBalanceBefore = c.balanceOf(address(this));\n        vm.prank(address(this));\n        bool ok;\n        try c.burn(burnAmount) returns (bool res) { ok = res; } catch { ok = false; }\n        if (ok) {\n            uint256 totalBalance = c.balanceOf(address(this));\n            assertTrue(totalBalance == c.totalSupply());\n        }\n    }\n}"
+}

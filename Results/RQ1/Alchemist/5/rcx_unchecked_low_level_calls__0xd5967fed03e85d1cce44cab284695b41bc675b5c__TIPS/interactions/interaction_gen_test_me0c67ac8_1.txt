@@ -1,0 +1,72 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant me0c67ac8 of demo.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test demo.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for demo:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("demo reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy demo by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("demo"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("demo mutant kill test - me0c67ac8", function () {
+  it("should return true when transfer succeeds, but mutant returns false", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy a simple ERC20 token contract to use as the target
+    const TokenFactory = await ethers.getContractFactory("SimpleERC20");
+    const token = await TokenFactory.deploy("Test", "TST", 18);
+    await token.waitForDeployment();
+    
+    // Deploy the demo contract (no constructor args needed)
+    const DemoFactory = await ethers.getContractFactory("demo");
+    const demo = await DemoFactory.deploy();
+    await demo.waitForDeployment();
+    
+    // Setup: approve demo contract to transfer tokens from owner
+    const amount = ethers.parseEther("10");
+    await token.approve(await demo.getAddress(), amount * 2n);
+    
+    // Call transfer with valid parameters
+    const recipients = [addr1.address, addr2.address];
+    const tx = await demo.transfer(
+      owner.address,
+      await token.getAddress(),
+      recipients,
+      amount
+    );
+    const receipt = await tx.wait();
+    
+    // The original returns true, mutant returns false (default bool)
+    expect(receipt.status).to.equal(1); // transaction succeeded
+    
+    // This assertion will catch the mutant
+    const result = await demo.transfer.staticCall(
+      owner.address,
+      await token.getAddress(),
+      recipients,
+      amount
+    );
+    expect(result).to.equal(true);
+  });
+});
+
+// Helper contract for testing - SimpleERC20 with transferFrom
+// This would be deployed as a separate contract in the test environment
+// For completeness, include the interface
+interface SimpleERC20 {
+  transferFrom(from: string, to: string, amount: bigint): Promise<boolean>;
+  approve(spender: string, amount: bigint): Promise<boolean>;
+}
+```

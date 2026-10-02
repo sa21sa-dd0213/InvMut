@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract MultiplicatorX3:
+        Contract Code: pragma solidity ^0.8.0; contract MultiplicatorX3 { address public Owner = msg.sender; receive() external payable {} function withdraw() payable public { require(msg.sender == Owner); payable(Owner).transfer(address(this).balance); } function Command(address adr,bytes memory data) payable public { require(msg.sender == Owner); adr.call{value: msg.value}(data); } function multiplicate(address adr) public payable { if(msg.value>=address(this).balance) { require(((address(this).balance + msg.value) >= address(this).balance)); payable(adr).transfer(address(this).balance+msg.value); } } }
+
+    Consider the following mutant of MultiplicatorX3:
+        Mutant md7e179a2 of function multiplicate replaces >= with >
+        Mutant Diff: ---|         if(msg.value>=address(this).balance) +++|         if(msg.value >address(this).balance)
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the condition from `>=` to `>`, meaning that in the original contract, if `msg.value` is exactly equal to `address(this).balance`, the `if` block executes, but in the mutant, this exact equality case would cause the `if` block to be skipped.
+
+**Hypothesis:** A test case that sends a payment to the contract to set its balance to a known value, then calls `multiplicate` with a `msg.value` exactly equal to that balance, should pass on the original (where the condition is true and the transfer occurs) but fail on the mutant (where the condition is false and the transfer does not happen, leaving the balance unchanged).

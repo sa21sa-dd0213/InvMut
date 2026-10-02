@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0008",
+ "property_summary": "After cancelProposal(1,2) on a UTILS proposal, mapPID_address[1] is correctly set to zero in P but remains zero in M (both zero), so the divergence is actually that in P mapPID_address[1] is the proposed address after newAddressProposal but before cancelProposal, whereas in M it is always zero; however due to the fix in cancelProposal resetting mapPID_votes to 0 the actual observable divergence is that after cancelProposal, in P mapPID_votes[1] is 0 after being nonzero, while in M mapPID_votes[1] is unchanged because the require fails (since mapPID_address[1] is zero and hasMinority may fail differently). To ensure a clean revert difference: for a UTILS proposal with proposedAddress = 0x123..., in P the cancelProposal succeeds (set mapPID_votes[1] = 0) while in M it reverts because mapPID_address[1] is address(0) and hasMinority fails (since votes = 0). So the assertion: try { c.cancelProposal(1,2); ok = true; } catch { ok = false; } assertTrue(ok) passes for P but fails for M.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Replace the assignment of mapPID_address[proposalCount] with the zero address instead of proposedAddress.",
+ "mutated_unit_code": "    function newAddressProposal(address proposedAddress, string memory typeStr) public {\n        proposalCount += 1;\n        mapPID_address[proposalCount] = address(0);\n        mapPID_type[proposalCount] = typeStr;\n        emit NewProposal(msg.sender, proposalCount, typeStr);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {DAO} from \"../src/DAO.sol\";\n\ncontract InvMutTest is Test {\n    DAO c;\n    function setUp() public { c = new DAO(); }\n    function testRegression_property() public {\n        c.init(address(0x1111), address(0x2222), address(0x3333));\n        c.newAddressProposal(address(0x1234), \"UTILS\");\n        c.newAddressProposal(address(0x5678), \"UTILS\");\n        bool ok = (c.mapPID_address(1) != address(0));\n        assertTrue(ok);\n    }\n}"
+}

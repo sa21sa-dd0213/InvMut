@@ -1,0 +1,48 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("SimpleWallet reference (ethers v6; deploy may require constructor arguments)", function () {   it("should revert on overflow when depositsCount reaches max uint256", async function () {     const [owner] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("SimpleWallet");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Get the max uint256 value     const maxUint = ethers.MaxUint256;      // Set depositsCount to max value by exploiting the fact that we can directly set it via storage     // However, since we can't modify storage directly in tests, we'll use a different approach:     // We'll send ether to the contract maxUint times to overflow depositsCount     // But that's impractical. Instead, we'll simulate the overflow by:     // 1. Sending 1 wei to trigger the receive function which increments depositsCount     // 2. We need to find a way to set depositsCount to maxUint - 1 first          // Alternative approach: We can use the fact that the contract has no setter for depositsCount     // So we'll directly interact with the contract's storage to set depositsCount to maxUint - 1     // Then send one more wei to trigger the overflow          // Set storage slot 1 (depositsCount is the second variable after owner) to maxUint - 1     const storageSlot = 1; // depositsCount is at slot 1 (slot 0 is owner)     await ethers.provider.send("hardhat_setStorageAt", [       await instance.getAddress(),       "0x" + storageSlot.toString(16).padStart(64, "0"),       ethers.toBeHex(maxUint - 1n, 32)     ]);      // Send 1 wei to trigger receive function - this should cause overflow     // Original contract would revert due to require((depositsCount + 1) >= depositsCount)     // Mutant would not revert and depositsCount would overflow to 0     await expect(       owner.sendTransaction({         to: await instance.getAddress(),         value: ethers.parseEther("0.001")       })     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract SimpleWallet { address public owner = msg.sender; uint public depositsCount; modifier onlyOwner { require(msg.sender == owner); _; } receive() external payable { require(((depositsCount + 1) >= depositsCount)); depositsCount++; } function withdrawAll() public onlyOwner { withdraw(address(this).balance); } function withdraw(uint _value) public onlyOwner { payable(msg.sender).transfer(_value); } function sendMoney(address _target, uint _value) public onlyOwner { _target.call{value: _value}(""); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("SimpleWallet reference (ethers v6; deploy may require constructor arguments)", function () {
+  it("should revert on overflow when depositsCount reaches max uint256", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("SimpleWallet");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get the max uint256 value
+    const maxUint = ethers.MaxUint256;
+
+    // Set storage slot 1 (depositsCount is at slot 1, slot 0 is owner) to maxUint - 1
+    const storageSlot = 1;
+    await ethers.provider.send("hardhat_setStorageAt", [
+      await instance.getAddress(),
+      "0x" + storageSlot.toString(16).padStart(64, "0"),
+      ethers.toBeHex(maxUint - 1n, 32)
+    ]);
+
+    // Send 1 wei to trigger receive function - this should cause overflow
+    // Original contract would revert due to require((depositsCount + 1) >= depositsCount)
+    // Mutant would not revert and depositsCount would overflow to 0
+    await expect(
+      owner.sendTransaction({
+        to: await instance.getAddress(),
+        value: ethers.parseEther("0.001")
+      })
+    ).to.be.reverted;
+  });
+});
+```

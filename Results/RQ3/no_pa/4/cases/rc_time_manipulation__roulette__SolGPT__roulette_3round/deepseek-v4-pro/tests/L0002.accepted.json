@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0002",
+ "property_summary": "After two fallback calls with msg.value=10 ether at block.timestamp=100 and block.timestamp=101, the reference contract reverts the second call (keeping pastBlockTime=101), while the buggy contract accepts it (setting pastBlockTime=102); we observe the divergence by checking c.pastBlockTime() after the sequence.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "Replace 'require(block.timestamp > pastBlockTime);' with 'require(block.timestamp >= pastBlockTime);'",
+ "mutated_unit_code": "    fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp >= pastBlockTime);\n\n        pastBlockTime = block.timestamp + 1;\n\n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testRegression_property() public {\n        vm.warp(100);\n        vm.deal(address(this), 20 ether);\n        (bool ok1, ) = address(c).call{value: 10 ether}(\"\");\n        assertTrue(ok1, \"first call must succeed\");\n\n        vm.warp(101);\n        (bool ok2, ) = address(c).call{value: 10 ether}(\"\");\n        assertTrue(!ok2, \"second call must revert on the correct contract\");\n    }\n}\n"
+}

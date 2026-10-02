@@ -1,0 +1,94 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m0583e5c5 of EBU.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EBU.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EBU:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EBU reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EBU by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EBU"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant m0583e5c5 test", function () {
+  it("should kill mutant by detecting incorrect function selector from sha256", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy the EBU contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Deploy a simple token contract that implements transferFrom
+    const TokenFactory = await ethers.getContractFactory("SimpleToken");
+    const token = await TokenFactory.deploy();
+    await token.waitForDeployment();
+    
+    // Setup: mint tokens to owner and approve EBU contract to transfer on behalf
+    const mintAmount = ethers.parseEther("100");
+    const transferAmount = ethers.parseEther("10");
+    await token.mint(owner.address, mintAmount);
+    await token.connect(owner).approve(await instance.getAddress(), mintAmount);
+    
+    // Get initial balances
+    const initialBalanceOwner = await token.balanceOf(owner.address);
+    const initialBalanceAddr1 = await token.balanceOf(addr1.address);
+    
+    // Call transfer on EBU which should trigger transferFrom on the token
+    const recipients = [addr1.address];
+    const amounts = [transferAmount];
+    const tx = await instance.connect(owner).transfer(
+      owner.address,
+      await token.getAddress(),
+      recipients,
+      amounts
+    );
+    await tx.wait();
+    
+    // Check balances - original keccak256 would succeed, sha256 mutant would fail
+    const finalBalanceOwner = await token.balanceOf(owner.address);
+    const finalBalanceAddr1 = await token.balanceOf(addr1.address);
+    
+    // In the original, owner loses tokens and addr1 gains tokens
+    // In the mutant with sha256, the wrong selector is used, so no transfer happens
+    expect(finalBalanceOwner).to.equal(initialBalanceOwner); // Mutant: tokens NOT transferred
+    expect(finalBalanceAddr1).to.equal(initialBalanceAddr1); // Mutant: addr1 got nothing
+    // If the mutant worked correctly (using keccak256), these would fail
+    // Since the mutant uses sha256, the call fails silently or reverts, leaving balances unchanged
+  });
+});
+
+// Helper contract for testing
+// This would be deployed alongside the test
+contract SimpleToken {
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+    
+    function mint(address to, uint256 amount) external {
+        balanceOf[to] += amount;
+    }
+    
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
+    }
+    
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        require(allowance[from][msg.sender] >= amount);
+        allowance[from][msg.sender] -= amount;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+}
+```

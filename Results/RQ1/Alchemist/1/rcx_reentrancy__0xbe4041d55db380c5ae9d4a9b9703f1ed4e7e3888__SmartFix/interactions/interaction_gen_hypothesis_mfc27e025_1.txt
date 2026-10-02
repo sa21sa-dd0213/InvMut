@@ -1,0 +1,31 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract MONEY_BOX:
+        Contract Code: pragma solidity ^0.8.0; contract MONEY_BOX { struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; uint public MinSum; Log LogFile; bool intitalized; function SetMinSum(uint _val) public { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log) public { if(intitalized)revert(); LogFile = Log(_log); } function Initialized() public { intitalized = true; } function Put(uint _lockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; if(block.timestamp+_lockTime>acc.unlockTime)acc.unlockTime=block.timestamp+_lockTime; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+
+    Consider the following mutant of MONEY_BOX:
+        Mutant mfc27e025 of function Put replaces + with -
+        Mutant Diff: ---|         if(block.timestamp+_lockTime>acc.unlockTime)acc.unlockTime=block.timestamp+_lockTime; +++|         if(block.timestamp+_lockTime>acc.unlockTime)acc.unlockTime=block.timestamp-_lockTime;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's analyze the mutant step by step.
+
+The original line is:
+`if(block.timestamp+_lockTime>acc.unlockTime)acc.unlockTime=block.timestamp+_lockTime;`
+
+The mutant changes it to:
+`if(block.timestamp+_lockTime>acc.unlockTime)acc.unlockTime=block.timestamp-_lockTime;`
+
+The condition is unchanged: it still checks whether `block.timestamp + _lockTime` is greater than the current `acc.unlockTime`. However, when the condition is true, the mutant sets `acc.unlockTime` to `block.timestamp - _lockTime` instead of `block.timestamp + _lockTime`.
+
+This means that in the mutant, when a user calls `Put` with a positive `_lockTime`, the new unlock time becomes *earlier* than the current timestamp (i.e., already expired), instead of being *later* (in the future). This would allow the user to immediately collect funds that should have been locked, breaking the intended time-lock security.
+
+**Hypothesis**: A test case that calls `Put` with a positive `_lockTime` (e.g., 1 hour), then immediately calls `Collect` with an amount less than or equal to the deposited balance, and expects the `Collect` to fail (revert) because the unlock time should be in the future, should kill the mutant. On the original contract, the collection would revert (since the unlock time is still in the future), but on the mutant, the collection would succeed (because the unlock time is set to the past).

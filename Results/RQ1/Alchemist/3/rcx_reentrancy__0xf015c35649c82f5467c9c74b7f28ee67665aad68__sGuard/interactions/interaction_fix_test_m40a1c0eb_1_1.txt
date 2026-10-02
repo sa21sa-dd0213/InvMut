@@ -1,0 +1,61 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MY_BANK mutant m40a1c0eb", function () {   it("should revert when collecting less than MinSum before unlock time in original, but mutant allows it", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy Log contract first (required constructor argument for MY_BANK)     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();          // Deploy MY_BANK with Log address     const Factory = await ethers.getContractFactory("MY_BANK");     const instance = await Factory.deploy(await log.getAddress());     await instance.waitForDeployment();          // addr1 deposits less than MinSum (1 ether) - deposit 0.5 ether     const depositAmount = ethers.parseEther("0.5");     await instance.connect(addr1).Put(0, { value: depositAmount });          // Try to collect any positive amount before unlock time (block.timestamp > 0 is false since unlockTime was set to 0 which is <= block.timestamp)     // Actually let's set unlock time far in the future to ensure condition fails     const futureTime = Math.floor(Date.now() / 1000) + 1000000;     await instance.connect(addr1).Put(futureTime, { value: ethers.parseEther("0.1") });          // Now try to collect 0.1 ether - should revert in original because:     // 1. balance (0.6 ether) < MinSum (1 ether)     // 2. block.timestamp < unlockTime (future)     const collectAmount = ethers.parseEther("0.1");          // In the original, this would revert. In the mutant (if true), it would succeed.     // Since we're testing against the deployed contract, we check if it succeeds (mutant behavior)     // or reverts (original behavior) - we want to detect the mutant by it succeeding     const tx = instance.connect(addr1).Collect(collectAmount);          // The mutant replaces the condition with true, so the transaction should succeed     // If the original code was present, it would revert     await expect(tx).to.not.be.reverted;          // Additional assertion: balance should be reduced if mutant is active     const holder = await instance.Acc(addr1.address);     expect(holder.balance).to.be.lt(depositAmount);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } } contract MY_BANK is sGuard { function Put(uint _unlockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); LogFile.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant m40a1c0eb", function () {
+  it("should revert when collecting less than MinSum before unlock time in original, but mutant allows it", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy Log contract first (required constructor argument for MY_BANK)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Deploy MY_BANK with Log address
+    const Factory = await ethers.getContractFactory("MY_BANK");
+    const instance = await Factory.deploy(await log.getAddress());
+    await instance.waitForDeployment();
+
+    // addr1 deposits less than MinSum (1 ether) - deposit 0.5 ether
+    const depositAmount = ethers.parseEther("0.5");
+    await instance.connect(addr1).Put(0, { value: depositAmount });
+
+    // Try to collect any positive amount before unlock time (block.timestamp > 0 is false since unlockTime was set to 0 which is <= block.timestamp)
+    // Actually let's set unlock time far in the future to ensure condition fails
+    const futureTime = Math.floor(Date.now() / 1000) + 1000000;
+    await instance.connect(addr1).Put(futureTime, { value: ethers.parseEther("0.1") });
+
+    // Now try to collect 0.1 ether - should revert in original because:
+    // 1. balance (0.6 ether) < MinSum (1 ether)
+    // 2. block.timestamp < unlockTime (future)
+    const collectAmount = ethers.parseEther("0.1");
+
+    // In the original, this would revert. In the mutant (if true), it would succeed.
+    // Since we're testing against the deployed contract, we check if it succeeds (mutant behavior)
+    // or reverts (original behavior) - we want to detect the mutant by it succeeding
+    const tx = instance.connect(addr1).Collect(collectAmount);
+
+    // The mutant replaces the condition with true, so the transaction should succeed
+    // If the original code was present, it would revert
+    await expect(tx).to.not.be.reverted;
+
+    // Additional assertion: balance should be reduced if mutant is active
+    const holder = await instance.Acc(addr1.address);
+    expect(holder.balance).to.be.lt(depositAmount);
+  });
+});
+```

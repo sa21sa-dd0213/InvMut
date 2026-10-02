@@ -1,0 +1,85 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PRIVATE_ETH_CELL - Kill mutant mf6561abf", function () {   it("should revert when Collect ETH transfer fails (mutant removes revert)", async function () {     const [owner, attacker] = await ethers.getSigners();          // Deploy the RejectingContract that will reject incoming ETH     const RejectFactory = await ethers.getContractFactory("RejectingContract");     const rejectContract = await RejectFactory.deploy();     await rejectContract.waitForDeployment();          // Deploy PRIVATE_ETH_CELL (no constructor arguments needed)     const Factory = await ethers.getContractFactory("PRIVATE_ETH_CELL");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Setup: Initialize the contract and set MinSum     await instance.SetMinSum(ethers.parseEther("0.1"));     await instance.SetLogFile(ethers.getAddress("0x0000000000000000000000000000000000000001"));     await instance.Initialized();          // Fund the contract with ETH     await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10")     });          // Fund the rejecting contract so it has balance     await owner.sendTransaction({       to: await rejectContract.getAddress(),       value: ethers.parseEther("1")     });          // Have rejecting contract deposit ETH into PRIVATE_ETH_CELL to have balance >= MinSum     await rejectContract.depositTo(await instance.getAddress(), {       value: ethers.parseEther("1")     });          // Now call Collect from the rejecting contract - should revert because transfer fails     // The rejecting contract's receive() will revert on incoming ETH     await expect(       rejectContract.collectFrom(await instance.getAddress(), ethers.parseEther("0.5"))     ).to.be.reverted;          // Also verify that balance was NOT deducted from rejecting contract in PRIVATE_ETH_CELL     const balanceAfter = await instance.balances(await rejectContract.getAddress());     expect(balanceAfter).to.equal(ethers.parseEther("1"));   }); });  // Helper contract that rejects incoming ETH and has deposit/collect functions contract RejectingContract {   receive() external payable {     revert("ETH transfer rejected");   }      function depositTo(address target) external payable {     (bool success, ) = target.call{value: msg.value}("");     require(success, "Deposit failed");   }      function collectFrom(address target, uint256 amount) external {     (bool success, ) = target.call(       abi.encodeWithSignature("Collect(uint256)", amount)     );     require(success, "Collect call failed");   } }
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PRIVATE_ETH_CELL { mapping (address=>uint256) public balances; uint public MinSum; LogFile Log; bool intitalized; function SetMinSum(uint _val) public { require(!intitalized); MinSum = _val; } function SetLogFile(address _log) public { require(!intitalized); Log = LogFile(_log); } function Initialized() public { intitalized = true; } function Deposit() public payable { require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); balances[msg.sender]+= msg.value; Log.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { if(balances[msg.sender]>=MinSum && balances[msg.sender]>=_am) { balances[msg.sender] = (balances[msg.sender] - _am); (bool _veri_ok,) = msg.sender.call{value: _am}(""); if(_veri_ok) { Log.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } receive() external payable { Deposit(); } } contract LogFile { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val,string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PRIVATE_ETH_CELL - Kill mutant mf6561abf", function () {
+  it("should revert when Collect ETH transfer fails (mutant removes revert)", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the RejectingContract that will reject incoming ETH
+    const RejectFactory = await ethers.getContractFactory("RejectingContract");
+    const rejectContract = await RejectFactory.deploy();
+    await rejectContract.waitForDeployment();
+    
+    // Deploy PRIVATE_ETH_CELL (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("PRIVATE_ETH_CELL");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Setup: Initialize the contract and set MinSum
+    await instance.SetMinSum(ethers.parseEther("0.1"));
+    await instance.SetLogFile(ethers.getAddress("0x0000000000000000000000000000000000000001"));
+    await instance.Initialized();
+    
+    // Fund the contract with ETH
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    
+    // Fund the rejecting contract so it has balance
+    await owner.sendTransaction({
+      to: await rejectContract.getAddress(),
+      value: ethers.parseEther("1")
+    });
+    
+    // Have rejecting contract deposit ETH into PRIVATE_ETH_CELL to have balance >= MinSum
+    await rejectContract.depositTo(await instance.getAddress(), {
+      value: ethers.parseEther("1")
+    });
+    
+    // Now call Collect from the rejecting contract - should revert because transfer fails
+    // The rejecting contract's receive() will revert on incoming ETH
+    await expect(
+      rejectContract.collectFrom(await instance.getAddress(), ethers.parseEther("0.5"))
+    ).to.be.reverted;
+    
+    // Also verify that balance was NOT deducted from rejecting contract in PRIVATE_ETH_CELL
+    const balanceAfter = await instance.balances(await rejectContract.getAddress());
+    expect(balanceAfter).to.equal(ethers.parseEther("1"));
+  });
+});
+
+// Helper contract that rejects incoming ETH and has deposit/collect functions
+contract RejectingContract {
+  receive() external payable {
+    revert("ETH transfer rejected");
+  }
+  
+  function depositTo(address target) external payable {
+    (bool success, ) = target.call{value: msg.value}("");
+    require(success, "Deposit failed");
+  }
+  
+  function collectFrom(address target, uint256 amount) external {
+    (bool success, ) = target.call(
+      abi.encodeWithSignature("Collect(uint256)", amount)
+    );
+    require(success, "Collect call failed");
+  }
+}
+```

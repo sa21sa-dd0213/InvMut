@@ -1,0 +1,61 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PredictTheBlockHashChallenge mutant test", function () {   it("should kill mutant mc1f84c66 by verifying correct guess pays out, not incorrect guess", async function () {     const [owner, player] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge");     const contract = await Factory.deploy({ value: ethers.parseEther("1") });     await contract.waitForDeployment();      // Player locks in 1 ether and guesses the hash of block number 1 (block after lock-in)     const targetBlock = 1;     const blockHash = ethers.keccak256(       ethers.toUtf8Bytes(ethers.toBeHex(targetBlock))     );     // We need a real blockhash, so we mine blocks and capture actual blockhash     await network.provider.send("evm_mine");     const block = await ethers.provider.getBlock("latest");     const realBlockHash = block.hash;      // Player locks in a correct guess (the actual blockhash of block 1)     await contract.connect(player).lockInGuess(realBlockHash, {       value: ethers.parseEther("1"),     });      // Mine blocks until we pass the target block     await network.provider.send("evm_mine");      // Get player balance before settle     const balanceBefore = await ethers.provider.getBalance(player.address);      // Settle the guess     const tx = await contract.connect(player).settle();     const receipt = await tx.wait();      // Get player balance after settle     const balanceAfter = await ethers.provider.getBalance(player.address);      // In original contract, correct guess should pay 2 ether     // In mutant (== changed to !=), correct guess would NOT pay     // So we assert that player gained ether (original behavior) vs mutant would fail this     expect(balanceAfter - balanceBefore).to.equal(ethers.parseEther("2"));   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PredictTheBlockHashChallenge { struct Guess { uint block; bytes32 guess; } mapping(address => Guess) guesses; constructor() public payable { require(msg.value == 1 ether); } function lockInGuess(bytes32 hash) public payable { require(guesses[msg.sender].block == 0); require(msg.value == 1 ether); guesses[msg.sender].guess = hash; guesses[msg.sender].block = block.number + 1; } function settle() public { require(guesses[msg.sender].block != 0); require(block.number > guesses[msg.sender].block); bytes32 answer = keccak256(abi.encodePacked(blockhash(guesses[msg.sender].block))); guesses[msg.sender].block = 0; if (guesses[msg.sender].guess == answer) { payable(msg.sender).transfer(2 ether); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+import { network } from "hardhat";
+
+describe("PredictTheBlockHashChallenge mutant test", function () {
+  it("should kill mutant mc1f84c66 by verifying correct guess pays out, not incorrect guess", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge");
+    const contract = await Factory.deploy({ value: ethers.parseEther("1") });
+    await contract.waitForDeployment();
+
+    // Player locks in 1 ether and guesses the hash of block number 1 (block after lock-in)
+    const targetBlock = 1;
+    const blockHash = ethers.keccak256(
+      ethers.toUtf8Bytes(ethers.toBeHex(targetBlock))
+    );
+    // We need a real blockhash, so we mine blocks and capture actual blockhash
+    await network.provider.send("evm_mine");
+    const block = await ethers.provider.getBlock("latest");
+    const realBlockHash = block.hash;
+
+    // Player locks in a correct guess (the actual blockhash of block 1)
+    await contract.connect(player).lockInGuess(realBlockHash, {
+      value: ethers.parseEther("1"),
+    });
+
+    // Mine blocks until we pass the target block
+    await network.provider.send("evm_mine");
+
+    // Get player balance before settle
+    const balanceBefore = await ethers.provider.getBalance(player.address);
+
+    // Settle the guess
+    const tx = await contract.connect(player).settle();
+    const receipt = await tx.wait();
+
+    // Get player balance after settle
+    const balanceAfter = await ethers.provider.getBalance(player.address);
+
+    // In original contract, correct guess should pay 2 ether
+    // In mutant (== changed to !=), correct guess would NOT pay
+    // So we assert that player gained ether (original behavior) vs mutant would fail this
+    expect(balanceAfter - balanceBefore).to.equal(ethers.parseEther("2"));
+  });
+});
+```

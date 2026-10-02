@@ -1,0 +1,36 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("XBORNID - Kill mutant m82ecc800 (transferFrom: _amount == balances[_from])", function () {
+  it("should allow transfer of partial balance in original but revert in mutant", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("XBORNID");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Distribute tokens to addr1 so they have a balance
+    const distributeAmount = ethers.parseEther("1000");
+    
+    // Need to call getTokens first to enable distribution, then call distr via the contract's internal mechanism
+    // Or use the contract's public functions to distribute tokens
+    
+    // Since distr is private, we need to use getTokens or other methods to get tokens to addr1
+    // Let's send ETH to trigger getTokens for addr1
+    await instance.connect(addr1).getTokens({ value: ethers.parseEther("1") });
+    
+    // Alternatively, we can check the balance and work with what we have
+    // For the test, we need addr1 to have a balance that we can transfer from
+    
+    // Get the actual balance after distribution
+    const addr1Balance = await instance.balanceOf(addr1.address);
+    
+    // Approve owner to spend addr1's tokens
+    await instance.connect(addr1).approve(owner.address, addr1Balance);
+
+    // Attempt to transfer only half of addr1's balance (should work in original, fail in mutant)
+    const halfBalance = addr1Balance / 2n;
+    await expect(
+      instance.connect(owner).transferFrom(addr1.address, addr2.address, halfBalance)
+    ).to.be.reverted;
+  });
+});

@@ -1,0 +1,12 @@
+{
+ "difference_id": "Te2bb5085",
+ "property_summary": "For every call where transfer(...) completes (does not revert), the reference implementation always returns true, whereas the mutant may return false for some inputs — so the returned boolean from transfer must be true for all successful calls to the reference but is false for the buggy version on some inputs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change the function to return false immediately after a successful loop instead of true (single-statement replacement of the final return).",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v)  public returns (bool) {\n\trequire(_tos.length > 0);\n\tbytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n\tfor(uint i = 0;i < _tos.length;i++){\n\t{ (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); _d; if (! _s) {\n\trevert();} }\n\t}\n\treturn false;\n\t}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {demo} from \"../src/demo.sol\";\n\ncontract InvMutTest is Test {\n    demo c;\n\n    function setUp() public { c = new demo(); }\n\n    function testFuzz_property(address from, uint256 seed, uint256 v) public {\n        uint256 len = uint256(1 + (seed % 4));\n\n        address[] memory tos = new address[](len);\n        for (uint i = 0; i < len; i++) {\n            tos[i] = address(uint160(uint256(keccak256(abi.encodePacked(seed, i)))));\n            if (tos[i] == address(0)) {\n                tos[i] = address(1);\n            }\n        }\n\n        GoodCallee good = new GoodCallee();\n\n        bool ok;\n        bool ret;\n        try c.transfer(from, address(good), tos, v) returns (bool r) {\n            ok = true;\n            ret = r;\n        } catch {\n            ok = false;\n            ret = false;\n        }\n\n        assertTrue(!ok || ret);\n    }\n}\n\ncontract GoodCallee {\n    function transferFrom(address, address, uint256) external pure returns (bool) {\n        return true;\n    }\n}\n"
+}

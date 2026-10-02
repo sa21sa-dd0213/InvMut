@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract PredictTheBlockHashChallenge:
+        Contract Code: pragma solidity ^0.8.0; contract PredictTheBlockHashChallenge { struct guess { uint block; bytes32 guess; } mapping(address => guess) guesses; constructor() public payable { require(msg.value == 1 ether); } function lockInGuess(bytes32 hash) public payable { require(guesses[msg.sender].block == 0); require(msg.value == 1 ether); guesses[msg.sender].guess = hash; guesses[msg.sender].block = block.number + 1; } function settle() public { require(guesses[msg.sender].block != 0); require(block.number > guesses[msg.sender].block); bytes32 answer = blockhash(guesses[msg.sender].block); guesses[msg.sender].block = 0; if (answer != 0 && guesses[msg.sender].guess == answer) { payable(msg.sender).transfer(2 ether); } } }
+
+    Consider the following mutant of PredictTheBlockHashChallenge:
+        Mutant me5343345 of function settle replaces == with !=
+        Mutant Diff: ---|         if (answer != 0 && guesses[msg.sender].guess == answer) { +++|         if (answer != 0 && guesses[msg.sender].guess != answer) {
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the condition from `guesses[msg.sender].guess == answer` to `guesses[msg.sender].guess != answer`. In the original contract, a correct guess (matching the block hash) allows the player to win 2 ether. The mutant incorrectly awards 2 ether when the guess does **not** match the block hash.  
+
+**Hypothesis**: A test case where a player locks in a guess that is intentionally different from the actual block hash of the target block should pass (receive 2 ether) on the mutant, but should fail (receive no ether) on the original contract. Therefore, a test that verifies the player’s balance does **not** increase when their guess is wrong will detect the mutant, because on the mutant the balance will incorrectly increase.

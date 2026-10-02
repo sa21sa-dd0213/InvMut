@@ -1,0 +1,60 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m99849d95 of airPort.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test airPort.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for airPort:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("airPort reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy airPort by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("airPort"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airPort mutant test - m99849d95", function () {
+    it("should return true when transfer succeeds - kills mutant that removes return", async function () {
+        const [owner, addr1, addr2] = await ethers.getSigners();
+        
+        // Deploy a simple ERC20 token that supports transferFrom
+        const TokenFactory = await ethers.getContractFactory("contracts/ERC20.sol:ERC20");
+        const token = await TokenFactory.deploy("Test", "TST", 18);
+        await token.waitForDeployment();
+        
+        // Deploy the airPort contract (no constructor args needed)
+        const AirPortFactory = await ethers.getContractFactory("airPort");
+        const airPort = await AirPortFactory.deploy();
+        await airPort.waitForDeployment();
+        
+        // Setup: mint tokens to owner and approve airPort to transfer from owner
+        await token.mint(owner.address, ethers.parseEther("100"));
+        await token.connect(owner).approve(airPort.target, ethers.parseEther("100"));
+        
+        // Call transfer with valid parameters
+        const recipients = [addr1.address, addr2.address];
+        const tx = await airPort.transfer(
+            owner.address,
+            token.target,
+            recipients,
+            ethers.parseEther("10")
+        );
+        const receipt = await tx.wait();
+        
+        // The transaction should not revert - if it doesn't revert, the return statement exists
+        // The mutant would revert at the end due to missing return
+        expect(receipt.status).to.equal(1);
+        
+        // Verify the actual transfer happened (original behavior)
+        expect(await token.balanceOf(addr1.address)).to.equal(ethers.parseEther("10"));
+        expect(await token.balanceOf(addr2.address)).to.equal(ethers.parseEther("10"));
+    });
+});
+```

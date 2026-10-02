@@ -1,0 +1,52 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("Reentrance mutant kill test - m9316c5ec", function () {   it("should detect mutant by verifying that addToBalance with msg.value = 0 still increases balance by 1", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Reentrance");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Get initial balance of addr1     const initialBalance = await instance.getBalance(addr1.address);     expect(initialBalance).to.equal(0);      // Call addToBalance with 0 ether - in original this does nothing     // In mutant, the condition always passes, but the actual addition is still msg.value (0)     // However, the mutant changes the require condition, not the addition     // So we need a different approach: the mutant's condition uses msg.value+1     // This means if we send 0 wei, the condition checks balance + 0 + 1 >= balance which is always true     // But the original also passes with 0 wei. The real difference is when balance is max uint256     // Let's set balance to max uint256 first via a direct storage write (since contract has no setter)     // Actually, we can exploit the overflow: in original, if balance is max uint256, adding 0 passes     // but adding 1 would revert. In mutant, adding 0 would still pass condition (balance+0+1 >= balance)     // but the actual addition line still does += msg.value (0), so no overflow.     // The kill is: in original, sending 0 wei works fine; in mutant it also works fine.     // The mutant is actually killed by a test that shows the condition is always true even for impossible values     // Let's test that sending 0 wei when balance is type(uint256).max does NOT revert in mutant but WOULD revert in original? No, original also doesn't revert because 0+max >= max.     // Wait - the mutant's condition adds 1 to msg.value. So if msg.value = 0, condition checks balance+1 >= balance, always true.     // Original checks balance+0 >= balance, also always true.     // The kill must be: send exactly 1 wei when balance is type(uint256).max.     // Original: require(balance + 1 >= balance) -> would overflow in unchecked, but in 0.8+ it reverts at require check because arithmetic is checked.     // Mutant: require(balance + 1 + 1 >= balance) -> also reverts due to overflow.     // Hmm. Let's think differently: The mutant makes the require condition weaker by adding +1.     // For a given msg.value, the mutant's condition is more likely to pass.     // Example: if balance = 1, msg.value = type(uint256).max - 1. Original: 1 + (max-1) = max, which is >= 1, passes.     // Mutant: 1 + (max-1) + 1 = max+1 which overflows -> revert.     // So mutant actually REVERTS more often, not less. This is a harder kill.     // The mutant is actually "stronger" (more restrictive) for large values.     // But for small values: balance=0, msg.value=0 -> both pass.     // The ONLY way mutant differs is when msg.value+1 causes overflow but msg.value doesn't.     // That happens when msg.value = type(uint256).max. Original: balance + max >= balance -> overflows -> revert.     // Mutant: balance + max + 1 -> overflows even worse -> revert.     // Both revert. So how to kill?     // Actually wait - the mutant's condition is in require, but the actual balance update uses msg.value (not msg.value+1).     // So the mutant adds a DIFFERENT condition than the actual update.     // In original: condition matches update (both use msg.value).     // In mutant: condition uses msg.value+1, update uses msg.value.     // This means we can pass the condition with a smaller msg.value than needed for the update to be safe.     // Kill: Send msg.value = 0. Condition passes (balance+0+1 >= balance). Update does +=0 (no change). Works same as original.     // Not a kill.     // Kill: Send msg.value such that condition passes but the actual += msg.value would overflow.     // For balance = type(uint256).max - 1, msg.value = 1:     // Original: require(balance + 1 >= balance) -> max >= max -> passes. +=1 -> overflow revert.     // Mutant: require(balance + 1 + 1 >= balance) -> max+1 >= max -> overflow revert at require.     // Both revert.     // For balance = type(uint256).max - 1, msg.value = 0:     // Original: require(balance+0 >= balance) -> passes. +=0 -> passes.     // Mutant: require(balance+0+1 >= balance) -> max >= max -> passes. +=0 -> passes.     // No difference.     // For balance = type(uint256).max, msg.value = 0:     // Original: require(max+0 >= max) -> passes. +=0 -> passes.     // Mutant: require(max+0+1 >= max) -> overflow revert.     // YES! This is the kill!     // Set balance to type(uint256).max, then call addToBalance with 0 wei.     // Original: passes (no change to balance).     // Mutant: reverts because max+1 overflows in the require check.          // To set balance, we need to call addToBalance with a large amount     // But we can't send type(uint256).max wei. Instead, we can directly set storage.     // Since the contract doesn't have a setter, we need to use storage manipulation.     // Actually, we can send ether to reach max uint256? No, ether supply is limited.     // Alternative: use the fact that addToBalance adds msg.value to balance.     // We can send multiple times to accumulate. But that's impractical.     // Instead, we can use ethers to set storage slot directly (hacky but works in test).          // Get the storage slot for addr1's balance (slot 0 is mapping, so slot = keccak256(addr1 + 0))     const slot = ethers.solidityPackedKeccak256(       ["uint256", "uint256"],       [addr1.address, 0]     );     await ethers.provider.send("hardhat_setStorageAt", [       await instance.getAddress(),       slot,       ethers.toBeHex(ethers.MaxUint256, 32)     ]);          // Verify balance is now max     const maxBalance = await instance.getBalance(addr1.address);     expect(maxBalance).to.equal(ethers.MaxUint256);      // Now call addToBalance with 0 wei from addr1     // In original: should succeed     // In mutant: should revert due to overflow in require     const tx = instance.connect(addr1).addToBalance({ value: 0 });     await expect(tx).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Reentrance { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public payable { require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender])); userBalance[msg.sender] += msg.value; } function withdrawBalance() public{ uint256 tmp__1 = userBalance[msg.sender]; userBalance[msg.sender] = 0; { (bool _s, bytes memory _d) = msg.sender.call{value: tmp__1}(""); _d; if (! _s) { revert(); } } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Reentrance mutant kill test - m9316c5ec", function () {
+  it("should detect mutant by verifying that addToBalance with msg.value = 0 still increases balance by 1", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Reentrance");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get initial balance of addr1
+    const initialBalance = await instance.getBalance(addr1.address);
+    expect(initialBalance).to.equal(0);
+
+    // Get the storage slot for addr1's balance (slot 0 is mapping, so slot = keccak256(addr1 + 0))
+    const slot = ethers.solidityPackedKeccak256(
+      ["uint256", "uint256"],
+      [addr1.address, 0]
+    );
+    await ethers.provider.send("hardhat_setStorageAt", [
+      await instance.getAddress(),
+      slot,
+      ethers.toBeHex(ethers.MaxUint256, 32)
+    ]);
+
+    // Verify balance is now max
+    const maxBalance = await instance.getBalance(addr1.address);
+    expect(maxBalance).to.equal(ethers.MaxUint256);
+
+    // Now call addToBalance with 0 wei from addr1
+    // In original: should succeed
+    // In mutant: should revert due to overflow in require
+    const tx = instance.connect(addr1).addToBalance({ value: 0 });
+    await expect(tx).to.be.reverted;
+  });
+});
+```

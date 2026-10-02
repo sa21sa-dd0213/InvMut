@@ -1,0 +1,12 @@
+{
+ "difference_id": "T3ada0a55",
+ "property_summary": "For all callers and slope inputs, the reference contract requires access control to call setSlopes (calls by unauthorized callers revert), whereas the mutant removes this check allowing any caller to successfully set slopes; the test fuzzes caller address and slope.kink to find a caller that is unauthorized in reference but succeeds in mutant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change access control so setSlopes is callable without checking access by removing the checkAccess modifier invocation from the function signature (affects who can call and thus observable state after calls).",
+ "mutated_unit_code": "function setSlopes(address _asset, SlopeData memory _slopes) external {\n        if (_slopes.kink >= 1e27 || _slopes.kink == 0) revert InvalidKink();\n        getVaultAdapterStorage().slopeData[_asset] = _slopes;\n        emit SetSlopes(_asset, _slopes);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {VaultAdapter} from \"../src/VaultAdapter.sol\";\n\ncontract InvMutTest is Test {\n    VaultAdapter c;\n\n    function setUp() public { c = new VaultAdapter(); }\n\n    function testFuzz_property(address caller, uint256 kink) public {\n        vm.assume(kink > 0 && kink < type(uint256).max);\n\n        uint256 validKink = kink % 1e27;\n        if (validKink == 0) {\n            validKink = 1;\n        }\n\n        bytes4 sig = bytes4(keccak256(\"setSlopes(address,(uint256,uint256,uint256))\"));\n        address asset = address(0x123);\n\n        bytes memory slopesEncoded = abi.encode(validKink, uint256(0), uint256(0));\n        bytes memory data = abi.encodePacked(sig, abi.encode(asset, slopesEncoded));\n\n        bool ok;\n        vm.prank(caller);\n        (bool success, ) = address(c).call(data);\n        ok = success;\n\n        assertTrue(!ok);\n    }\n}\n"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T5a33e535",
+ "property_summary": "After any successful fallback call, pastBlockTime must be the block timestamp of that call; the mutant never updates it, so the requirement block.timestamp > pastBlockTime eventually fails.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the pastBlockTime update, causing the timestamp guard to eventually always fail after the first call.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        \n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 fuzz_blocks, uint256 fuzz_timestamp) public {\n        uint256 nCalls = bound(fuzz_blocks, 1, 100);\n        uint256 startTime = bound(fuzz_timestamp, 1, type(uint64).max);\n\n        address caller = makeAddr(\"caller\");\n        vm.deal(caller, 10 ether * nCalls);\n\n        vm.warp(startTime);\n        vm.roll(1);\n\n        vm.startPrank(caller);\n        for (uint256 i = 0; i < nCalls; i++) {\n            vm.warp(startTime + 1 + i);\n            vm.roll(1 + i + 1);\n            (bool ok,) = address(c).call{value: 10 ether}(\"\");\n            if (i == nCalls - 1) {\n                bool lastCallOk = ok;\n                vm.stopPrank();\n                if (lastCallOk) {\n                    assertTrue(block.timestamp == c.pastBlockTime());\n                } else {\n                    assertTrue(true);\n                }\n                return;\n            }\n        }\n        vm.stopPrank();\n    }\n}\n"
+}

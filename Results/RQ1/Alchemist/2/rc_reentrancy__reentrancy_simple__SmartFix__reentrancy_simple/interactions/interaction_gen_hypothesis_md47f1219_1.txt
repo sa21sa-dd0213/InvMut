@@ -1,0 +1,25 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Reentrance:
+        Contract Code: pragma solidity ^0.8.0; contract Reentrance { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public payable { require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender])); userBalance[msg.sender] += msg.value; } function withdrawBalance() public{ uint256 tmp__1 = userBalance[msg.sender]; userBalance[msg.sender] = 0; { (bool _s, bytes memory _d) = msg.sender.call{value: tmp__1}(""); _d; if (! _s) { revert(); } } } }
+
+    Consider the following mutant of Reentrance:
+        Mutant md47f1219 of function addToBalance replaces + with *
+        Mutant Diff: ---|          require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender])); +++|          require(((userBalance[msg.sender] * msg.value) >= userBalance[msg.sender]));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract uses `+` in the require statement: `require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender]));`  
+This check always passes for any non-negative `msg.value`, because adding a non-negative number to `userBalance[msg.sender]` will always be greater than or equal to itself.
+
+The mutant changes `+` to `*`: `require(((userBalance[msg.sender] * msg.value) >= userBalance[msg.sender]));`  
+This multiplication check will fail (revert) when `userBalance[msg.sender]` is zero and `msg.value` is zero, because `0 * 0 = 0` which is `>= 0` (it passes). However, it will also fail when `msg.value` is zero and `userBalance[msg.sender]` is any positive number, because `positive * 0 = 0`, and `0 >= positive` is false — causing an unexpected revert.
+
+**Hypothesis:** A test case that first calls `addToBalance()` with a non-zero amount (e.g., 1 wei) to set a positive balance for the caller, and then calls `addToBalance()` again with `msg.value = 0` should pass on the original contract (since `balance + 0 >= balance` is true), but will revert on the mutant (since `balance * 0 = 0 >= balance` is false), thereby killing the mutant.

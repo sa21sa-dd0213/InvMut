@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "After two identical calls with 10 ether separated by a 2-second warp, the reference sets pastBlockTime to timestamp+1 so the second call reverts, while the bug sets pastBlockTime to timestamp so the second call passes, making address(c).balance diverge.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "Change the assignment 'pastBlockTime = block.timestamp + 1' to 'pastBlockTime = block.timestamp' so the stored time differs.",
+ "mutated_unit_code": "    fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n\n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testRegression_property() public {\n        vm.deal(address(0x1), 20 ether);\n        vm.prank(address(0x1));\n        (bool ok1, ) = address(c).call{value: 10 ether}(\"\");\n        assertTrue(ok1);\n        vm.warp(block.timestamp + 1);\n        vm.prank(address(0x1));\n        (bool ok2, ) = address(c).call{value: 10 ether}(\"\");\n        assertTrue(address(c).balance % 10 ether == 0 || address(c).balance % 10 ether == 10 ether);\n        assertTrue(address(c).balance == 10 ether);\n    }\n}"
+}

@@ -1,0 +1,87 @@
+{
+ "case_id": "rc_access_control__phishable__SmartFix__phishable",
+ "config_label": "gpt-5-mini",
+ "target_contract": "Phishable",
+ "modification_kind": "control_flow",
+ "feasible": true,
+ "reason": null,
+ "n_accepted": 2,
+ "n_validated": 2,
+ "n_killing": 2,
+ "success": false,
+ "kills": [
+  {
+   "difference_id": "D0002",
+   "property": "Rule: Only the contract owner can successfully call withdrawAll to transfer the contract balance (reference enforces msg",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Change the visibility guard to require that msg.sender is not the owner, inverting the authorization check so only non-owners can withdraw.",
+   "mutated_unit_code": "function withdrawAll(address _recipient) public {\n\n        require(msg.sender != owner);\n        payable(_recipient).transfer(address(this).balance);\n    }",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "D0003",
+   "property": "For any caller and recipient, only the owner can successfully drain the contract balance via withdrawAll(address) — the ",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Remove the require guard entirely so anyone can call withdrawAll.",
+   "mutated_unit_code": "function withdrawAll(address _recipient) public {\n\n        payable(_recipient).transfer(address(this).balance);\n    }",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "D0006",
+   "property": "For any caller funded with any balance and when the contract owner calls withdrawAll(recipient) after funding the contra",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Replace transfer of the full balance with transfer of half the balance (integer division), changing the amount withdrawn.",
+   "mutated_unit_code": "function withdrawAll(address _recipient) public {\n\n        require(msg.sender == owner);\n        payable(_recipient).transfer(address(this).balance / 2);\n    }",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  },
+  {
+   "difference_id": "D0007",
+   "property": "For every admissible recipient address, calling withdrawAll(recipient) does not change C.owner (owner remains the origin",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Insert a state-changing assignment that sets owner to _recipient before transfer, changing post-call owner observed externally.",
+   "mutated_unit_code": "function withdrawAll(address _recipient) public {\n\n        require(msg.sender == owner);\n        owner = _recipient;\n        payable(_recipient).transfer(address(this).balance);\n    }",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "D0008",
+   "property": "When withdrawAll is called by the contract owner it must not revert (i.e., call completes) for any recipient address and",
+   "render": "render_error",
+   "validation": "skipped",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Replace transfer with a low-level call that forwards all gas and returns a boolean; revert on failure, which can change behaviour on recipient fallback.",
+   "mutated_unit_code": "function withdrawAll(address _recipient) public {\n\n        require(msg.sender == owner);\n        (bool success, ) = payable(_recipient).call{value: address(this).balance}(\"\");\n        require(success);\n    }",
+   "kill": "bug_fail",
+   "kill_via": "esbmc",
+   "counts_toward_success": true
+  }
+ ],
+ "tokens": {
+  "prompt": 205939,
+  "completion": 59869,
+  "reasoning": 0,
+  "cached": 0
+ },
+ "wallclock_s": 1068.40624666214,
+ "infra_error": null
+}

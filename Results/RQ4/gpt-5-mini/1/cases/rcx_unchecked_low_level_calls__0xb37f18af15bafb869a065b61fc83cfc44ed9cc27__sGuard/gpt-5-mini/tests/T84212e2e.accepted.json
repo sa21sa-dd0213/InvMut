@@ -1,0 +1,12 @@
+{
+ "difference_id": "T84212e2e",
+ "property_summary": "For any owner caller and any withdraw amount, calling withdraw(...) either successfully transfers that much out (making address(c).balance decrease) — the reference always results in address(c).balance < prior balance after a withdraw that sends value — whereas the mutant that makes withdraw a no-op can produce a case where the call returns (doesn't revert) but address(c).balance remains unchanged; the test asserts that after owner calls withdraw(amount) the contract balance is strictly less than before, which holds for the reference and is violated by the mutant for some inputs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the transfer so withdraw becomes a no-op (does not send ether), changing observed balance after call.",
+ "mutated_unit_code": "function withdraw(uint _value) public onlyOwner {\n        // intentionally do nothing\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n\n    function testFuzz_property(address caller, uint256 amount) public {\n        vm.assume(caller != address(0));\n        amount = bound(amount, 0, 1 ether);\n\n        vm.deal(address(this), 1 ether);\n        vm.prank(address(this));\n        (bool sent, ) = address(c).call{value: 1 ether}(\"\");\n        require(sent);\n\n        uint256 before = address(c).balance;\n\n        vm.prank(address(this));\n        bool ok;\n        try c.withdraw(amount) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        if (ok && amount > 0) {\n            assertTrue(address(c).balance < before);\n        } else {\n            assertTrue(address(c).balance <= before);\n        }\n    }\n}\n"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T63056f77",
+ "property_summary": "After a depositor with positive credit calls withdrawAll, the contract's Ether balance must decrease by exactly that depositor's credited amount (the reference transfers oCredit); the mutant that calls the counterparty with value 0 can leave contract balance unchanged for some inputs, violating this rule.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Perform the external call with zero value (prevents Ether transfer while keeping state changes), altering observable balance behavior.",
+ "mutated_unit_code": "function withdrawAll() public {\n        uint oCredit = credit[msg.sender];\n        if (oCredit > 0) {\n            balance -= oCredit;\n            credit[msg.sender] = 0;\n            (bool callResult, ) = msg.sender.call{value: 0}(\"\");\n            require(callResult);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ReentrancyDAO} from \"../src/ReentrancyDAO.sol\";\n\ncontract InvMutTest is Test {\n    ReentrancyDAO c;\n\n    function setUp() public { c = new ReentrancyDAO(); }\n\n    function testFuzz_property(address depositor, uint256 amount) public {\n        vm.assume(depositor != address(0));\n        amount = bound(amount, 1, 1 ether);\n\n        vm.deal(depositor, amount);\n        vm.prank(depositor);\n        c.deposit{value: amount}();\n\n        uint256 balBefore = address(c).balance;\n\n        vm.prank(depositor);\n        c.withdrawAll();\n\n        uint256 balAfter = address(c).balance;\n\n        assertTrue(balBefore == balAfter + amount);\n    }\n}\n\n"
+}

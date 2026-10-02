@@ -1,0 +1,12 @@
+{
+ "difference_id": "T182c054e",
+ "property_summary": "For any caller and any timestamp/ether amount where the call is accepted, after calling fallback with exactly 10 ether and block.timestamp greater than prior pastBlockTime, the contract's public pastBlockTime equals the current block.timestamp; the mutant that writes block.number instead will cause pastBlockTime != block.timestamp for inputs where block.timestamp != block.number.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change update of pastBlockTime to set it to block.number instead of block.timestamp, altering the stored value returned by the public getter.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.number;\n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n\n    function setUp() public { c = new Roulette(); }\n\n    function testFuzz_property(address actor, uint64 dt) public {\n        vm.assume(actor != address(0));\n        dt = uint64(bound(dt, 1, 365 days));\n\n        vm.deal(actor, 20 ether);\n\n        uint256 prior = c.pastBlockTime();\n\n        uint256 target = block.timestamp + uint256(dt);\n        if (target <= prior) {\n            target = prior + 1;\n        }\n        vm.warp(target);\n\n        vm.prank(actor);\n        (bool ok, ) = address(c).call{value: 10 ether}(\"\");\n        require(ok, \"call to fallback failed\");\n\n        assertTrue(c.pastBlockTime() == block.timestamp);\n    }\n}\n"
+}

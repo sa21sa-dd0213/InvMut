@@ -1,0 +1,49 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Reentrance reference (ethers v6; deploy may require constructor arguments)", function () {   it("should detect overflow protection removal in addToBalance by sending a large value that would cause overflow", async function () {     const [owner] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Reentrance");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // First, add a small amount to the balance to have a base value     const baseAmount = ethers.parseEther("1");     await owner.sendTransaction({       to: await instance.getAddress(),       value: baseAmount     });      // Now attempt to add a very large value that would cause overflow     // We need to find a value such that baseAmount + largeValue overflows uint256     // Since we have baseAmount = 1 ether, we need to send MAX_UINT256 - baseAmount + 1 to cause overflow     const maxUint256 = ethers.MaxUint256;     const overflowValue = maxUint256 - baseAmount + 1n;      // This transaction should revert on the original contract due to overflow check     // but would succeed on the mutant (which lacks the check)     await expect(       owner.sendTransaction({         to: await instance.getAddress(),         value: overflowValue       })     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Reentrance { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public payable { require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender])); userBalance[msg.sender] += msg.value; } function withdrawBalance() public{ uint256 tmp__1 = userBalance[msg.sender]; userBalance[msg.sender] = 0; { (bool _s, bytes memory _d) = msg.sender.call{value: tmp__1}(""); _d; if (! _s) { revert(); } } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Reentrance reference (ethers v6; deploy may require constructor arguments)", function () {
+  it("should detect overflow protection removal in addToBalance by sending a large value that would cause overflow", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Reentrance");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // First, add a small amount to the balance to have a base value
+    const baseAmount = ethers.parseEther("1");
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: baseAmount
+    });
+
+    // Now attempt to add a very large value that would cause overflow
+    // We need to find a value such that baseAmount + largeValue overflows uint256
+    // Since we have baseAmount = 1 ether, we need to send MAX_UINT256 - baseAmount + 1 to cause overflow
+    const maxUint256 = ethers.MaxUint256;
+    const overflowValue = maxUint256 - baseAmount + 1n;
+
+    // This transaction should revert on the original contract due to overflow check
+    // but would succeed on the mutant (which lacks the check)
+    await expect(
+      owner.sendTransaction({
+        to: await instance.getAddress(),
+        value: overflowValue
+      })
+    ).to.be.reverted;
+  });
+});
+```

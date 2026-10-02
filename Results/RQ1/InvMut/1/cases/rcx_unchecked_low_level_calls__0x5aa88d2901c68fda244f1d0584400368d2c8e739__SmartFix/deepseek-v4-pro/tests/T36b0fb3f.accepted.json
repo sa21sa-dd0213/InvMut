@@ -1,0 +1,12 @@
+{
+ "difference_id": "T36b0fb3f",
+ "property_summary": "After a call to Command, the Owner's Ether loss plus the contract's balance equals the balance before the call plus msg.value; the buggy version can drain the contract's balance, violating this conservation invariant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace msg.value with address(this).balance in call value, draining contract balance instead of caller-supplied amount.",
+ "mutated_unit_code": "function Command(address adr,bytes memory data)\n    payable\n    public\n    {\n        require(msg.sender == Owner);\n\n        adr.call{value: address(this).balance}(data);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MultiplicatorX3} from \"../src/MultiplicatorX3.sol\";\n\ncontract InvMutTest is Test {\n    MultiplicatorX3 c;\n    function setUp() public { c = new MultiplicatorX3(); }\n    function testFuzz_property(uint256 amount, uint256 extra, address target) public {\n        vm.assume(amount <= type(uint128).max);\n        vm.assume(extra <= type(uint128).max);\n        vm.assume(target != address(c));\n        vm.assume(target != address(this));\n        vm.assume(target != address(0));\n\n        vm.deal(address(c), extra);\n        vm.deal(c.Owner(), amount + 1 ether);\n\n        uint256 contractBefore = address(c).balance;\n        uint256 ownerBefore = c.Owner().balance;\n\n        vm.prank(c.Owner());\n        c.Command{value: amount}(target, \"\");\n\n        uint256 contractAfter = address(c).balance;\n        uint256 ownerAfter = c.Owner().balance;\n\n        uint256 ownerLoss = ownerBefore - ownerAfter;\n        uint256 contractLoss = contractBefore - contractAfter;\n        assertTrue(ownerLoss + contractLoss == amount);\n    }\n}"
+}

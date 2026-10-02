@@ -1,0 +1,61 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MY_BANK mutant m3b2c21d6 - reentrancy guard removed from Put", function () {   it("should revert on reentrant call to Put with nonReentrant modifier in original, but mutant allows it", async function () {     const [owner, attacker] = await ethers.getSigners();          // Deploy the Log contract first (needed as constructor argument)     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();          // Deploy MY_BANK with the Log address     const BankFactory = await ethers.getContractFactory("MY_BANK");     const bank = await BankFactory.deploy(await log.getAddress());     await bank.waitForDeployment();          // Deploy a malicious contract that will attempt reentrancy     const MaliciousFactory = await ethers.getContractFactory("MaliciousReentrancy");     const malicious = await MaliciousFactory.deploy(await bank.getAddress());     await malicious.waitForDeployment();          // Fund the malicious contract with some ETH to make the initial Put call     await owner.sendTransaction({       to: await malicious.getAddress(),       value: ethers.parseEther("10")     });          // The malicious contract will call Put(0) in its fallback, which should revert     // with nonReentrant but succeed without it     // We expect this to revert in the original (with modifier), but succeed in mutant     // Since we're testing the mutant, we expect it to NOT revert     const tx = malicious.connect(attacker).attack({ value: ethers.parseEther("1") });          // The test should detect the mutant: if the call succeeds (no revert),      // it means the reentrancy guard is missing - mutant detected     await expect(tx).to.not.be.reverted;          // Additionally verify that the balance was manipulated (reentrant call succeeded)     const maliciousBalance = await ethers.provider.getBalance(await malicious.getAddress());     // The initial balance was 10 ETH, we sent 1 ETH in attack() but the reentrant Put     // in fallback should have also added value, so balance should be > 10     expect(maliciousBalance).to.be.gt(ethers.parseEther("10"));   }); });  // Malicious contract for testing reentrancy // This needs to be deployed as a separate contract contract MaliciousReentrancy {     address public bank;          constructor(address _bank) {         bank = _bank;     }          function attack() external payable {         // Make the first Put call, which should trigger fallback         (bool success, ) = bank.call{value: msg.value}(abi.encodeWithSignature("Put(uint256)", 0));         require(success, "First call failed");     }          // Fallback will be triggered by the Put function when it sends ETH back     fallback() external payable {         // Attempt reentrant call to Put - this should fail with nonReentrant         // but succeed in the mutant         (bool success, ) = bank.call{value: 0}(abi.encodeWithSignature("Put(uint256)", 0));         // In mutant, this will succeed - we just need to not revert         require(success, "Reentrant call failed");     } }
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } } contract MY_BANK is sGuard { function Put(uint _unlockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); LogFile.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant m3b2c21d6 - reentrancy guard removed from Put", function () {
+  it("should revert on reentrant call to Put with nonReentrant modifier in original, but mutant allows it", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+
+    // Deploy the Log contract first (needed as constructor argument)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Deploy MY_BANK with the Log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+
+    // Deploy a malicious contract that will attempt reentrancy
+    const MaliciousFactory = await ethers.getContractFactory("MaliciousReentrancy");
+    const malicious = await MaliciousFactory.deploy(await bank.getAddress());
+    await malicious.waitForDeployment();
+
+    // Fund the malicious contract with some ETH to make the initial Put call
+    await owner.sendTransaction({
+      to: await malicious.getAddress(),
+      value: ethers.parseEther("10")
+    });
+
+    // The malicious contract will call Put(0) in its fallback, which should revert
+    // with nonReentrant but succeed without it
+    // We expect this to revert in the original (with modifier), but succeed in mutant
+    // Since we're testing the mutant, we expect it to NOT revert
+    const tx = malicious.connect(attacker).attack({ value: ethers.parseEther("1") });
+
+    // The test should detect the mutant: if the call succeeds (no revert), 
+    // it means the reentrancy guard is missing - mutant detected
+    await expect(tx).to.not.be.reverted;
+
+    // Additionally verify that the balance was manipulated (reentrant call succeeded)
+    const maliciousBalance = await ethers.provider.getBalance(await malicious.getAddress());
+    // The initial balance was 10 ETH, we sent 1 ETH in attack() but the reentrant Put
+    // in fallback should have also added value, so balance should be > 10
+    expect(maliciousBalance).to.be.gt(ethers.parseEther("10"));
+  });
+});
+```

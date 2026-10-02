@@ -1,0 +1,71 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Cooler mutant mf400d597 - approveTransfer authorization", function () {
+  let coolerFactory: any;
+  let coolerImplementation: any;
+  let cooler: any;
+  let owner: any;
+  let lender: any;
+  let unauthorizedUser: any;
+  let collateralToken: any;
+  let debtToken: any;
+
+  beforeEach(async function () {
+    [owner, lender, unauthorizedUser] = await ethers.getSigners();
+
+    // Deploy mock ERC20 tokens for collateral and debt
+    const ERC20Mock = await ethers.getContractFactory("ERC20Mock");
+    collateralToken = await ERC20Mock.deploy("Collateral", "COL", 18);
+    debtToken = await ERC20Mock.deploy("Debt", "DEBT", 18);
+    await collateralToken.waitForDeployment();
+    await debtToken.waitForDeployment();
+
+    // Deploy the CoolerFactory which deploys Cooler implementation
+    const CoolerFactory = await ethers.getContractFactory("CoolerFactory");
+    coolerFactory = await CoolerFactory.deploy();
+    await coolerFactory.waitForDeployment();
+
+    // Generate a cooler for the owner
+    const tx = await coolerFactory.connect(owner).generateCooler(
+      await collateralToken.getAddress(),
+      await debtToken.getAddress()
+    );
+    const receipt = await tx.wait();
+
+    // Get the cooler address from the factory mapping
+    const coolerAddress = await coolerFactory.coolersFor(
+      await collateralToken.getAddress(),
+      await debtToken.getAddress(),
+      0
+    );
+
+    cooler = await ethers.getContractAt("Cooler", coolerAddress);
+
+    // Fund owner with collateral tokens for making a request
+    await collateralToken.mint(owner.address, ethers.parseEther("1000"));
+    await collateralToken.connect(owner).approve(await cooler.getAddress(), ethers.parseEther("1000"));
+
+    // Create a loan request
+    await cooler.connect(owner).requestLoan(
+      ethers.parseEther("100"),
+      ethers.parseEther("10"),
+      ethers.parseEther("2"),
+      86400 // 1 day
+    );
+
+    // Fund lender with debt tokens and clear the request
+    await debtToken.mint(lender.address, ethers.parseEther("1000"));
+    await debtToken.connect(lender).approve(await cooler.getAddress(), ethers.parseEther("1000"));
+
+    // Clear the request to create a loan
+    await cooler.connect(lender).clearRequest(0, false, false);
+  });
+
+  it("should revert when unauthorized user calls approveTransfer", async function () {
+    // Attempt to approve transfer from unauthorized user (not the lender)
+    await expect(
+      cooler.connect(unauthorizedUser).approveTransfer(unauthorizedUser.address, 0)
+    ).to.be.revertedWithCustomError(cooler, "OnlyApproved");
+  });
+});

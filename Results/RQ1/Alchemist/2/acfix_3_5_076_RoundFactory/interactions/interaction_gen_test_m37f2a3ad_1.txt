@@ -1,0 +1,62 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m37f2a3ad of RoundFactory.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test RoundFactory.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for RoundFactory:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("RoundFactory reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy RoundFactory by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("RoundFactory"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("RoundFactory mutant kill test - m37f2a3ad", function () {
+  it("should kill mutant by calling create with non-zero alloSettings", async function () {
+    const [owner, programOperator, recipient] = await ethers.getSigners();
+    
+    // Deploy RoundFactory (no constructor arguments needed - uses initializer pattern)
+    const Factory = await ethers.getContractFactory("RoundFactory");
+    const factory = await Factory.deploy();
+    await factory.waitForDeployment();
+    
+    // Initialize the factory
+    await factory.initialize();
+    
+    // Set up a program operator
+    await factory.connect(owner).updateProgramOperator(programOperator.address, true);
+    
+    // Deploy a mock round implementation and set it
+    const RoundImpl = await ethers.getContractFactory("RoundImplementation");
+    const roundImpl = await RoundImpl.deploy();
+    await roundImpl.waitForDeployment();
+    await factory.connect(owner).updateRoundImplementation(roundImpl.target);
+    
+    // Set alloSettings to a non-zero address (normal configuration)
+    const AlloSettings = await ethers.getContractFactory("AlloSettings");
+    const alloSettings = await AlloSettings.deploy();
+    await alloSettings.waitForDeployment();
+    await factory.connect(owner).updateAlloSettings(alloSettings.target);
+    
+    // Attempt to create a round - should succeed on original but fail on mutant
+    // Mutant requires alloSettings == address(0), so it will revert when alloSettings is non-zero
+    const encodedParams = ethers.AbiCoder.defaultAbiCoder().encode(
+      ["address", "address"],
+      [recipient.address, recipient.address]
+    );
+    
+    await expect(
+      factory.connect(programOperator).create(encodedParams, recipient.address)
+    ).to.be.revertedWith("alloSettings is 0x");
+  });
+});
+```

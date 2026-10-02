@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0002",
+ "property_summary": "For every burn by the owner that successfully reduces the owner's balance by amount x, the contract's totalSupply is reduced by the same x; the mutant fails because it reduces the owner's balance but leaves totalSupply unchanged for some burns.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change burn to only decrease caller's balance but forget to decrease totalSupply (totalSupply remains unchanged after burn).",
+ "mutated_unit_code": "function burn(uint256 _value)  public onlyOwner returns (bool success) {\n        require(balanceOf[msg.sender] >= _value);\n        balanceOf[msg.sender] -= _value;\n        emit Burn(msg.sender, _value);\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ERCDDAToken} from \"../src/ERCDDAToken.sol\";\n\ncontract InvMutTest is Test {\n    ERCDDAToken c;\n    function setUp() public { c = new ERCDDAToken(0, \"\", \"\"); }\n\n    function testFuzz_property(uint256 initialMint, uint256 burnAmount) public {\n        initialMint = bound(initialMint, 0, type(uint256).max / 2);\n        burnAmount = bound(burnAmount, 0, type(uint256).max / 2);\n\n        if (initialMint > 0) {\n            c.mintToken(address(this), initialMint);\n        }\n\n        uint256 beforeSupply = c.totalSupply();\n        uint256 beforeBalance = c.balanceOf(address(this));\n\n        vm.assume(burnAmount <= beforeBalance);\n\n        bool ok;\n        try c.burn(burnAmount) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        if (ok) {\n            assertTrue(c.totalSupply() + burnAmount == beforeSupply);\n        } else {\n            assertTrue(c.totalSupply() == beforeSupply);\n        }\n    }\n}\n"
+}

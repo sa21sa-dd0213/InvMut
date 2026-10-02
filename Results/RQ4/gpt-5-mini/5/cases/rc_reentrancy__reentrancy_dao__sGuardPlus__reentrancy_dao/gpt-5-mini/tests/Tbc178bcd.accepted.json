@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tbc178bcd",
+ "property_summary": "After any successful deposit by a user, calling withdrawAll from that same user always empties their recorded credit to zero in the reference contract; in the mutant (missing lock reset) a subsequent withdrawAll call can fail to allow that user to withdraw because the guard stays locked, so the property (credit becomes zero after withdrawAll) can be violated for some inputs involving two sequential withdrawAll attempts.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change the modifier to omit resetting the lock after function execution (remove __lock_modifier0_lock = false;), so the reentrancy guard stays locked and can alter behavior of withdrawAll across calls.",
+ "mutated_unit_code": "modifier __lock_modifier0() {\n        require(!__lock_modifier0_lock);\n        __lock_modifier0_lock = true;\n        _;\n\n}\n",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ReentrancyDAO} from \"../src/ReentrancyDAO.sol\";\n\ncontract InvMutTest is Test {\n    ReentrancyDAO c;\n    function setUp() public { c = new ReentrancyDAO(); }\n\n    function testFuzz_property(address actor, uint256 amount) public {\n        vm.assume(actor != address(0));\n        amount = bound(amount, 1, 1 ether);\n\n        vm.deal(actor, amount);\n        vm.prank(actor);\n        c.deposit{value: amount}();\n\n        bool ok1;\n        vm.prank(actor);\n        try c.withdrawAll() {\n            ok1 = true;\n        } catch {\n            ok1 = false;\n        }\n\n        bool ok2;\n        vm.prank(actor);\n        try c.withdrawAll() {\n            ok2 = true;\n        } catch {\n            ok2 = false;\n        }\n\n        assertTrue(!ok1 || ok2);\n    }\n}\n"
+}

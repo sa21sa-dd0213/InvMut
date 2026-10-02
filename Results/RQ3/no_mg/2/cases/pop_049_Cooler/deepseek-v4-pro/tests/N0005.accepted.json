@@ -1,0 +1,43 @@
+{
+ "difference_id": "N0005",
+ "property_summary": "After a successful approveTransfer(loanID, to) by the loan's lender, the approvals mapping maps loanID to exactly the `to` argument.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill:m_no_cex_within_bound",
+ "origin": "primary",
+ "success_route": null,
+ "oracle_origin": null,
+ "kill_entrypoint": null,
+ "property_based_core": null,
+ "standalone_replay": null,
+ "oracle_reach": "proved",
+ "ce_id": null,
+ "source_difference_id": null,
+ "source_property_focus": null,
+ "confirmed_difference": {
+  "validation_level": "reference_validated",
+  "arm": "no_mg",
+  "focus": {
+   "index": 4,
+   "target_id": "T0004",
+   "boundary": "approveTransfer",
+   "category": "state",
+   "locus": "C.approvals",
+   "state_kind": "mapping",
+   "passes": 1
+  },
+  "thread_focus": "the value of `approvals` at some key after a call to `approveTransfer(...)` completes (the key need not be the caller's own)",
+  "boundary": "approveTransfer",
+  "target_id": "T0004",
+  "test_hash": "12ef6a5508c384a0",
+  "assert_fingerprint": "1316d2a7aee605e3"
+ },
+ "oracle_asset": null,
+ "change_summary": null,
+ "mutated_unit_code": null,
+ "esbmc_test_source": "contract InvMutTest {\n    C c;\n    constructor() { c = new C(); }\n    function __ESBMC_reverted() internal returns (bool) {}\n    function __ESBMC_assume(bool) internal pure {}\n\n    function run(uint256 loanID, address to) public payable {\n        require(to != address(0), \"zero to\");\n\n        // Create a loan; the test contract (msg.sender on calls to c) becomes its lender.\n        uint256 amount = 1;\n        uint256 interest = 0;\n        uint256 loanToCollateral = 1;\n        uint256 duration = 1;\n        c.requestLoan(amount, interest, loanToCollateral, duration); if (__ESBMC_reverted()) return;\n\n        bool cleared;\n        uint256 createdID = c.clearRequest(0, false, false); bool __rev0 = __ESBMC_reverted(); if (__rev0) {\n            cleared = false;\n        } else {\n            cleared = (createdID == 0);\n        }\n        require(cleared, \"clearRequest did not create loan 0\");\n\n        // approveTransfer may only be called by the loan's lender, which is this test contract.\n        bool ok;\n        c.approveTransfer(to, 0); bool __rev1 = __ESBMC_reverted(); if (__rev1) {\n            ok = false;\n        } else {\n            ok = true;\n        }\n\n        // approvals is mapping(uint256 => address); compare on the address type.\n        assert(ok && c.approvals(0) == to);\n    }\n\n    receive() external payable {}\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {Cooler} from \"../src/Cooler.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    Cooler c;\n\n    function setUp() public {\n        c = new Cooler();\n    }\n\n    function _run(uint256 loanID, address to) internal {\n        vm.assume(to != address(0));\n        uint256 amount = 1;\n        uint256 interest = 0;\n        uint256 loanToCollateral = 1;\n        uint256 duration = 1;\n        try c.requestLoan(amount, interest, loanToCollateral, duration) {} catch { return; }\n        bool cleared;\n        try c.clearRequest(0, false, false) returns (uint256 createdID) {\n            cleared = (createdID == 0);\n        } catch {\n            cleared = false;\n        }\n        vm.assume(cleared);\n        bool ok;\n        try c.approveTransfer(to, 0) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        assertTrue(ok && c.approvals(0) == to);\n    }\n\n    function testFuzz_run(uint256 loanID, address to) public {\n        vm.assume(to.code.length == 0 && uint160(to) > 0xffff && to != address(this) && to != address(c) && to != 0x7109709ECfa91a80626fF3989D68f67F5b1DD12D && to != 0x000000000000000000636F6e736F6c652e6c6f67 && to != 0x4e59b44847b379578588920cA78FbF26c0B4956C && to != 0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38);\n        _run(loanID, to);\n    }\n\n    receive() external payable {}\n}\n",
+ "workspace_P_log": "{\"test/InvMutTest.t.sol:InvMutTest\":{\"duration\":\"127ms 620µs 646ns\",\"test_results\":{\"testFuzz_run(uint256,address)\":{\"status\":\"Success\",\"reason\":null,\"counterexample\":null,\"logs\":[],\"decoded_logs\":[],\"kind\":{\"Fuzz\":{\"first_case\":{\"gas\":149332,\"stipend\":21896},\"runs\":10000,\"mean_gas\":127436,\"median_gas\":127436,\"failed_corpus_replays\":0}},\"traces\":[],\"labeled_addresses\":{},\"duration\":\"127ms 169µs 664ns\",\"breakpoints\":{},\"gas_snapshots\":{}}},\"warnings\":[]}}\n",
+ "workspace_M_log": null
+}

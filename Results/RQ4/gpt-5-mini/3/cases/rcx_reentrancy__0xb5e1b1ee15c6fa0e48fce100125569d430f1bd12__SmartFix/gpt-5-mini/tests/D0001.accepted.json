@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "If the caller sends exactly c.MinDeposit wei to Deposit, the contract's recorded balance for that caller remains unchanged in the original but would increase in the mutant.",
+ "render_status": "rendered",
+ "validation_status": "skipped",
+ "validation_error": null,
+ "kill": "bug_no_kill:m_no_cex_within_bound",
+ "origin": "primary",
+ "change_summary": "Change the deposit threshold comparison from '>' to '>=' so that deposits equal to MinDeposit are accepted and update balances.",
+ "mutated_unit_code": "function Deposit()\n    public\n    payable\n    {\n        if(msg.value >= MinDeposit)\n        {\n            require(((balances[msg.sender] + msg.value) >= balances[msg.sender]));\n            balances[msg.sender]+=msg.value;\n            TransferLog.AddMessage(msg.sender,msg.value,\"Deposit\");\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {Private_Bank} from \"../src/Private_Bank.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    Private_Bank c;\n\n    function setUp() public {\n        c = new Private_Bank(address(this));\n    }\n\n    function _run(uint256 depositAmount) internal {\n        depositAmount = bound(depositAmount, 0, 1000000000000000000000000000000);\n        vm.deal(address(this), VALUE_CAP);\n        vm.deal(address(c), VALUE_CAP);\n        vm.assume(address(this).balance >= depositAmount && depositAmount > 0);\n        uint256 before;\n        try c.balances(address(this)) returns (uint256 __r) { before = __r; } catch { return; }\n        try c.Deposit{value: depositAmount}() {} catch { return; }\n        uint256 afterBal;\n        try c.balances(address(this)) returns (uint256 __r) { afterBal = __r; } catch { return; }\n        assertTrue(!(depositAmount == c.MinDeposit() && afterBal != before));\n    }\n\n    function testFuzz_run(uint256 depositAmount) public {\n        _run(depositAmount);\n    }\n\n    receive() external payable {}\n}\n"
+}

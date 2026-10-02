@@ -1,0 +1,48 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("AirDropContract mutant detection test", function () {   it("should kill mutant m3528b753 by triggering a failed external call", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy AirDropContract (no constructor arguments needed)     const AirDropFactory = await ethers.getContractFactory("AirDropContract");     const airDropInstance = await AirDropFactory.deploy();     await airDropInstance.waitForDeployment();          // Deploy a simple ERC20-like token that implements transferFrom     // We need a token that will revert on transferFrom when not approved     const TokenFactory = await ethers.getContractFactory("SimpleToken");     const token = await TokenFactory.deploy();     await token.waitForDeployment();          // Owner approves the AirDropContract to transfer tokens on their behalf     await token.approve(await airDropInstance.getAddress(), ethers.parseEther("100"));          // Create recipients array with one valid recipient and one invalid (e.g., address(0))     const recipients = [addr1.address, ethers.ZeroAddress];     const amounts = [ethers.parseEther("10"), ethers.parseEther("10")];          // The original contract would revert because transferFrom to address(0) fails     // The mutant would silently continue and return true     await expect(       airDropInstance.transfer(await token.getAddress(), recipients, amounts)     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract AirDropContract{ constructor() public { } modifier validAddress( address addr ) { require(addr != address(0x0)); require(addr != address(this)); _; } function transfer(address contract_address, address[] memory tos, uint[] memory vs) public validAddress(contract_address) returns (bool) { require(tos.length > 0); require(vs.length > 0); require(tos.length == vs.length); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0 ; i < tos.length; i++){ { (bool _s,) = contract_address.call(abi.encodeWithSelector(id, msg.sender, tos[i], vs[i])); require(_s); } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("AirDropContract mutant detection test", function () {
+  it("should kill mutant m3528b753 by triggering a failed external call", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy AirDropContract (no constructor arguments needed)
+    const AirDropFactory = await ethers.getContractFactory("AirDropContract");
+    const airDropInstance = await AirDropFactory.deploy();
+    await airDropInstance.waitForDeployment();
+
+    // Deploy a simple ERC20-like token that implements transferFrom
+    // We need a token that will revert on transferFrom when not approved
+    const TokenFactory = await ethers.getContractFactory("SimpleToken");
+    const token = await TokenFactory.deploy();
+    await token.waitForDeployment();
+
+    // Owner approves the AirDropContract to transfer tokens on their behalf
+    await token.approve(await airDropInstance.getAddress(), ethers.parseEther("100"));
+
+    // Create recipients array with one valid recipient and one invalid (e.g., address(0))
+    const recipients = [addr1.address, ethers.ZeroAddress];
+    const amounts = [ethers.parseEther("10"), ethers.parseEther("10")];
+
+    // The original contract would revert because transferFrom to address(0) fails
+    // The mutant would silently continue and return true
+    await expect(
+      airDropInstance.transfer(await token.getAddress(), recipients, amounts)
+    ).to.be.reverted;
+  });
+});
+```

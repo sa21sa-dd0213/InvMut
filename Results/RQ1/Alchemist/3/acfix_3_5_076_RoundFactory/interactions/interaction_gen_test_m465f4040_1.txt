@@ -1,0 +1,59 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m465f4040 of RoundFactory.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test RoundFactory.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for RoundFactory:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("RoundFactory reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy RoundFactory by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("RoundFactory"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("RoundFactory mutant detection - onlyProgramOperator modifier", function () {
+  it("should revert when non-program operator calls create function", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy RoundFactory - no constructor arguments needed (OwnableUpgradeable uses initialize)
+    const Factory = await ethers.getContractFactory("RoundFactory");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Initialize the contract
+    await instance.initialize();
+    
+    // Setup required addresses for create function
+    // Deploy a mock round implementation and alloSettings (using simple contracts)
+    const MockRoundImpl = await ethers.getContractFactory("RoundImplementation");
+    const roundImpl = await MockRoundImpl.deploy();
+    await roundImpl.waitForDeployment();
+    
+    const MockAlloSettings = await ethers.getContractFactory("AlloSettings");
+    const alloSettings = await MockAlloSettings.deploy();
+    await alloSettings.waitForDeployment();
+    
+    // Set round implementation and alloSettings (only owner can do this)
+    await instance.updateRoundImplementation(await roundImpl.getAddress());
+    await instance.updateAlloSettings(await alloSettings.getAddress());
+    
+    // Create encoded parameters (empty bytes for simplicity)
+    const encodedParameters = "0x";
+    
+    // Attempt to call create from an address that is NOT a program operator
+    // This should revert on the original but might succeed on the mutant
+    await expect(
+      instance.connect(addr1).create(encodedParameters, await addr2.getAddress())
+    ).to.be.revertedWith("Caller is not a program operator");
+  });
+});
+```

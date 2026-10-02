@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0015",
+ "property_summary": "After any sequence of deposits and claim calls, the total rewards accumulated across all users must equal the sum of each user's balance times their individual rateSnapshot, but the mutant breaks this by using a constant 1 for balance, causing rewards for users with balances > 1 to be undercounted.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace balance[msg.sender] with a constant 1 so reward increase ignores actual deposit amount.",
+ "mutated_unit_code": "function claim() external returns (uint256 a) {\n        a = 1 * rateSnapshot[msg.sender];\n        reward[msg.sender] += a;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {RewardVault} from \"../src/RewardVault.sol\";\n\ncontract InvMutTest is Test {\n    RewardVault c;\n    function setUp() public { c = new RewardVault(); }\n\n    function testFuzz_property(address user1, address user2, uint256 deposit1, uint256 deposit2, uint256 timestamp) public {\n        vm.assume(user1 != address(0) && user2 != address(0));\n        vm.assume(user1 != user2);\n        deposit1 = bound(deposit1, 0, 100 ether);\n        deposit2 = bound(deposit2, 0, 100 ether);\n\n        vm.deal(user1, deposit1);\n        vm.prank(user1);\n        c.deposit{value: deposit1}();\n\n        vm.deal(user2, deposit2);\n        vm.prank(user2);\n        c.deposit{value: deposit2}();\n\n        uint256 rate1 = c.rateSnapshot(user1);\n        uint256 rate2 = c.rateSnapshot(user2);\n\n        vm.prank(user1);\n        c.claim();\n        vm.prank(user2);\n        c.claim();\n\n        uint256 totalRewards = c.reward(user1) + c.reward(user2);\n        uint256 expectedTotal = deposit1 * rate1 + deposit2 * rate2;\n\n        assertTrue(totalRewards == expectedTotal);\n    }\n}"
+}

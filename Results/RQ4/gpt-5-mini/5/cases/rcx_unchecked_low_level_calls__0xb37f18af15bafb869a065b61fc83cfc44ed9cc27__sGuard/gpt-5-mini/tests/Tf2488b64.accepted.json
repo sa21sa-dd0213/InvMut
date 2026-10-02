@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tf2488b64",
+ "property_summary": "For any caller and any target/value, in the correct contract only the owner can make the contract send Ether out via sendMoney, so address(c).balance never decreases when a non-owner calls sendMoney; the mutant removing the require allows some non-owner/callee combinations to decrease address(c).balance (e.g., when the callee accepts Ether), violating this rule.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change onlyOwner modifier to allow anyone (remove the require), which can change whether sendMoney can be called and thus change observable state after the call.",
+ "mutated_unit_code": "modifier onlyOwner {\n        // allow anyone\n        _;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n\n    function testFuzz_property(address caller, uint256 amount) public {\n        vm.assume(caller != address(0));\n        vm.assume(caller != address(this));\n\n        AcceptingRecipient r = new AcceptingRecipient();\n\n        uint256 seed = 1 ether;\n        vm.deal(address(caller), seed);\n        vm.deal(address(this), seed);\n        (bool sent,) = address(c).call{value: seed}(\"\");\n        require(sent);\n\n        uint256 bounded = bound(amount, 0, address(c).balance);\n\n        vm.prank(caller);\n        bool ok;\n        try c.sendMoney(address(r), bounded) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        uint256 afterBal = address(c).balance;\n        assertTrue(afterBal >= (seed - 0) - 0);\n\n        assertTrue(afterBal >= 0);\n    }\n}\n\ncontract AcceptingRecipient {\n    receive() external payable {}\n}\n"
+}

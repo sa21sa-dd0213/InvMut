@@ -1,0 +1,39 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract MY_BANK:
+        Contract Code: pragma solidity ^0.8.0; contract MY_BANK { function Put(uint _unlockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+
+    Consider the following mutant of MY_BANK:
+        Mutant mc96f6ce4 of function Put replaces block.timestamp with block.prevrandao
+        Mutant Diff: ---|         acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; +++|         acc.unlockTime = _unlockTime>block.prevrandao?_unlockTime:block.timestamp;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let’s reason through this step by step.
+
+The original code sets `acc.unlockTime` using:
+
+```solidity
+_unlockTime > block.timestamp ? _unlockTime : block.timestamp
+```
+
+This means if the user provides a future `_unlockTime`, it is used; otherwise, the current `block.timestamp` is used. This ensures the unlock time is never in the past.
+
+The mutant changes the condition to compare against `block.prevrandao` instead of `block.timestamp`.  
+`block.prevrandao` is a different value (the randomness beacon from the beacon chain, not the current block timestamp). It can be larger or smaller than `block.timestamp` in an unpredictable way.
+
+Because of this, a test case where the user sends a small `_unlockTime` (e.g., 0) should produce different results:  
+- In the original: `acc.unlockTime` becomes the current `block.timestamp` (a valid future time).  
+- In the mutant: `acc.unlockTime` could become `_unlockTime` (0) if `block.prevrandao` happens to be less than or equal to 0, or it could become `block.timestamp` if `block.prevrandao` is greater. Either way, the behavior diverges from the intended logic.
+
+However, the simplest deterministic way to detect the mutant is to test that the unlock time is set **correctly relative to `block.timestamp`**, not to some unrelated global variable.
+
+**Hypothesis**:  
+A test case that calls `Put` with `_unlockTime` set to 0 and then asserts that `acc.unlockTime` equals the current `block.timestamp` (or at least is not 0) should pass on the original contract but fail on the mutant, because in the mutant the comparison uses `block.prevrandao`, which may not equal `block.timestamp`, leading to an incorrect unlock time.

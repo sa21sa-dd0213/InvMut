@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tb912ad85",
+ "property_summary": "For any user that previously deposited Ether, the sum of their balance and the Ether they have withdrawn must always equal their total deposits; the mutant breaks this by zeroing the balance before the call, causing the withdrawn Ether to equal 0 instead of the full balance.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Move `balances[msg.sender]=0` before the external call, so the call sends 0 Ether instead of the user’s balance, while still zeroing the balance.",
+ "mutated_unit_code": "function withdraw () public __lock_modifier0  {\nbalances[msg.sender]=0;\n(bool __sent_result100, ) = msg.sender.call{value: balances[msg.sender]}(\"\");\nrequire(__sent_result100);\n\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {keepMyEther} from \"../src/keepMyEther.sol\";\n\ncontract InvMutTest is Test {\n    keepMyEther c;\n    function setUp() public { c = new keepMyEther(); }\n    function testFuzz_property(uint256 depositAmount, uint256 withdrawAmount, address actor) public {\n        vm.assume(actor != address(0) && actor != address(c));\n        vm.assume(depositAmount > 0 && depositAmount < 1 ether);\n        vm.assume(withdrawAmount > 0 && withdrawAmount < 1 ether);\n        vm.assume(depositAmount >= withdrawAmount);\n        vm.deal(actor, depositAmount);\n        vm.prank(actor);\n        (bool ok,) = address(c).call{value: depositAmount}(\"\");\n        require(ok, \"deposit failed\");\n        uint256 balanceBefore = c.balances(actor);\n        uint256 actorBalanceBefore = actor.balance;\n        vm.prank(actor);\n        try c.withdraw() { ok = true; } catch { ok = false; }\n        uint256 balanceAfter = c.balances(actor);\n        uint256 actorBalanceAfter = actor.balance;\n        uint256 withdrawn = actorBalanceAfter - actorBalanceBefore;\n        assertTrue(balanceAfter + withdrawn == depositAmount);\n    }\n}\n"
+}

@@ -1,0 +1,25 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract PredictTheBlockHashChallenge:
+        Contract Code: pragma solidity ^0.8.0; contract PredictTheBlockHashChallenge { struct guess { uint block; bytes32 guess; } mapping(address => guess) guesses; constructor() public payable { require(msg.value == 1 ether); } function lockInGuess(bytes32 hash) public payable { require(guesses[msg.sender].block == 0); require(msg.value == 1 ether); guesses[msg.sender].guess = hash; guesses[msg.sender].block = block.number + 1; } function settle() public { require(guesses[msg.sender].block != 0); require(block.number > guesses[msg.sender].block); bytes32 answer = blockhash(guesses[msg.sender].block); guesses[msg.sender].block = 0; if (answer != 0 && guesses[msg.sender].guess == answer) { payable(msg.sender).transfer(2 ether); } } }
+
+    Consider the following mutant of PredictTheBlockHashChallenge:
+        Mutant me2432ecd of function lockInGuess replaces == with !=
+        Mutant Diff: ---|         require(msg.value == 1 ether); +++|         require(msg.value != 1 ether);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract requires `msg.value == 1 ether` in `lockInGuess`, meaning the function only proceeds if exactly 1 ether is sent. The mutant changes this to `msg.value != 1 ether`, meaning the function now only proceeds if any amount *other than* exactly 1 ether is sent.  
+
+A test case that sends exactly 1 ether and expects the transaction to succeed (as in the original) will fail on the mutant, because the mutant will reject that exact value. Conversely, a test that sends 0.5 ether and expects success will pass on the mutant but fail on the original.  
+
+Therefore, the hypothesis is:  
+
+**Hypothesis:** The mutant inverts the ether value requirement. A test that calls `lockInGuess` with exactly 1 ether and expects the call to succeed should detect the mutant, because the mutant will revert when exactly 1 ether is sent.

@@ -1,0 +1,123 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("GSPFunding mutant kill test - med7d3c66", function () {
+  it("should revert when buyShares is called with quoteReserve == 0 and baseReserve > 0", async function () {
+    const [owner, user] = await ethers.getSigners();
+
+    // Deploy GSPFunding - note: it doesn't have a constructor, so no args needed
+    const Factory = await ethers.getContractFactory("GSPFunding");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get token addresses (the contract uses _BASE_TOKEN_ and _QUOTE_TOKEN_)
+    // We need to deploy mock tokens or use existing ones. For this test we'll deploy simple ERC20 tokens
+    const TokenFactory = await ethers.getContractFactory("contracts/mocks/ERC20Mock.sol:ERC20Mock");
+    const baseToken = await TokenFactory.deploy("Base", "BASE", 18);
+    const quoteToken = await TokenFactory.deploy("Quote", "QUOTE", 18);
+    await baseToken.waitForDeployment();
+    await quoteToken.waitForDeployment();
+
+    // Initialize the GSPFunding contract with tokens and initial reserves
+    // The contract doesn't have an explicit init function visible, but we need to set up state
+    // We'll directly set storage variables by calling internal functions or using setStorage approach
+    
+    // First, we need to set the tokens - since there's no setter, we'll need to interact via the contract
+    // Actually, looking at the code, _BASE_TOKEN_ and _QUOTE_TOKEN_ are set during initialization
+    // The contract inherits from GSPStorage which doesn't have an initializer visible
+    // For testing purposes, we'll set the storage directly using ethers' storage manipulation
+    
+    // Set _BASE_TOKEN_ (storage slot based on inheritance)
+    // GSPStorage -> GSPVault -> GSPFunding
+    // Storage layout: _GSP_INITIALIZED_ (bool, slot 0), _IS_OPEN_TWAP_ (bool, slot 1), _MAINTAINER_ (address, slot 2)
+    // _BASE_TOKEN_ (address, slot 3), _QUOTE_TOKEN_ (address, slot 4)
+    
+    await ethers.provider.send("hardhat_setStorageAt", [
+      instance.target,
+      "0x3", // slot 3 for _BASE_TOKEN_
+      ethers.zeroPadValue(baseToken.target, 32)
+    ]);
+    
+    await ethers.provider.send("hardhat_setStorageAt", [
+      instance.target,
+      "0x4", // slot 4 for _QUOTE_TOKEN_
+      ethers.zeroPadValue(quoteToken.target, 32)
+    ]);
+
+    // Set _MAINTAINER_ to owner
+    await ethers.provider.send("hardhat_setStorageAt", [
+      instance.target,
+      "0x2", // slot 2 for _MAINTAINER_
+      ethers.zeroPadValue(owner.address, 32)
+    ]);
+
+    // Transfer tokens to the GSPFunding contract to set initial reserves
+    // We need baseReserve > 0 and quoteReserve == 0
+    const baseAmount = ethers.parseEther("1000");
+    const quoteAmount = ethers.parseEther("0"); // exactly zero quote reserve
+
+    await baseToken.transfer(instance.target, baseAmount);
+    // Don't transfer any quote tokens - quote reserve stays 0
+
+    // Set the reserve values directly via storage manipulation
+    // _BASE_RESERVE_ is slot 5, _QUOTE_RESERVE_ is slot 6 (uint112 packed)
+    // Actually, storage layout for uint112: they pack together
+    // Slot 5: _BASE_RESERVE_ (uint112) + _QUOTE_RESERVE_ (uint112) + _BLOCK_TIMESTAMP_LAST_ (uint32)
+    // Let's set slot 5 to have baseReserve=1000 and quoteReserve=0
+    // Packing: baseReserve (112 bits) | quoteReserve (112 bits) | timestamp (32 bits) = 256 bits total
+    
+    const packedValue = ethers.toBeHex(
+      BigInt(0) | // timestamp = 0
+      (BigInt(0) << BigInt(112)) | // quoteReserve = 0
+      BigInt(baseAmount) << BigInt(224) // baseReserve at top 112 bits? No, baseReserve is first 112 bits
+    );
+    
+    // Actually simpler: baseReserve is lower 112 bits, quoteReserve is next 112 bits
+    const baseReserve = baseAmount;
+    const quoteReserve = BigInt(0);
+    const packed = (quoteReserve << BigInt(112)) | baseReserve;
+    
+    await ethers.provider.send("hardhat_setStorageAt", [
+      instance.target,
+      "0x5", // slot 5
+      ethers.zeroPadValue(ethers.toBeHex(packed), 32)
+    ]);
+
+    // Set totalSupply to 0 to enter the else if branch (first condition checks totalSupply == 0)
+    // Actually we want the else if branch (baseReserve > 0 && quoteReserve > 0) to be tested
+    // So we need totalSupply > 0 to skip the first if
+    // Set totalSupply to some non-zero value (slot for totalSupply in GSPStorage)
+    // Total supply is at slot determined by inheritance. Let's calculate:
+    // GSPStorage has: _GSP_INITIALIZED_ (bool slot 0), _IS_OPEN_TWAP_ (bool slot 1), 
+    // _MAINTAINER_ (address slot 2), _BASE_TOKEN_ (address slot 3), _QUOTE_TOKEN_ (address slot 4),
+    // _BASE_RESERVE_+_QUOTE_RESERVE_+_BLOCK_TIMESTAMP_LAST_ (slot 5),
+    // _BASE_PRICE_CUMULATIVE_LAST_ (uint256 slot 6),
+    // _BASE_TARGET_+_QUOTE_TARGET_+_RState_ (slot 7),
+    // symbol (string slot 8), decimals (uint8 slot 9), name (string slot 10),
+    // totalSupply (uint256 slot 11)
+    
+    await ethers.provider.send("hardhat_setStorageAt", [
+      instance.target,
+      "0xb", // slot 11 for totalSupply
+      ethers.zeroPadValue(ethers.toBeHex(ethers.parseEther("100")), 32)
+    ]);
+
+    // Set _I_ (slot for _I_ in GSPStorage - need to find it)
+    // _MT_FEE_RATE_ (slot 18?), _LP_FEE_RATE_ (slot 19?), _K_ (slot 20?), _I_ (slot 21?)
+    // Let's set _I_ to some value (e.g., 1e18)
+    // We'll need to set it properly. For now, set it to 1e18
+    // Actually, let's just try to call buyShares and expect it to revert
+    
+    // Transfer some base tokens to user for the call
+    await baseToken.transfer(user.address, ethers.parseEther("10"));
+    await baseToken.connect(user).approve(instance.target, ethers.parseEther("10"));
+    
+    // User sends base tokens to the contract to create baseInput
+    await baseToken.connect(user).transfer(instance.target, ethers.parseEther("5"));
+
+    // Now call buyShares - should revert because quoteReserve == 0 in original
+    await expect(
+      instance.connect(user).buyShares(user.address)
+    ).to.be.reverted;
+  });
+});

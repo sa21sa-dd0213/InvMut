@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0011",
+ "property_summary": "After a single deposit of 1 ether, calling sendMoney twice with a target that reverts on the second call diverges: the reference succeeds on both calls (first call succeeds and second call reverts but is caught), while the bug version makes two calls and the first call may fail because of reentrancy-like issues, but concretely the reference increments depositsCount to 1 and sendMoney returns true, whereas the bug version's double call causes the first call to succeed and the second call to fail, but the test assertion is on the balance: the reference sends 1 ether to the target (balance = 1 ether), while the bug version sends 2 ether (because two calls both succeed if target is a contract that always accepts).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "+_target.call{value: _value}(\"\");",
+ "mutated_unit_code": "    function sendMoney(address _target, uint _value) public onlyOwner {\n        _target.call{value: _value}(\"\");\n        _target.call{value: _value}(\"\");\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n    function testRegression_property() public {\n        address target = address(new Eater());\n        vm.deal(address(0xbeef), 1 ether);\n        vm.prank(address(0xbeef));\n        (bool ok,) = address(c).call{value: 1 ether}(\"\");\n        assertTrue(ok);\n        c.sendMoney(target, 0.5 ether);\n        assertEq(target.balance, 0.5 ether);\n    }\n}\n\ncontract Eater {\n    receive() external payable {}\n}"
+}

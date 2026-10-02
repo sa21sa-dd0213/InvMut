@@ -1,0 +1,49 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Private_Bank mutant kill test - mee399eaa", function () {   it("should detect mutant by depositing with zero balance and expecting balance increase", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy Log contract first (required constructor argument for Private_Bank)     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();          // Deploy Private_Bank with Log contract address     const BankFactory = await ethers.getContractFactory("Private_Bank");     const bank = await BankFactory.deploy(await log.getAddress());     await bank.waitForDeployment();          // Deposit exactly 1 ether (MinDeposit = 1 ether) - this should succeed     // Using exactly MinDeposit because require checks msg.value > MinDeposit (strictly greater)     const depositAmount = ethers.parseEther("2");          // Get initial balance of addr1     const initialBalance = await bank.balances(addr1.address);     expect(initialBalance).to.equal(0);          // Deposit from addr1     await bank.connect(addr1).Deposit({ value: depositAmount });          // Check that balance increased (original contract: should pass; mutant: should revert)     const finalBalance = await bank.balances(addr1.address);     expect(finalBalance).to.equal(depositAmount);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Private_Bank { mapping (address => uint) public balances; uint public MinDeposit = 1 ether; Log TransferLog; constructor(address _log) { TransferLog = Log(_log); } function Deposit() public payable { if(msg.value > MinDeposit) { require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); balances[msg.sender]+=msg.value; TransferLog.AddMessage(msg.sender,msg.value,"Deposit"); } } function CashOut(uint _am) public payable { if(_am<=balances[msg.sender]) { balances[msg.sender] = (balances[msg.sender] - _am); (bool _veri_ok,) = msg.sender.call{value: _am}(""); if(_veri_ok) { TransferLog.AddMessage(msg.sender,_am,"CashOut"); } else {revert (); } } } receive() external payable {} } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val,string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Private_Bank mutant kill test - mee399eaa", function () {
+  it("should detect mutant by depositing with zero balance and expecting balance increase", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy Log contract first (required constructor argument for Private_Bank)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Deploy Private_Bank with Log contract address
+    const BankFactory = await ethers.getContractFactory("Private_Bank");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+
+    // Deposit exactly 1 ether (MinDeposit = 1 ether) - this should succeed
+    // Using exactly MinDeposit because require checks msg.value > MinDeposit (strictly greater)
+    const depositAmount = ethers.parseEther("2");
+
+    // Get initial balance of addr1
+    const initialBalance = await bank.balances(addr1.address);
+    expect(initialBalance).to.equal(0);
+
+    // Deposit from addr1
+    await bank.connect(addr1).Deposit({ value: depositAmount });
+
+    // Check that balance increased (original contract: should pass; mutant: should revert)
+    const finalBalance = await bank.balances(addr1.address);
+    expect(finalBalance).to.equal(depositAmount);
+  });
+});
+```

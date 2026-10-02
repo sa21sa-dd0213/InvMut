@@ -1,0 +1,67 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m5725ec90 of airDrop.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test airDrop.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for airDrop:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("airDrop reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy airDrop by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("airDrop"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airDrop reference (ethers v6; deploy may require constructor arguments)", function () {
+  it("should return true when transfer is successful on original, but false on mutant that removed return true", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("airDrop");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy a simple ERC20-like token to use as the caddress parameter
+    const TokenFactory = await ethers.getContractFactory("SimpleToken");
+    const token = await TokenFactory.deploy();
+    await token.waitForDeployment();
+
+    // Fund addr1 with some tokens to transfer
+    const mintAmount = ethers.parseEther("100");
+    await token.mint(addr1.address, mintAmount);
+
+    // Approve the airDrop contract to transfer from addr1
+    await token.connect(addr1).approve(await instance.getAddress(), mintAmount);
+
+    // Prepare test parameters
+    const recipients = [addr2.address];
+    const transferValue = ethers.parseEther("10");
+    const decimals = 18;
+
+    // Call the transfer function and capture the return value
+    const tx = await instance.transfer(
+      addr1.address,
+      await token.getAddress(),
+      recipients,
+      transferValue,
+      decimals
+    );
+    const receipt = await tx.wait();
+
+    // Check the return value from the transaction logs or directly
+    // For ethers v6, we can decode the return value from the transaction
+    const iface = new ethers.Interface(["function transfer(address,address,address[],uint256,uint256) returns (bool)"]);
+    const decodedData = iface.decodeFunctionResult("transfer", tx.data);
+    const returnValue = decodedData[0];
+
+    // The original should return true, the mutant (without return true) should return false
+    expect(returnValue).to.equal(true);
+  });
+});
+```

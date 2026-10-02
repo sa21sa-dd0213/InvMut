@@ -1,0 +1,65 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PrivateBank mutant detection - CashOut revert removal", function () {   it("should revert when CashOut external call fails due to recipient contract rejecting ether", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy the Log contract first (required constructor argument for PrivateBank)     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();          // Deploy PrivateBank with Log address     const PrivateBankFactory = await ethers.getContractFactory("PrivateBank");     const bank = await PrivateBankFactory.deploy(await log.getAddress());     await bank.waitForDeployment();          // Deploy a contract that rejects ether (no receive/fallback function)     const RejectorFactory = await ethers.getContractFactory("contract Rejector { }");     const rejector = await RejectorFactory.deploy();     await rejector.waitForDeployment();          // Fund the bank contract with ether for the test     await owner.sendTransaction({       to: await bank.getAddress(),       value: ethers.parseEther("10")     });          // Deposit ether to addr1's balance from the bank's funds     // First, send ether to addr1 so they can deposit     await owner.sendTransaction({       to: addr1.address,       value: ethers.parseEther("2")     });          // addr1 deposits 1 ether (meets MinDeposit of 1 ether)     await bank.connect(addr1).Deposit({ value: ethers.parseEther("1") });          // Now addr1 tries to cash out to the rejecting contract     // The call should fail because Rejector cannot receive ether     await expect(       bank.connect(addr1).CashOut(ethers.parseEther("1"))     ).to.be.reverted;          // Additionally verify that the balance was NOT deducted (mutant would deduct)     const balanceAfter = await bank.balances(addr1.address);     expect(balanceAfter).to.equal(ethers.parseEther("1"));   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PrivateBank { mapping (address => uint) public balances; uint public MinDeposit = 1 ether; Log TransferLog; constructor(address _log) { TransferLog = Log(_log); } function Deposit() public payable { if(msg.value >= MinDeposit) { require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); balances[msg.sender]+=msg.value; TransferLog.AddMessage(msg.sender,msg.value,"Deposit"); } } function CashOut(uint _am) public { if(_am<=balances[msg.sender]) { balances[msg.sender] = (balances[msg.sender] - _am); (bool _veri_ok,) = msg.sender.call{value: _am}(""); if(_veri_ok) { TransferLog.AddMessage(msg.sender,_am,"CashOut"); } else {revert (); } } } receive() external payable {} } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val,string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PrivateBank mutant detection - CashOut revert removal", function () {
+  it("should revert when CashOut external call fails due to recipient contract rejecting ether", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy the Log contract first (required constructor argument for PrivateBank)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Deploy PrivateBank with Log address
+    const PrivateBankFactory = await ethers.getContractFactory("PrivateBank");
+    const bank = await PrivateBankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+
+    // Deploy a contract that rejects ether (no receive/fallback function)
+    const rejectorFactory = await ethers.getContractFactory("Rejector");
+    const rejector = await rejectorFactory.deploy();
+    await rejector.waitForDeployment();
+
+    // Fund the bank contract with ether for the test
+    await owner.sendTransaction({
+      to: await bank.getAddress(),
+      value: ethers.parseEther("10")
+    });
+
+    // Deposit ether to addr1's balance from the bank's funds
+    // First, send ether to addr1 so they can deposit
+    await owner.sendTransaction({
+      to: addr1.address,
+      value: ethers.parseEther("2")
+    });
+
+    // addr1 deposits 1 ether (meets MinDeposit of 1 ether)
+    await bank.connect(addr1).Deposit({ value: ethers.parseEther("1") });
+
+    // Now addr1 tries to cash out to the rejecting contract
+    // The call should fail because Rejector cannot receive ether
+    await expect(
+      bank.connect(addr1).CashOut(ethers.parseEther("1"))
+    ).to.be.reverted;
+
+    // Additionally verify that the balance was NOT deducted (mutant would deduct)
+    const balanceAfter = await bank.balances(addr1.address);
+    expect(balanceAfter).to.equal(ethers.parseEther("1"));
+  });
+});
+```

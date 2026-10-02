@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0002",
+ "property_summary": "For any caller and target and value, calling sendMoney(target, value, data) on the correct contract never changes who would receive funds from withdraw() (withdraw() can only send to the owner), but the mutant that relaxes onlyOwner allows withdraw() to send to msg.sender so the post-sendMoney withdraw beneficiary can differ for some inputs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Relax onlyOwner to allow any caller (remove the require), so withdraw can be invoked by non-owners and will transfer to msg.sender.",
+ "mutated_unit_code": "modifier onlyOwner {\n    _;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    Attacker attacker;\n\n    function setUp() public { c = new SimpleWallet(); attacker = new Attacker(); }\n\n    function testFuzz_property(uint256 fundAmount, uint256 sendValue) public {\n        fundAmount = bound(fundAmount, 1 wei, 1 ether);\n        sendValue = bound(sendValue, 0 wei, fundAmount);\n\n        vm.deal(address(this), 0);\n        vm.deal(address(attacker), fundAmount);\n        vm.deal(address(c), fundAmount);\n\n        vm.prank(address(attacker));\n        bool ok;\n        try c.sendMoney(address(attacker), sendValue, \"\") {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        uint256 balanceBefore = address(c).balance;\n\n        uint256 withdrawAmount = balanceBefore;\n        vm.prank(address(attacker));\n        try c.withdraw(withdrawAmount) {\n        } catch {\n        }\n\n        uint256 balanceAfter = address(c).balance;\n\n        assertTrue(balanceAfter == balanceBefore);\n    }\n}\n\ncontract Attacker {\n    receive() external payable {}\n}\n"
+}

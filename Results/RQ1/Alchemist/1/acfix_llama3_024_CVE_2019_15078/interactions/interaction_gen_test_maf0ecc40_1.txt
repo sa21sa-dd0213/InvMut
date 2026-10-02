@@ -1,0 +1,78 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant maf0ecc40 of XBORNID.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test XBORNID.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for XBORNID:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("XBORNID reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy XBORNID by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("XBORNID"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("XBORNID mutant test - maf0ecc40", function () {
+  it("should kill mutant by calling getTokens when value equals totalRemaining", async function () {
+    const [owner, investor] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("XBORNID");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Initial state: totalDistributed = 200000000e18, totalSupply = 500000000e18
+    // totalRemaining = 300000000e18, value = 1000e18
+
+    // We need to make value equal to totalRemaining
+    // We can call getTokens multiple times to reduce totalRemaining until it matches value
+    // But first, let's check the current value and totalRemaining
+    let value = await instance.value();
+    let totalRemaining = await instance.totalRemaining();
+    
+    // Keep calling getTokens until value equals totalRemaining
+    // Each call reduces value by (value / 100000).mul(99999) and totalRemaining by value
+    while (value < totalRemaining) {
+      // Need a fresh investor each time since blacklist is set after distribution
+      const [_, ...signers] = await ethers.getSigners();
+      for (const signer of signers) {
+        if (value >= totalRemaining) break;
+        
+        // Check if this signer is not blacklisted
+        const isBlacklisted = await instance.blacklist(signer.address);
+        if (!isBlacklisted && value < totalRemaining) {
+          await instance.connect(signer).getTokens();
+          value = await instance.value();
+          totalRemaining = await instance.totalRemaining();
+        }
+      }
+    }
+
+    // Now value should equal totalRemaining
+    // In original contract: require(value <= totalRemaining) passes
+    // In mutant: require(value < totalRemaining) fails
+    
+    // Get a fresh investor not blacklisted
+    const freshInvestor = ethers.Wallet.createRandom().connect(ethers.provider);
+    await owner.sendTransaction({
+      to: freshInvestor.address,
+      value: ethers.parseEther("1.0")
+    });
+
+    // This should succeed in original but revert in mutant
+    if (value === totalRemaining) {
+      // In mutant, this will revert because value < totalRemaining is false
+      // In original, it will succeed because value <= totalRemaining is true
+      await expect(
+        instance.connect(freshInvestor).getTokens()
+      ).to.be.reverted;
+    }
+  });
+});
+```

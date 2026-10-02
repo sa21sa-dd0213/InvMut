@@ -1,0 +1,56 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mbfd38045 of ReentrancyDAO.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test ReentrancyDAO.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for ReentrancyDAO:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("ReentrancyDAO reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy ReentrancyDAO by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("ReentrancyDAO"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ReentrancyDAO mutant detection - mbfd38045", function () {
+  it("should allow withdrawal after deposit, but mutant with '<' condition will fail", async function () {
+    const [owner, depositor] = await ethers.getSigners();
+    
+    // Deploy the contract (no constructor arguments needed for this contract)
+    const Factory = await ethers.getContractFactory("ReentrancyDAO");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    const depositAmount = ethers.parseEther("1.0");
+    
+    // Deposit ether from depositor
+    const depositTx = await instance.connect(depositor).deposit({ value: depositAmount });
+    await depositTx.wait();
+    
+    // Record balances before withdrawal
+    const depositorBalanceBefore = await ethers.provider.getBalance(depositor.address);
+    const contractBalanceBefore = await ethers.provider.getBalance(instance.target);
+    
+    // Attempt withdrawal
+    const withdrawTx = await instance.connect(depositor).withdrawAll();
+    await withdrawTx.wait();
+    
+    // Check post-withdrawal state
+    const depositorBalanceAfter = await ethers.provider.getBalance(depositor.address);
+    const contractBalanceAfter = await ethers.provider.getBalance(instance.target);
+    
+    // Original contract: balance decreases, depositor receives funds
+    // Mutant: condition fails (oCredit < 0 is false for positive credit), no transfer occurs
+    expect(contractBalanceAfter).to.be.lessThan(contractBalanceBefore);
+    expect(depositorBalanceAfter).to.be.greaterThan(depositorBalanceBefore);
+  });
+});
+```

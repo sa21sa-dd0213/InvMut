@@ -1,0 +1,110 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m9049812d of MY_BANK.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test MY_BANK.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for MY_BANK:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("MY_BANK reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy MY_BANK by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("MY_BANK"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant kill test", function () {
+  it("should kill mutant m9049812d by testing failed external call doesn't deduct balance", async function () {
+    const [owner, attacker, recipient] = await ethers.getSigners();
+    
+    // Deploy Log contract first (required constructor arg for MY_BANK)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy MY_BANK with Log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+    
+    // Fund the bank with some initial balance via Put
+    const putTx = await bank.connect(attacker).Put(0, { value: ethers.parseEther("10") });
+    await putTx.wait();
+    
+    // Get initial balance
+    const holderBefore = await bank.Acc(attacker.address);
+    const initialBalance = holderBefore.balance;
+    
+    // Attempt Collect with a valid amount but target a contract that rejects ether
+    // First, we need to set up a contract that will revert on receive
+    const RejectorFactory = await ethers.getContractFactory("contract Rejector { receive() external payable { revert(); } }");
+    const rejector = await RejectorFactory.deploy();
+    await rejector.waitForDeployment();
+    
+    // Now call Collect from the attacker, but we need to make the call go to the rejector
+    // Actually, the call goes to msg.sender, so we need to use a contract as the caller
+    // Let's deploy a contract that will call Collect on our behalf and revert on receive
+    const AttackerFactory = await ethers.getContractFactory(
+      "contract Attacker { function attack(address bank, uint amount) public { MY_BANK(bank).Collect(amount); } receive() external payable { revert(); } }"
+    );
+    const attackerContract = await AttackerFactory.deploy();
+    await attackerContract.waitForDeployment();
+    
+    // Fund the attacker contract via the bank
+    const fundTx = await bank.connect(owner).Put(0, { value: ethers.parseEther("5") });
+    await fundTx.wait();
+    // Actually, we need the attacker contract to have balance in the bank
+    // Let's transfer ownership of the attacker's account to the contract
+    // Simpler approach: use a direct call that will fail
+    // The Collect function calls msg.sender.call{value: _am}, so we need msg.sender to reject
+    
+    // Alternative: Use a contract as the sender that rejects ether
+    // First fund the contract's bank account
+    const fundContractTx = await bank.connect(attacker).Put(0, { value: ethers.parseEther("2") });
+    await fundContractTx.wait();
+    
+    // Now we need to make a call where msg.sender is a contract that rejects
+    // Let's use a different approach - create a simple proxy
+    const ProxyFactory = await ethers.getContractFactory(
+      "contract Proxy { function callCollect(address bank, uint am) public { MY_BANK(bank).Collect(am); } receive() external payable { revert(); } }"
+    );
+    const proxy = await ProxyFactory.deploy();
+    await proxy.waitForDeployment();
+    
+    // Fund the proxy's bank account
+    const fundProxyTx = await bank.connect(proxy).Put(0, { value: ethers.parseEther("3") });
+    await fundProxyTx.wait();
+    
+    // Verify the proxy has balance
+    const proxyHolder = await bank.Acc(proxy.address);
+    expect(proxyHolder.balance).to.equal(ethers.parseEther("3"));
+    
+    // Now call Collect through the proxy - this should fail because proxy rejects ether
+    // The external call will fail, _s will be false
+    // Original: balance should NOT be deducted
+    // Mutant: balance WILL be deducted (incorrectly)
+    try {
+      const collectTx = await proxy.connect(proxy).callCollect(await bank.getAddress(), ethers.parseEther("1"));
+      await collectTx.wait();
+    } catch (e) {
+      // Transaction may revert in original due to sub_uint256 check failing
+      // But we need to check the balance after
+    }
+    
+    // Check final balance - in original it should still be 3 ether
+    // In mutant it would be 2 ether (incorrectly deducted)
+    const finalHolder = await bank.Acc(proxy.address);
+    
+    // This assertion should fail (kill) the mutant because the mutant deducted balance
+    // but the original would not have deducted due to failed call
+    expect(finalHolder.balance).to.equal(ethers.parseEther("3"));
+  });
+});
+```

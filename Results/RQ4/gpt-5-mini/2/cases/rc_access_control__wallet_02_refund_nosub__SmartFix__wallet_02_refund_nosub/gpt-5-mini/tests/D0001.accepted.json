@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "For all callers and any amount, performing a zero-value deposit should not change the contract's recorded balance for that caller nor the contract's ETH balance; the mutant that weakens the check can accept zero-value deposits in a way that leads to a different observable contract balance for some input sequence.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the assert check with a require that uses a different condition (>= instead of >), allowing zero-value deposits to be accepted differently.",
+ "mutated_unit_code": "function deposit() public payable {\n        require(balances[msg.sender] + msg.value >= balances[msg.sender], \"overflow check\");\n        balances[msg.sender] += msg.value;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Wallet} from \"../src/Wallet.sol\";\n\ncontract InvMutTest is Test {\n    Wallet c;\n\n    function setUp() public { c = new Wallet(); }\n\n    function testFuzz_property(address actor, uint256 initialAmount) public {\n        vm.assume(actor != address(0));\n        initialAmount = bound(initialAmount, 1, type(uint128).max);\n\n        vm.deal(actor, initialAmount);\n\n        uint256 before = address(c).balance;\n\n        vm.prank(actor);\n        c.deposit{value: initialAmount}();\n\n        uint256 afterDeposit = address(c).balance;\n\n        bool ok;\n        vm.prank(actor);\n        try c.deposit{value: 0}() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(!ok);\n    }\n}\n"
+}

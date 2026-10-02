@@ -1,0 +1,112 @@
+{
+ "case_id": "rc_reentrancy__reentrancy_simple__sGuard__reentrancy_simple",
+ "config_label": "deepseek-v4-pro",
+ "target_contract": "Reentrance",
+ "modification_kind": "control_flow",
+ "feasible": true,
+ "reason": null,
+ "n_accepted": 6,
+ "n_validated": 6,
+ "n_killing": 1,
+ "success": true,
+ "kills": [
+  {
+   "difference_id": "L0002",
+   "property": "After Alice deposits 1 ETH and then Bob deposits 0 ETH and withdraws, the correct contract sends Bob's balance (0) to Bo",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Change the external call from msg.sender.call to address(0).call; this sends funds to zero address instead of the caller, modifying balance persistence.",
+   "mutated_unit_code": "      function withdrawBalance()  public nonReentrant_ {\n         { (bool _s, bytes memory _d) = address(0).call{value: userBalance[msg.sender]}(\"\"); _d; if (! _s) {\n             revert();\n         } }\n         userBalance[msg.sender] = 0;\n     }",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "L0003",
+   "property": "After Alice calls addToBalance() with 1 ether, the reference contract credits Alice's balance, while the mutant credits ",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Change the mapping key from msg.sender to a constant address (address(0)), so all deposits go to address(0) instead of the caller.",
+   "mutated_unit_code": "      function addToBalance()  public nonReentrant_ payable {\n         userBalance[address(0)] = add_uint256(userBalance[address(0)], msg.value);\n     }",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "L0004",
+   "property": "After user A deposits 1 ether, user B deposits 2 ether, then user A withdraws and reenters addToBalance() via a fallback",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Remove the nonReentrant modifier from addToBalance, allowing reentrancy that can modify userBalance differently for the caller.",
+   "mutated_unit_code": "      function addToBalance()  public payable {\n         userBalance[msg.sender] = add_uint256(userBalance[msg.sender], msg.value);\n     }",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  },
+  {
+   "difference_id": "L0006",
+   "property": "After user Alice sends 1 wei via addToBalance(), the reference contract stores it under Alice's address, while the buggy",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Change the external call target from msg.sender to a new contract that stores the value, altering which key's balance stays nonzero after withdrawal.",
+   "mutated_unit_code": "      function withdrawBalance()  public nonReentrant_ {\n         address target = address(new sGuard());\n         { (bool _s, bytes memory _d) = target.call{value: userBalance[msg.sender]}(\"\"); _d; if (! _s) {\n             revert();\n         } }\n         userBalance[msg.sender] = 0;\n     }",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "L0007",
+   "property": "After Alice calls addToBalance() with 1 wei, the getBalance(Alice) returns 1 in the reference contract and 0 in the bugg",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Return a constant 0 instead of userBalance[u]",
+   "mutated_unit_code": "      function getBalance(address u)  public view returns (uint) {\n         return 0;\n     }",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "L0009",
+   "property": "After Alice sends 1 ether via addToBalance(), the reference contract stores 1 ether in her balance, while the buggy cont",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Replace msg.value with a constant zero.",
+   "mutated_unit_code": "      function addToBalance()  public nonReentrant_ payable {\n         userBalance[msg.sender] = add_uint256(userBalance[msg.sender], 0);\n     }",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  }
+ ],
+ "tokens": {
+  "prompt": 60580,
+  "completion": 43249,
+  "reasoning": 0
+ },
+ "wallclock_s": 458.013872385025,
+ "infra_error": null,
+ "rescore_vs_bug": {
+  "verdict": "REAL",
+  "kill_kinds": [
+   [
+    "L0004",
+    "assertion",
+    "bug_property_failed",
+    "assertion failed"
+   ]
+  ],
+  "action": "kept",
+  "note": "REAL=assertion; compile/UNDET kept pending policy"
+ }
+}

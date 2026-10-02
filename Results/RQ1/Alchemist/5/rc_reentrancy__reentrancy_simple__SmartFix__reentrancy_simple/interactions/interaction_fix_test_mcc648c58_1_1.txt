@@ -1,0 +1,49 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Reentrance mutant mcc648c58 test", function () {   it("should detect mutant that adds 1 extra wei to deposited amount", async function () {     const [owner] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Reentrance");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const depositAmount = ethers.parseEther("1");      // Deposit exactly 1 ether     await instance.connect(owner).addToBalance({ value: depositAmount });      // Check balance recorded in contract     const recordedBalance = await instance.getBalance(owner.address);          // On original, balance should be exactly depositAmount     // On mutant, balance will be depositAmount + 1 wei     // Withdraw all balance     await instance.connect(owner).withdrawBalance();      // Check contract's ether balance after withdrawal     const contractBalance = await ethers.provider.getBalance(instance.target);          // On original: contract balance should be 0 (all withdrawn)     // On mutant: contract will still have 1 wei because recorded balance was 1 wei too high     // but actual sent amount was only depositAmount, leaving 1 wei stuck     expect(contractBalance).to.equal(0);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Reentrance { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public payable { require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender])); userBalance[msg.sender] += msg.value; } function withdrawBalance() public{ uint256 tmp__1 = userBalance[msg.sender]; userBalance[msg.sender] = 0; { (bool _s, bytes memory _d) = msg.sender.call{value: tmp__1}(""); _d; if (! _s) { revert(); } } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Reentrance mutant mcc648c58 test", function () {
+  it("should detect mutant that adds 1 extra wei to deposited amount", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Reentrance");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const depositAmount = ethers.parseEther("1");
+
+    // Deposit exactly 1 ether
+    await instance.connect(owner).addToBalance({ value: depositAmount });
+
+    // Check balance recorded in contract
+    const recordedBalance = await instance.getBalance(owner.address);
+
+    // On original, balance should be exactly depositAmount
+    // On mutant, balance will be depositAmount + 1 wei
+
+    // Withdraw all balance
+    await instance.connect(owner).withdrawBalance();
+
+    // Check contract's ether balance after withdrawal
+    const contractBalance = await ethers.provider.getBalance(instance.target);
+
+    // On original: contract balance should be 0 (all withdrawn)
+    // On mutant: contract will still have 1 wei because recorded balance was 1 wei too high
+    // but actual sent amount was only depositAmount, leaving 1 wei stuck
+    expect(contractBalance).to.equal(0);
+  });
+});
+```

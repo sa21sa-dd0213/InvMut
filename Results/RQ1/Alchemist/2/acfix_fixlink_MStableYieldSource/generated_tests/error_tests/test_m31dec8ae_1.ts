@@ -1,0 +1,112 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MStableYieldSource - Kill mutant m31dec8ae", function () {
+  it("should emit Supplied event when supplyTokenTo is called; mutant removes this event", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy a mock ERC20 token
+    const MockERC20 = await ethers.getContractFactory("MockERC20");
+    const mockToken = await MockERC20.deploy("Mock", "MCK", ethers.parseEther("1000000"));
+    await mockToken.waitForDeployment();
+    
+    // Deploy a mock SavingsContractV2
+    const MockSavings = await ethers.getContractFactory("MockSavingsContractV2");
+    const mockSavings = await MockSavings.deploy(await mockToken.getAddress());
+    await mockSavings.waitForDeployment();
+    
+    // Deploy MStableYieldSource
+    const Factory = await ethers.getContractFactory("MStableYieldSource");
+    const instance = await Factory.deploy(await mockSavings.getAddress());
+    await instance.waitForDeployment();
+    
+    // Mint tokens to addr1 and approve
+    await mockToken.mint(addr1.address, ethers.parseEther("1000"));
+    await mockToken.connect(addr1).approve(await instance.getAddress(), ethers.parseEther("1000"));
+    
+    // Set up mock to return credits
+    await mockSavings.setDepositSavingsReturn(ethers.parseEther("100"));
+    
+    // Call supplyTokenTo and check for Supplied event
+    const tx = await instance.connect(addr1).supplyTokenTo(ethers.parseEther("100"), addr2.address);
+    const receipt = await tx.wait();
+    
+    // Expect the Supplied event to be emitted with correct parameters
+    await expect(tx)
+      .to.emit(instance, "Supplied")
+      .withArgs(addr1.address, addr2.address, ethers.parseEther("100"));
+  });
+});
+
+// Helper mock contracts (place these in a separate file or same file)
+contract MockERC20 {
+    string public name;
+    string public symbol;
+    uint8 public decimals = 18;
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+    
+    constructor(string memory _name, string memory _symbol, uint256 _initialSupply) {
+        name = _name;
+        symbol = _symbol;
+        balanceOf[msg.sender] = _initialSupply;
+    }
+    
+    function mint(address to, uint256 amount) external {
+        balanceOf[to] += amount;
+    }
+    
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
+    }
+    
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        require(balanceOf[from] >= amount);
+        require(allowance[from][msg.sender] >= amount);
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        allowance[from][msg.sender] -= amount;
+        return true;
+    }
+    
+    function transfer(address to, uint256 amount) external returns (bool) {
+        require(balanceOf[msg.sender] >= amount);
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+}
+
+contract MockSavingsContractV2 {
+    IERC20 public underlying;
+    uint256 private _exchangeRate = 1e18;
+    uint256 private _depositSavingsReturn;
+    
+    constructor(address _underlying) {
+        underlying = IERC20(_underlying);
+    }
+    
+    function setDepositSavingsReturn(uint256 _amount) external {
+        _depositSavingsReturn = _amount;
+    }
+    
+    function depositSavings(uint256 amount) external returns (uint256) {
+        underlying.transferFrom(msg.sender, address(this), amount);
+        return _depositSavingsReturn;
+    }
+    
+    function exchangeRate() external view returns (uint256) {
+        return _exchangeRate;
+    }
+    
+    function redeemUnderlying(uint256 amount) external returns (uint256) {
+        return amount;
+    }
+}
+
+interface IERC20 {
+    function transferFrom(address from, address to, uint256 amount) external returns (bool);
+    function transfer(address to, uint256 amount) external returns (bool);
+    function balanceOf(address account) external view returns (uint256);
+}

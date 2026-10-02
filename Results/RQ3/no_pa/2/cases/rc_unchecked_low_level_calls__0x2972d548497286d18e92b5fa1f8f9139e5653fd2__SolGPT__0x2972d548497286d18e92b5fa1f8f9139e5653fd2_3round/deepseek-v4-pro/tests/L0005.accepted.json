@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0005",
+ "property_summary": "After calling transfer with from=alice, caddress=a token that reverts on the second transferFrom, tos=[bob, charlie], values=[10, 20], the reference reverts the whole transaction, while the bug silently continues and returns true.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "Remove the require on success of the inner call, so that failing calls are silently ignored.",
+ "mutated_unit_code": "    function transfer(address from, address caddress, address[] memory _tos, uint[] memory v) public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n\n        for(uint i=0; i<_tos.length; i++){\n            { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v[i])); }\n        }\n\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {demo} from \"../src/demo.sol\";\n\ncontract InvMutTest is Test {\n    demo c;\n    function setUp() public { c = new demo(); }\n    function testRegression_property() public {\n        RevertingToken token = new RevertingToken();\n        address alice = address(0x123);\n        address bob = address(0x456);\n        address charlie = address(0x789);\n\n        address[] memory tos = new address[](2);\n        tos[0] = bob;\n        tos[1] = charlie;\n        uint[] memory values = new uint[](2);\n        values[0] = 10;\n        values[1] = 20;\n\n        bool ok;\n        try c.transfer(alice, address(token), tos, values) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        assertTrue(!ok);\n    }\n}\n\ncontract RevertingToken {\n    uint callCount;\n    function transferFrom(address, address, uint256) external returns (bool) {\n        callCount++;\n        if (callCount == 2) {\n            revert(\"fail\");\n        }\n        return true;\n    }\n}"
+}

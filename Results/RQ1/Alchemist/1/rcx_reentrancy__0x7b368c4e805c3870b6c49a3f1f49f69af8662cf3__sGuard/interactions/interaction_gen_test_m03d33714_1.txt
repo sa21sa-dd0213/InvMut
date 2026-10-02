@@ -1,0 +1,61 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m03d33714 of W_WALLET.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test W_WALLET.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for W_WALLET:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("W_WALLET reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy W_WALLET by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("W_WALLET"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("W_WALLET mutant m03d33714 test", function () {
+  it("should revert when collecting amount greater than balance on original, but succeed on mutant", async function () {
+    const [owner, user] = await ethers.getSigners();
+    
+    // Deploy the Log contract first (required by W_WALLET constructor)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy W_WALLET with Log contract address
+    const WalletFactory = await ethers.getContractFactory("W_WALLET");
+    const wallet = await WalletFactory.deploy(await log.getAddress());
+    await wallet.waitForDeployment();
+    
+    const depositAmount = ethers.parseEther("2");
+    const withdrawAmount = ethers.parseEther("5");
+    
+    // User deposits 2 ether
+    await wallet.connect(user).Put(0, { value: depositAmount });
+    
+    // Verify balance is 2 ether
+    const holder = await wallet.Acc(user.address);
+    expect(holder.balance).to.equal(depositAmount);
+    
+    // Attempt to collect 5 ether (more than balance)
+    // In original contract this would revert (balance >= _am check fails)
+    // In mutant this succeeds (balance <= _am check passes)
+    const tx = wallet.connect(user).Collect(withdrawAmount);
+    
+    // The mutant should NOT revert, while the original would
+    // We expect this to succeed on the mutant (killing it)
+    await expect(tx).to.not.be.reverted;
+    
+    // Verify the balance was incorrectly reduced (drained more than deposited)
+    const holderAfter = await wallet.Acc(user.address);
+    expect(holderAfter.balance).to.be.lessThan(depositAmount);
+  });
+});
+```

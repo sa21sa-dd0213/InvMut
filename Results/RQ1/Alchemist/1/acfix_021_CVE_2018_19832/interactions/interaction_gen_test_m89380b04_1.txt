@@ -1,0 +1,61 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m89380b04 of NewIntelTechMedia.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test NewIntelTechMedia.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for NewIntelTechMedia:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("NewIntelTechMedia reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy NewIntelTechMedia by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("NewIntelTechMedia"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("NewIntelTechMedia - kill mutant m89380b04 (transferFrom allowance += instead of -=)", function () {
+  it("should revert or detect that allowance is incorrectly increased after transferFrom", async function () {
+    const [owner, spender, recipient] = await ethers.getSigners();
+    
+    // Deploy contract - no constructor arguments needed
+    const Factory = await ethers.getContractFactory("NewIntelTechMedia");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Setup: Owner approves spender for 1000 tokens
+    const approveAmount = ethers.parseEther("1000");
+    const transferAmount = ethers.parseEther("300");
+    
+    // First, owner needs to have tokens - call NETM() to set initial balance
+    await instance.connect(owner).NETM();
+    
+    // Approve spender
+    await instance.connect(owner).approve(spender.address, approveAmount);
+    
+    // Check initial allowance
+    const initialAllowance = await instance.allowance(owner.address, spender.address);
+    expect(initialAllowance).to.equal(approveAmount);
+    
+    // Spender executes transferFrom for 300 tokens
+    await instance.connect(spender).transferFrom(owner.address, recipient.address, transferAmount);
+    
+    // Check allowance after transfer - in original it should be 700 (1000 - 300)
+    // In mutant it would be 1300 (1000 + 300) - this should fail the test
+    const remainingAllowance = await instance.allowance(owner.address, spender.address);
+    expect(remainingAllowance).to.equal(approveAmount - transferAmount);
+    
+    // Additional verification: try another transfer that should fail if allowance was correctly reduced
+    // If mutant increased allowance, spender could transfer more than original allowance
+    await expect(
+      instance.connect(spender).transferFrom(owner.address, recipient.address, approveAmount)
+    ).to.be.reverted;
+  });
+});
+```

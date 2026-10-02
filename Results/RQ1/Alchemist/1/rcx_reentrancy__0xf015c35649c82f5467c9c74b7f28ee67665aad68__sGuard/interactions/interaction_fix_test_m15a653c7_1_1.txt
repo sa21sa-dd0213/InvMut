@@ -1,0 +1,62 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MY_BANK mutant kill test - m15a653c7", function () {   it("should detect mutant that adds 1 wei to msg.value in Put", async function () {     const [owner, user] = await ethers.getSigners();          // Deploy Log contract first (required by MY_BANK constructor)     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();          // Deploy MY_BANK with Log address     const BankFactory = await ethers.getContractFactory("MY_BANK");     const bank = await BankFactory.deploy(await log.getAddress());     await bank.waitForDeployment();          const depositAmount = ethers.parseEther("1.0");     const unlockTime = Math.floor(Date.now() / 1000) + 3600; // 1 hour in future          // User deposits exactly 1 ether     const tx = await bank.connect(user).Put(unlockTime, { value: depositAmount });     await tx.wait();          // Check balance stored in contract     const holder = await bank.Acc(user.address);     const expectedBalance = depositAmount; // Should be exactly 1 ether in original     const mutantBalance = depositAmount + 1n; // Mutant adds 1 wei          // Verify the balance is as expected (should be depositAmount, not depositAmount + 1)     expect(holder.balance).to.equal(expectedBalance);          // Now try to collect the exact amount deposited     // This should succeed in original but fail in mutant due to balance mismatch     await ethers.provider.send("evm_increaseTime", [3601]); // Advance past unlock time     await ethers.provider.send("evm_mine", []);          // Attempt to collect the full deposit amount     const collectTx = bank.connect(user).Collect(depositAmount);          // In original: should succeed (balance = 1 ether, withdraw 1 ether)     // In mutant: will fail because actual contract balance is 1 ether but user balance is 1 ether + 1 wei     // The call will revert due to insufficient contract balance when trying to send the extra wei     await expect(collectTx).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } } contract MY_BANK is sGuard { function Put(uint _unlockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); LogFile.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant kill test - m15a653c7", function () {
+  it("should detect mutant that adds 1 wei to msg.value in Put", async function () {
+    const [owner, user] = await ethers.getSigners();
+
+    // Deploy Log contract first (required by MY_BANK constructor)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Deploy MY_BANK with Log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+
+    const depositAmount = ethers.parseEther("1.0");
+    const unlockTime = Math.floor(Date.now() / 1000) + 3600; // 1 hour in future
+
+    // User deposits exactly 1 ether
+    const tx = await bank.connect(user).Put(unlockTime, { value: depositAmount });
+    await tx.wait();
+
+    // Check balance stored in contract
+    const holder = await bank.Acc(user.address);
+    const expectedBalance = depositAmount; // Should be exactly 1 ether in original
+    const mutantBalance = depositAmount + 1n; // Mutant adds 1 wei
+
+    // Verify the balance is as expected (should be depositAmount, not depositAmount + 1)
+    expect(holder.balance).to.equal(expectedBalance);
+
+    // Now try to collect the exact amount deposited
+    // This should succeed in original but fail in mutant due to balance mismatch
+    await ethers.provider.send("evm_increaseTime", [3601]); // Advance past unlock time
+    await ethers.provider.send("evm_mine", []);
+
+    // Attempt to collect the full deposit amount
+    const collectTx = bank.connect(user).Collect(depositAmount);
+
+    // In original: should succeed (balance = 1 ether, withdraw 1 ether)
+    // In mutant: will fail because actual contract balance is 1 ether but user balance is 1 ether + 1 wei
+    // The call will revert due to insufficient contract balance when trying to send the extra wei
+    await expect(collectTx).to.be.reverted;
+  });
+});
+```

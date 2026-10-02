@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Wallet:
+        Contract Code: pragma solidity ^0.8.0; contract Wallet { address creator; mapping(address => uint256) balances; constructor() public { creator = payable(msg.sender); } function deposit() public payable { assert(balances[msg.sender] + msg.value > balances[msg.sender]); balances[msg.sender] += msg.value; } function withdraw(uint256 amount) public { require(amount <= balances[msg.sender]); payable(msg.sender).transfer(amount); balances[msg.sender] -= amount; } function refund() public { payable(msg.sender).transfer(balances[msg.sender]); balances[msg.sender] = 0; } function migrateTo(address to) public { require(creator == msg.sender); payable(to).transfer(address(this).balance); } }
+
+    Consider the following mutant of Wallet:
+        Mutant mfdf4ca44 of function migrateTo replaces == with !=
+        Mutant Diff: ---|         require(creator == msg.sender); +++|         require(creator != msg.sender);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the access control condition from `creator == msg.sender` (only the creator can call migrateTo) to `creator != msg.sender` (anyone except the creator can call migrateTo).  
+
+**Hypothesis:** A test case that calls `migrateTo` from the creator's address and expects the transaction to succeed (i.e., the contract balance to be transferred to the specified address) should kill the mutant, because in the mutant the creator's call will revert (since `creator != msg.sender` evaluates to false), while in the original it should succeed.

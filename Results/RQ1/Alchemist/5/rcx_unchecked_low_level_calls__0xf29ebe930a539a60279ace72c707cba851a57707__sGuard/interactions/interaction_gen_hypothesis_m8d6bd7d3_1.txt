@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract B:
+        Contract Code: pragma solidity ^0.8.0; contract B { address public owner = payable(msg.sender); function go() public payable { address target = 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C; target.call{value: msg.value}(""); payable(owner).transfer(address(this).balance); } fallback() external payable { } }
+
+    Consider the following mutant of B:
+        Mutant m8d6bd7d3 of function go replaces 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C with address(this)
+        Mutant Diff: ---|         address target = 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C; +++|         address target = address(this);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the `target` address from a fixed external address (`0xC8A60C...`) to the contract's own address (`address(this)`). In the original contract, when `go()` is called, it sends `msg.value` to the external address and then transfers the contract's entire balance to `owner`. In the mutant, it sends `msg.value` to itself (the contract), which would just loop the funds back into the contract's own balance, and then attempts to transfer the entire contract balance to `owner`.
+
+**Hypothesis:** A test case that sends a non-zero amount of ether to the contract (e.g., via the fallback function), then calls `go()` with a separate payment, and finally checks that the external address `0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C` actually received the ether should pass on the original contract (because the external call succeeds) but fail on the mutant (because the ether is never sent externally, it stays in the contract). This would detect the mutant by proving the funds were misdirected.

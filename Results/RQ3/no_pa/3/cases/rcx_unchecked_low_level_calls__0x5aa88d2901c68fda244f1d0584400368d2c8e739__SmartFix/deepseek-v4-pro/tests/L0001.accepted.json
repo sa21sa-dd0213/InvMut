@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0001",
+ "property_summary": "After calling Command with exactly half of the contract balance, the reference contract's withdraw transfers the entire balance to Owner, but the buggy version's send returns false and leaves the balance unchanged, so address(c).balance differs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Change transfer to send in the withdraw function, so the call may fail silently.",
+ "mutated_unit_code": "    function withdraw()\n    payable\n    public\n    {\n        require(msg.sender == Owner);\n        payable(Owner).send(address(this).balance);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MultiplicatorX3} from \"../src/MultiplicatorX3.sol\";\n\ncontract InvMutTest is Test {\n    MultiplicatorX3 c;\n    function setUp() public { c = new MultiplicatorX3(); }\n    function testRegression_property() public {\n        vm.deal(address(c), 2 ether);\n        vm.prank(c.Owner());\n        c.Command{value: 1 ether}(address(0), \"\");\n        vm.deal(c.Owner(), 1 ether);\n        vm.prank(c.Owner());\n        c.Command{value: 1 wei}(address(0), \"\");\n        vm.deal(address(c), 1 wei);\n        vm.prank(c.Owner());\n        c.Command{value: 1 wei}(address(0), \"\");\n        bool refReverted = false;\n        vm.prank(c.Owner());\n        try c.withdraw() { } catch { refReverted = true; }\n        assertTrue(refReverted, \"Reference should revert on withdraw to contract Owner\");\n    }\n}\n"
+}

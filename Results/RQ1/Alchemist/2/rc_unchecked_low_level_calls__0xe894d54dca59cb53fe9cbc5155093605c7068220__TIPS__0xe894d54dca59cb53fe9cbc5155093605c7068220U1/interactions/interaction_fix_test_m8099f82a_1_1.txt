@@ -1,0 +1,47 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("airDrop reference (ethers v6; deploy may require constructor arguments)", function () {   it("should kill mutant m8099f82a by sending transfer with one recipient and expecting success (original) vs revert (mutant due to <= causing out-of-bounds)", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("airDrop");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Deploy a simple ERC20-like token to test transferFrom     const TokenFactory = await ethers.getContractFactory("MockToken");     const token = await TokenFactory.deploy("Mock", "MCK", 18);     await token.waitForDeployment();      // Mint tokens to owner and approve the airDrop contract to spend them     const mintAmount = ethers.parseUnits("1000", 18);     await token.mint(owner.address, mintAmount);     await token.connect(owner).approve(await instance.getAddress(), mintAmount);      // Setup: create an array with exactly one recipient     const recipients = [addr1.address];     const value = ethers.parseUnits("10", 18);     const decimals = 18;      // This call should succeed on original (i < length) but revert on mutant (i <= length)     await expect(       instance.connect(owner).transfer(owner.address, await token.getAddress(), recipients, value, decimals)     ).to.not.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract airDrop { function transfer(address from, address caddress, address[] memory _tos, uint v, uint _decimals)  public returns (bool) { require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); uint _value = v * 10 ** _decimals; for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], _value)); _d; if (! _s) { revert();} } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airDrop reference (ethers v6; deploy may require constructor arguments)", function () {
+  it("should kill mutant m8099f82a by sending transfer with one recipient and expecting success (original) vs revert (mutant due to <= causing out-of-bounds)", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("airDrop");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy a simple ERC20-like token to test transferFrom
+    const TokenFactory = await ethers.getContractFactory("MockToken");
+    const token = await TokenFactory.deploy("Mock", "MCK", 18);
+    await token.waitForDeployment();
+
+    // Mint tokens to owner and approve the airDrop contract to spend them
+    const mintAmount = ethers.parseUnits("1000", 18);
+    await token.mint(owner.address, mintAmount);
+    await token.connect(owner).approve(await instance.getAddress(), mintAmount);
+
+    // Setup: create an array with exactly one recipient
+    const recipients = [addr1.address];
+    const value = ethers.parseUnits("10", 18);
+    const decimals = 18;
+
+    // This call should succeed on original (i < length) but revert on mutant (i <= length)
+    await expect(
+      instance.connect(owner).transfer(owner.address, await token.getAddress(), recipients, value, decimals)
+    ).to.not.be.reverted;
+  });
+});
+```

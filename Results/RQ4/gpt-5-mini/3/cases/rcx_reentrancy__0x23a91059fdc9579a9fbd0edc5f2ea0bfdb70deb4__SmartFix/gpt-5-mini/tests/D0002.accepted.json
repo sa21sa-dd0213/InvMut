@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0002",
+ "property_summary": "After two deposits from the same caller, the contract's recorded balance for that caller is at least as large as the larger single deposit (i.e., balances are non-decreasing and accumulate), which holds for P but is violated by M that overwrites balance on deposit.",
+ "render_status": "rendered",
+ "validation_status": "skipped",
+ "validation_error": null,
+ "kill": "bug_no_kill:m_no_cex_within_bound",
+ "origin": "primary",
+ "change_summary": "Change balances update to overwrite instead of add (balances[msg.sender] = msg.value), so deposits set balance to the single deposit amount.",
+ "mutated_unit_code": "function Deposit()\n    public\n    payable\n    {\n        if(msg.value >= MinDeposit)\n        {\n            require(((balances[msg.sender] + msg.value) >= balances[msg.sender]));\n            balances[msg.sender] = msg.value;\n            TransferLog.AddMessage(msg.sender,msg.value,\"Deposit\");\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {PrivateBank} from \"../src/PrivateBank.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    PrivateBank c;\n\n    function setUp() public {\n        c = new PrivateBank(address(this));\n    }\n\n    function _run(uint256 d1, uint256 d2) internal {\n        d1 = bound(d1, 0, 1000000000000000000000000000000);\n        d2 = bound(d2, 0, 1000000000000000000000000000000);\n        vm.deal(address(this), VALUE_CAP + VALUE_CAP);\n        vm.deal(address(c), VALUE_CAP);\n        vm.assume(address(this).balance >= d1 + d2);\n        uint256 min;\n        try c.MinDeposit() returns (uint256 __r) { min = __r; } catch { return; }\n        vm.assume(d1 >= min && d2 >= min);\n        try c.Deposit{value: d1}() {} catch { return; }\n        try c.Deposit{value: d2}() {} catch { return; }\n        uint256 recorded;\n        try c.balances(address(this)) returns (uint256 __r) { recorded = __r; } catch { return; }\n        uint larger = d1 >= d2 ? d1 : d2;\n        assertTrue(recorded >= larger);\n    }\n\n    function testFuzz_run(uint256 d1, uint256 d2) public {\n        _run(d1, d2);\n    }\n\n    receive() external payable {}\n}\n"
+}

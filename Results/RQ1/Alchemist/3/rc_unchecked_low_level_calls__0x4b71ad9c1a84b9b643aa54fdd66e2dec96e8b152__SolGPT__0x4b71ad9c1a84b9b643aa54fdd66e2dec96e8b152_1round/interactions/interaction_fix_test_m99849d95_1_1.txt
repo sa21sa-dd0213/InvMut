@@ -1,0 +1,56 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("airPort mutant test - m99849d95", function () {     it("should return true when transfer succeeds - kills mutant that removes return", async function () {         const [owner, addr1, addr2] = await ethers.getSigners();                  // Deploy a simple ERC20 token that supports transferFrom         const TokenFactory = await ethers.getContractFactory("contracts/ERC20.sol:ERC20");         const token = await TokenFactory.deploy("Test", "TST", 18);         await token.waitForDeployment();                  // Deploy the airPort contract (no constructor args needed)         const AirPortFactory = await ethers.getContractFactory("airPort");         const airPort = await AirPortFactory.deploy();         await airPort.waitForDeployment();                  // Setup: mint tokens to owner and approve airPort to transfer from owner         await token.mint(owner.address, ethers.parseEther("100"));         await token.connect(owner).approve(airPort.target, ethers.parseEther("100"));                  // Call transfer with valid parameters         const recipients = [addr1.address, addr2.address];         const tx = await airPort.transfer(             owner.address,             token.target,             recipients,             ethers.parseEther("10")         );         const receipt = await tx.wait();                  // The transaction should not revert - if it doesn't revert, the return statement exists         // The mutant would revert at the end due to missing return         expect(receipt.status).to.equal(1);                  // Verify the actual transfer happened (original behavior)         expect(await token.balanceOf(addr1.address)).to.equal(ethers.parseEther("10"));         expect(await token.balanceOf(addr2.address)).to.equal(ethers.parseEther("10"));     }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract airPort{ function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){ require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0; i<_tos.length; i++){ { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); require(_s); } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airPort mutant test - m99849d95", function () {
+    it("should return true when transfer succeeds - kills mutant that removes return", async function () {
+        const [owner, addr1, addr2] = await ethers.getSigners();
+        
+        // Deploy a simple ERC20 token that supports transferFrom
+        const TokenFactory = await ethers.getContractFactory("contracts/ERC20.sol:ERC20");
+        const token = await TokenFactory.deploy("Test", "TST", 18);
+        await token.waitForDeployment();
+        
+        // Deploy the airPort contract (no constructor args needed)
+        const AirPortFactory = await ethers.getContractFactory("airPort");
+        const airPort = await AirPortFactory.deploy();
+        await airPort.waitForDeployment();
+        
+        // Setup: mint tokens to owner and approve airPort to transfer from owner
+        await token.mint(owner.address, ethers.parseEther("100"));
+        await token.connect(owner).approve(airPort.target, ethers.parseEther("100"));
+        
+        // Call transfer with valid parameters
+        const recipients = [addr1.address, addr2.address];
+        const tx = await airPort.transfer(
+            owner.address,
+            token.target,
+            recipients,
+            ethers.parseEther("10")
+        );
+        const receipt = await tx.wait();
+        
+        // The transaction should not revert - if it doesn't revert, the return statement exists
+        // The mutant would revert at the end due to missing return
+        expect(receipt.status).to.equal(1);
+        
+        // Verify the actual transfer happened (original behavior)
+        expect(await token.balanceOf(addr1.address)).to.equal(ethers.parseEther("10"));
+        expect(await token.balanceOf(addr2.address)).to.equal(ethers.parseEther("10"));
+    });
+});
+```

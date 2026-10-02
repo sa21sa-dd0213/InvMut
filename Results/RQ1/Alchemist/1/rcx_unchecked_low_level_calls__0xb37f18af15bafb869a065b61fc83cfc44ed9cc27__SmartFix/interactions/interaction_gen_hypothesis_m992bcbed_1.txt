@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract SimpleWallet:
+        Contract Code: pragma solidity ^0.8.0; contract SimpleWallet { address public owner = msg.sender; uint public depositsCount; modifier onlyOwner { require(msg.sender == owner); _; } receive() external payable { require(((depositsCount + 1) >= depositsCount)); depositsCount++; } function withdrawAll() public onlyOwner { withdraw(address(this).balance); } function withdraw(uint _value) public onlyOwner { payable(msg.sender).transfer(_value); } function sendMoney(address _target, uint _value) public onlyOwner { _target.call{value: _value}(""); } }
+
+    Consider the following mutant of SimpleWallet:
+        Mutant m992bcbed of function receive replaces + with *
+        Mutant Diff: ---|         require(((depositsCount + 1) >= depositsCount)); +++|         require(((depositsCount * 1) >= depositsCount));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original `require` statement `require(((depositsCount + 1) >= depositsCount))` is a safety check that will always pass (since adding 1 to a non-negative integer always results in a number greater than or equal to the original). The mutant changes `+` to `*`, so the check becomes `require(((depositsCount * 1) >= depositsCount))`, which is trivially always true as well, so the mutant does not introduce a logical failure here. However, the deeper issue is that the original expression is guarding against integer overflow (in older Solidity versions before 0.8), but with `*` the semantics change slightly: `depositsCount * 1` is always equal to `depositsCount`, so the `>=` check is always true, whereas `depositsCount + 1` could overflow in theory. In Solidity 0.8+, arithmetic overflow is automatically checked, so neither version would actually overflow. The mutant is therefore functionally equivalent in practice—but a test case that relies on the **exact arithmetic operation** being addition can detect it.
+
+**Hypothesis**: The mutant replaces the addition operation with multiplication in the require statement. Therefore, a test case that sends Ether to the contract in a transaction where `depositsCount` is at its maximum value (e.g., `type(uint).max`) and expects the transaction to revert due to arithmetic overflow in the original `+` operation should pass on the original (revert) but fail on the mutant (where multiplication does not overflow), thus killing the mutant.

@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0005",
+ "property_summary": "Call transfer to send v=100 tokens from msg.sender to two addresses; reference sends 100 per call, mutant sends 0; after the call, the balance of msg.sender in the token contract (simulated by a dummy contract) is unchanged in the reference but the bug reduces it by 0 (same) \u2014 in fact the divergence is that the reference makes transfers and the bug does not; we use a simple ERC2222-like contract as caddress and check the balance of from after the transfer is 0 in reference (since balance decreases) versus unchanged in bug.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Reduce the value v to zero for each call.",
+ "mutated_unit_code": "function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){\nrequire(_tos.length > 0);\nbytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\nfor(uint i=0;i<_tos.length;i++){\n\n{ (bool _s,) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],0)); require(_s); }\n}\nreturn true;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airdrop} from \"../src/airdrop.sol\";\n\ncontract DummyToken {\n    mapping(address => uint256) public balanceOf;\n    function transferFrom(address from, address to, uint256 amount) public returns (bool) {\n        require(balanceOf[from] >= amount, \"insufficient\");\n        balanceOf[from] -= amount;\n        balanceOf[to] += amount;\n        return true;\n    }\n    function mint(address to, uint256 amount) public {\n        balanceOf[to] += amount;\n    }\n}\n\ncontract InvMutTest is Test {\n    airdrop c;\n    DummyToken token;\n    function setUp() public {\n        c = new airdrop();\n        token = new DummyToken();\n        token.mint(address(this), 1000);\n    }\n    function testRegression_property() public {\n        address[] memory tos = new address[](2);\n        tos[0] = address(0x1);\n        tos[1] = address(0x2);\n        uint256 v = 100;\n        c.transfer(address(this), address(token), tos, v);\n        uint256 bal = token.balanceOf(address(this));\n        assertTrue(bal == 800);\n    }\n}\n"
+}

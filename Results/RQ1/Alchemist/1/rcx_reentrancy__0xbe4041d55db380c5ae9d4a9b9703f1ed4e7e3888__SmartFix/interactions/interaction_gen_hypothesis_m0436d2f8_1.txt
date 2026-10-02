@@ -1,0 +1,22 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract MONEY_BOX:
+        Contract Code: pragma solidity ^0.8.0; contract MONEY_BOX { struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; uint public MinSum; Log LogFile; bool intitalized; function SetMinSum(uint _val) public { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log) public { if(intitalized)revert(); LogFile = Log(_log); } function Initialized() public { intitalized = true; } function Put(uint _lockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; if(block.timestamp+_lockTime>acc.unlockTime)acc.unlockTime=block.timestamp+_lockTime; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+
+    Consider the following mutant of MONEY_BOX:
+        Mutant m0436d2f8 of function Put replaces block.timestamp+_lockTime>acc.unlockTime with true
+        Mutant Diff: ---|         if(block.timestamp+_lockTime>acc.unlockTime)acc.unlockTime=block.timestamp+_lockTime; +++|         if(true)acc.unlockTime=block.timestamp+_lockTime;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original `Put` function only updates `acc.unlockTime` if the new proposed unlock time (`block.timestamp + _lockTime`) is greater than the current `acc.unlockTime`. The mutant changes this condition to `true`, meaning the unlock time is **always** overwritten, even when the new time is earlier than the current unlock time.
+
+**Hypothesis:**  
+A test case that first calls `Put` with a long lock time (e.g., 1000 seconds) to set a distant unlock time, then calls `Put` again with a lock time of zero, and finally attempts to call `Collect` before the original long lock time expires but after the zero‑lock‑time call should succeed on the original (because the original unlock time is still far in the future, blocking the collect) but fail on the mutant (because the mutant resets the unlock time to the current timestamp, allowing the collect to proceed prematurely).

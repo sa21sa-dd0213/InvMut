@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "For all callers a and any key k, calling XBornID() on the correct contract only ever sets the owner's balance to totalDistributed (i.e. balances(owner) == totalDistributed and balances(a) == previous balances(a)), whereas the mutant allows a non-owner caller to set their own balance to totalDistributed, so there exists a caller a for which balances(a) == totalDistributed after calling XBornID(), violating the invariant that only owner gains totalDistributed.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replaced owner-only require check with no check and assign totalDistributed to caller (msg.sender) instead of owner, so calling XBornID sets balances[msg.sender] = totalDistributed rather than balances[owner].",
+ "mutated_unit_code": "function XBornID() public {\n    // allow any caller to initialize their balance to current totalDistributed\n    balances[msg.sender] = totalDistributed;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {XBORNID} from \"../src/XBORNID.sol\";\n\ncontract InvMutTest is Test {\n    XBORNID c;\n    function setUp() public { c = new XBORNID(); }\n\n    function testFuzz_property(address actor) public {\n        vm.assume(actor != address(0));\n\n        uint256 ownerBalBefore = c.balanceOf(address(this));\n\n        vm.deal(actor, 1 ether);\n\n        vm.prank(actor);\n        bool ok;\n        try c.XBornID() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        uint256 callerBal = c.balanceOf(actor);\n        uint256 totalDist = c.totalDistributed();\n\n        assertTrue(callerBal != totalDist);\n    }\n}\n"
+}

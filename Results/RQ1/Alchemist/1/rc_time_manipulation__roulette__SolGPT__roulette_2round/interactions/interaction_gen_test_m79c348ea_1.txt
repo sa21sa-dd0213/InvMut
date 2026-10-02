@@ -1,0 +1,70 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m79c348ea of Roulette.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Roulette.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Roulette:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Roulette reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Roulette by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Roulette"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant m79c348ea detection test", function () {
+  it("should detect mutant by exploiting block.prevrandao vs block.timestamp difference", async function () {
+    const [owner, caller] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // First call: set pastBlockTime to current timestamp (original) or prevrandao (mutant)
+    // We need to make the second call in a block where block.timestamp > pastBlockTime
+    // but block.prevrandao <= stored prevrandao (if mutant)
+    
+    // First call - send 10 ether
+    const tx1 = await caller.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    await tx1.wait();
+
+    // Mine a new block with a specific timestamp and prevrandao
+    // We want timestamp to increase but prevrandao to stay the same or decrease
+    const block1 = await ethers.provider.getBlock("latest");
+    const prevrandaoValue = block1!.prevrandao;
+    
+    // Mine a block with higher timestamp but same prevrandao
+    await ethers.provider.send("evm_setNextBlockTimestamp", [Number(block1!.timestamp) + 100]);
+    // Keep prevrandao unchanged by not mining a new block that would change it
+    
+    // Second call - should succeed with original (timestamp check passes)
+    // but fail with mutant (prevrandao check fails because same value)
+    const tx2 = caller.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+
+    // If mutant, the require(block.timestamp > pastBlockTime) passes
+    // but pastBlockTime = block.prevrandao, so stored value equals current prevrandao
+    // Next call compares block.timestamp > prevrandao_value which is true
+    // But mutant stores prevrandao again, so comparison is block.prevrandao > block.prevrandao -> false
+    // Actually the check is block.timestamp > pastBlockTime, not prevrandao comparison
+    // Wait - the mutant only changes the ASSIGNMENT, not the comparison
+    // So the comparison is still block.timestamp > pastBlockTime
+    // But pastBlockTime now stores prevrandao (a huge number typically)
+    // So block.timestamp > prevrandao will likely be false
+    
+    await expect(tx2).to.be.reverted;
+  });
+});
+```

@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0004",
+ "property_summary": "For any recipient address that has not yet claimed the bonus, calling getFirstWithdrawalBonus(recipient) on the correct contract always results in claimedBonus[recipient] becoming true (the function completes successfully), while the mutant that adds 0 can still complete but will make the withdrawn amount (and thus post-call rewardsForA) different — specifically, there exist recipients for which the mutant causes the call to revert due to sending 0 value to a receiver that rejects zero-value calls (the reference sends 100 wei and succeeds).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change the increment to not add the bonus (set to add 0 instead of 100), so rewardsForA and thus funds withdrawn differ after the call.",
+ "mutated_unit_code": "function getFirstWithdrawalBonus(address recipient) public {\n        require(!claimedBonus[recipient]);\n\n        rewardsForA[recipient] += 0;\n\n        withdrawReward(recipient);\n        claimedBonus[recipient] = true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrancy_bonus} from \"../src/Reentrancy_bonus.sol\";\n\ncontract InvMutTest is Test {\n    Reentrancy_bonus c;\n    function setUp() public { c = new Reentrancy_bonus(); }\n\n    function testFuzz_property(address recipient) public {\n        vm.assume(recipient != address(0));\n\n        Reverter r = new Reverter();\n\n        address target = (uint160(recipient) & 1 == 0) ? address(r) : recipient;\n\n        vm.deal(address(c), 100);\n\n        bool ok;\n        try c.getFirstWithdrawalBonus(target) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok);\n    }\n}\n\ncontract Reverter {\n    receive() external payable {\n        if (msg.value == 0) revert();\n    }\n}\n"
+}

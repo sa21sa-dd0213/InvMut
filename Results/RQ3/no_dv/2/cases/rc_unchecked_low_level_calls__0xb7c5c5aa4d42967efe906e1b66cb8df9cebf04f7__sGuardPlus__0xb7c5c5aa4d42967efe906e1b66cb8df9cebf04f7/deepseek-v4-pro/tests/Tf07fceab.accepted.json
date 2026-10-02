@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tf07fceab",
+ "property_summary": "For any caller with a positive balance, a successful withdraw call must reduce the caller's balance to zero and leave the contract's balance intact except for the paid-out amount; the mutant breaks this by resetting the balance without actually transferring funds, so after a successful withdraw address(c).balance remains unchanged instead of decreasing by the caller's pre-withdraw balance.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace 'msg.sender.call{value: balances[msg.sender]}(\"\")' with a call that sends 0 ether, so the balance is never paid out.",
+ "mutated_unit_code": "function withdraw () public __lock_modifier0 {\n(bool __sent_result100, ) = msg.sender.call{value: 0}(\"\");\nrequire(__sent_result100);\nbalances[msg.sender]=0;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {keepMyEther} from \"../src/keepMyEther.sol\";\n\ncontract InvMutTest is Test {\n    keepMyEther c;\n    function setUp() public { c = new keepMyEther(); }\n\n    function testFuzz_property(uint256 depositAmount, address caller) public {\n        vm.assume(depositAmount > 0 && depositAmount <= type(uint64).max);\n        vm.assume(caller != address(0) && caller != address(c) && caller.code.length == 0);\n\n        vm.deal(caller, depositAmount);\n        vm.prank(caller);\n        (bool sent,) = address(c).call{value: depositAmount}(\"\");\n        require(sent, \"deposit failed\");\n\n        uint256 balBefore = address(c).balance;\n        uint256 callerBalBefore = c.balances(caller);\n        require(callerBalBefore > 0, \"caller must have positive balance\");\n\n        uint256 gasBefore = gasleft();\n        vm.prank(caller);\n        (bool success, ) = address(c).call(abi.encodeWithSelector(keepMyEther.withdraw.selector));\n        uint256 gasAfter = gasleft();\n        uint256 gasUsed = gasBefore - gasAfter;\n\n        uint256 balAfter = address(c).balance;\n        if (success) {\n            assertTrue(balBefore > balAfter, \"successful withdraw must reduce contract balance\");\n        }\n    }\n}\n"
+}

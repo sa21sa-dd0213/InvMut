@@ -1,0 +1,70 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("W_WALLET mutant m5998c066 - block.prevrandao vs block.timestamp", function () {   it("should kill the mutant by proving the condition uses block.prevrandao instead of block.timestamp", async function () {     const [owner, addr1] = await ethers.getSigners();     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();      const Factory = await ethers.getContractFactory("W_WALLET");     const instance = await Factory.deploy(await log.getAddress());     await instance.waitForDeployment();      // Set MinSum to 0 to simplify test (bypass minimum balance requirement)     await instance.setMinSum(0);      // Deposit 1 ether with an unlock time far in the future     const futureTime = Math.floor(Date.now() / 1000) + 1000000;     const depositTx = await instance.connect(addr1).Put(futureTime, { value: ethers.parseEther("1") });     await depositTx.wait();      // Now attempt to collect immediately (block.timestamp < unlockTime)     // In original: should fail because block.timestamp <= unlockTime     // In mutant: may succeed if block.prevrandao happens to be > unlockTime (unlikely but possible)     // To reliably kill the mutant, we need a case where original passes but mutant fails.     // So we first wait until unlockTime passes, then collect.     await ethers.provider.send("evm_setNextBlockTimestamp", [futureTime + 1]);     await ethers.provider.send("evm_mine", []);      // Now block.timestamp > unlockTime, so original should succeed     const collectTx = await instance.connect(addr1).Collect(ethers.parseEther("0.5"));     await collectTx.wait();      // After successful collect, balance should be reduced     const holder = await instance.Acc(addr1.address);     expect(holder.balance).to.equal(ethers.parseEther("0.5"));      // Now test the mutant: deploy a fresh instance and do the same     // But we cannot deploy the actual mutant, so we simulate the bug by checking     // that the condition used block.prevrandao would fail.     // Actually, we just verify the original behavior works correctly.     // To kill the mutant, we need to show that if block.prevrandao were used,     // the collect would revert. We'll use evm_setPrevRandao to set a low value.     // Deploy another instance for the mutant simulation     const instance2 = await Factory.deploy(await log.getAddress());     await instance2.waitForDeployment();     await instance2.setMinSum(0);      const depositTx2 = await instance2.connect(addr1).Put(futureTime, { value: ethers.parseEther("1") });     await depositTx2.wait();      // Set block.prevrandao to a value less than unlockTime to simulate mutant failure     await ethers.provider.send("hardhat_setPrevRandao", ["0x" + (futureTime - 100).toString(16)]);      // Now collect should fail in the mutant (because block.prevrandao < unlockTime)     // In original, block.timestamp is still > unlockTime so it would succeed     await expect(       instance2.connect(addr1).Collect(ethers.parseEther("0.5"))     ).to.be.reverted;      // This proves the mutant is killed because the original would succeed here.   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } } contract W_WALLET is sGuard { function Put(uint _unlockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); LogFile.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("W_WALLET mutant m5998c066 - block.prevrandao vs block.timestamp", function () {
+  it("should kill the mutant by proving the condition uses block.prevrandao instead of block.timestamp", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    const Factory = await ethers.getContractFactory("W_WALLET");
+    const instance = await Factory.deploy(await log.getAddress());
+    await instance.waitForDeployment();
+
+    // Set MinSum to 0 to simplify test (bypass minimum balance requirement)
+    await instance.setMinSum(0);
+
+    // Deposit 1 ether with an unlock time far in the future
+    const futureTime = Math.floor(Date.now() / 1000) + 1000000;
+    const depositTx = await instance.connect(addr1).Put(futureTime, { value: ethers.parseEther("1") });
+    await depositTx.wait();
+
+    // Wait until unlockTime passes
+    await ethers.provider.send("evm_setNextBlockTimestamp", [futureTime + 1]);
+    await ethers.provider.send("evm_mine", []);
+
+    // Now block.timestamp > unlockTime, so original should succeed
+    const collectTx = await instance.connect(addr1).Collect(ethers.parseEther("0.5"));
+    await collectTx.wait();
+
+    // After successful collect, balance should be reduced
+    const holder = await instance.Acc(addr1.address);
+    expect(holder.balance).to.equal(ethers.parseEther("0.5"));
+
+    // Now test the mutant: deploy a fresh instance and do the same
+    const instance2 = await Factory.deploy(await log.getAddress());
+    await instance2.waitForDeployment();
+    await instance2.setMinSum(0);
+
+    const depositTx2 = await instance2.connect(addr1).Put(futureTime, { value: ethers.parseEther("1") });
+    await depositTx2.wait();
+
+    // Set block.prevrandao to a value less than unlockTime to simulate mutant failure
+    await ethers.provider.send("hardhat_setPrevRandao", ["0x" + (futureTime - 100).toString(16)]);
+
+    // Now collect should fail in the mutant (because block.prevrandao < unlockTime)
+    // In original, block.timestamp is still > unlockTime so it would succeed
+    await expect(
+      instance2.connect(addr1).Collect(ethers.parseEther("0.5"))
+    ).to.be.reverted;
+
+    // This proves the mutant is killed because the original would succeed here.
+  });
+});
+```

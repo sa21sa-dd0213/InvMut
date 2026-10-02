@@ -1,0 +1,39 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("BaseEscalationManager mutant mbdfa9920", function () {   it("should revert when non-optimisticAsserter calls requestPrice", async function () {     const [owner, unauthorizedCaller] = await ethers.getSigners();          // Deploy a mock optimistic asserter (we'll use a simple contract that doesn't have the function)     // Since BaseEscalationManager constructor requires an OptimisticAsserterInterface address,     // we need to deploy it with a valid address. We'll use owner's address as a placeholder     // but the test is about the modifier check, not the actual call.     const Factory = await ethers.getContractFactory("BaseEscalationManager");     const instance = await Factory.deploy(owner.address);     await instance.waitForDeployment();      // Attempt to call requestPrice from an unauthorized caller (not the optimisticAsserter)     // The original contract should revert due to onlyOptimisticAsserter modifier     await expect(       instance.connect(unauthorizedCaller).requestPrice(         ethers.encodeBytes32String("test-identifier"),         1234567890,         "0x"       )     ).to.be.revertedWith("Not the optimistic asserter");   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; interface IERC20 { event Transfer(address indexed from, address indexed to, uint256 value); event Approval(address indexed owner, address indexed spender, uint256 value); function totalSupply() external view returns (uint256); function balanceOf(address account) external view returns (uint256); function transfer(address to, uint256 amount) external returns (bool); function allowance(address owner, address spender) external view returns (uint256); function approve(address spender, uint256 amount) external returns (bool); function transferFrom(address from, address to, uint256 amount) external returns (bool); } interface OptimisticAsserterCallbackRecipientInterface { function assertionResolvedCallback(bytes32 assertionId, bool assertedTruthfully) external; function assertionDisputedCallback(bytes32 assertionId) external; } interface EscalationManagerInterface is OptimisticAsserterCallbackRecipientInterface { struct AssertionPolicy { bool blockAssertion; bool arbitrateViaEscalationManager; bool discardOracle; bool validateDisputers; } function getAssertionPolicy(bytes32 assertionId) external view returns (AssertionPolicy memory); function isDisputeAllowed(bytes32 assertionId, address disputeCaller) external view returns (bool); function getPrice( bytes32 identifier, uint256 time, bytes memory ancillaryData ) external returns (int256); function requestPrice( bytes32 identifier, uint256 time, bytes memory ancillaryData ) external; } interface OptimisticAsserterInterface { struct EscalationManagerSettings { bool arbitrateViaEscalationManager; bool discardOracle; bool validateDisputers; address assertingCaller; address escalationManager; } struct Assertion { EscalationManagerSettings escalationManagerSettings; address asserter; uint64 assertionTime; bool settled; IERC20 currency; uint64 expirationTime; bool settlementResolution; bytes32 domainId; bytes32 identifier; uint256 bond; address callbackRecipient; address disputer; } struct WhitelistedCurrency { bool isWhitelisted; uint256 finalFee; } function defaultIdentifier() external view returns (bytes32); function getAssertion(bytes32 assertionId) external view returns (Assertion memory); function assertTruthWithDefaults(bytes memory claim, address asserter) external returns (bytes32); function assertTruth( bytes memory claim, address asserter, address callbackRecipient, address escalationManager, uint64 liveness, IERC20 currency, uint256 bond, bytes32 identifier, bytes32 domainId ) external returns (bytes32); function getAssertionResult(bytes32 assertionId) external view returns (bool); function getMinimumBond(address currency) external view returns (uint256); event AssertionMade( bytes32 indexed assertionId, bytes32 domainId, bytes claim, address indexed asserter, address callbackRecipient, address indexed escalationManager, address caller, uint64 expirationTime, IERC20 currency, uint256 bond ); event AssertionDisputed(bytes32 indexed assertionId, address indexed caller, address indexed disputer); event AssertionSettled( bytes32 indexed assertionId, address indexed bondRecipient, bool disputed, bool settlementResolution, address settleCaller ); event AdminPropertiesSet(IERC20 defaultCurrency, uint64 defaultLiveness, uint256 burnedBondPercentage); } contract BaseEscalationManager is EscalationManagerInterface { OptimisticAsserterInterface public immutable optimisticAsserter; event PriceRequestAdded(bytes32 indexed identifier, uint256 time, bytes ancillaryData); modifier onlyOptimisticAsserter() { require(msg.sender == address(optimisticAsserter), "Not the optimistic asserter"); _; } constructor(address _optimisticAsserter) { optimisticAsserter = OptimisticAsserterInterface(_optimisticAsserter); } function getAssertionPolicy(bytes32 assertionId) public view virtual returns (AssertionPolicy memory) { return AssertionPolicy({ blockAssertion: false, arbitrateViaEscalationManager: false, discardOracle: false, validateDisputers: false }); } function isDisputeAllowed(bytes32 assertionId, address disputeCaller) public view virtual returns (bool) { return true; } function getPrice( bytes32 identifier, uint256 time, bytes memory ancillaryData ) public view virtual returns (int256) {} function requestPrice( bytes32 identifier, uint256 time, bytes memory ancillaryData ) public virtual onlyOptimisticAsserter { emit PriceRequestAdded(identifier, time, ancillaryData); } function assertionResolvedCallback(bytes32 assertionId, bool assertedTruthfully) public virtual onlyOptimisticAsserter {} function assertionDisputedCallback(bytes32 assertionId) public virtual onlyOptimisticAsserter {} }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("BaseEscalationManager mutant mbdfa9920", function () {
+  it("should revert when non-optimisticAsserter calls requestPrice", async function () {
+    const [owner, unauthorizedCaller] = await ethers.getSigners();
+
+    // Deploy the BaseEscalationManager contract with a valid address
+    const Factory = await ethers.getContractFactory("BaseEscalationManager");
+    const instance = await Factory.deploy(owner.address);
+    await instance.waitForDeployment();
+
+    // Attempt to call requestPrice from an unauthorized caller (not the optimisticAsserter)
+    // The contract should revert due to onlyOptimisticAsserter modifier
+    await expect(
+      instance.connect(unauthorizedCaller).requestPrice(
+        ethers.encodeBytes32String("test-identifier"),
+        1234567890,
+        "0x"
+      )
+    ).to.be.revertedWith("Not the optimistic asserter");
+  });
+});
+```

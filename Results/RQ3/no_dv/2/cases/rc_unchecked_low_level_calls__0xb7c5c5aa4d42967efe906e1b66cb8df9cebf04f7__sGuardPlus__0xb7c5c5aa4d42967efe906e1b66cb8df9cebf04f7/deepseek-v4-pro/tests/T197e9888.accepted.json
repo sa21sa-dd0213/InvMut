@@ -1,0 +1,12 @@
+{
+ "difference_id": "T197e9888",
+ "property_summary": "After any sequence of withdrawals, the sum of all balances in mapping `balances` equals the contract's Ether balance, which is always true in the locked reference but violated in the reentrant mutant where funds can be drained without zeroing balances.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Remove the require guard in the modifier, allowing reentrant withdrawals that can drain funds before resetting balances.",
+ "mutated_unit_code": "modifier __lock_modifier0() {\n__lock_modifier0_lock = true;\n_;\n__lock_modifier0_lock = false;\n\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {keepMyEther} from \"../src/keepMyEther.sol\";\n\ncontract InvMutTest is Test {\n    keepMyEther c;\n    function setUp() public { c = new keepMyEther(); }\n\n    function testFuzz_property(uint256 amount, address actor) public {\n        vm.assume(actor != address(0) && actor != address(c));\n        amount = bound(amount, 1, 100 ether);\n\n        Attacker attacker = new Attacker(c);\n\n        vm.deal(actor, amount);\n        vm.prank(actor);\n        (bool ok,) = address(c).call{value: amount}(\"\");\n        require(ok, \"deposit failed\");\n\n        uint256 sumBefore = c.balances(actor) + c.balances(address(attacker));\n\n        vm.deal(address(attacker), amount);\n        vm.prank(address(attacker));\n        (bool ok2,) = address(c).call{value: amount}(\"\");\n        require(ok2, \"attacker deposit failed\");\n\n        vm.prank(address(attacker));\n        try c.withdraw() { } catch { }\n\n        uint256 sumAfter = c.balances(actor) + c.balances(address(attacker));\n\n        assertTrue(sumAfter == address(c).balance);\n    }\n}\n\ncontract Attacker {\n    keepMyEther public target;\n    constructor(keepMyEther _target) { target = _target; }\n\n    receive() external payable {\n        try target.withdraw() { } catch { }\n    }\n}\n"
+}

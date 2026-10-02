@@ -1,0 +1,65 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EtherLotto mutant detection - m88f20210", function () {   it("should detect mutant that underfunds pot by 1 wei", async function () {     const [owner, player] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("EtherLotto");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const TICKET_AMOUNT = 10n;     const FEE_AMOUNT = 1n;      // Get initial balances     const initialBankBalance = await ethers.provider.getBalance(owner.address);     const initialPlayerBalance = await ethers.provider.getBalance(player.address);      // Player plays exactly once     const tx = await instance.connect(player).play({ value: TICKET_AMOUNT });     const receipt = await tx.wait();      // Calculate gas costs     const gasCost = receipt.gasUsed * receipt.gasPrice;      // Get final balances     const finalBankBalance = await ethers.provider.getBalance(owner.address);     const finalPlayerBalance = await ethers.provider.getBalance(player.address);      // The player sent 10 wei. In the original, pot becomes 10, then bank gets 1 fee, player gets 9.     // In the mutant, pot becomes 9, bank gets 1, player gets 8.     // Player net change should be: -10 (sent) + 9 (won) = -1 wei (plus gas) in original     // In mutant: -10 + 8 = -2 wei (plus gas)     // Bank net change should be: +1 wei in original, +1 wei in mutant (fee still transferred)          // Check that the pot was reset to 0 after the game     expect(await instance.pot()).to.equal(0n);      // If the mutant is present, the bank balance will still increase by exactly 1 (fee)     // but the player will have lost an extra wei compared to expected     // The key assertion: the player should have received exactly 9 wei from the contract     // We can check by computing player's balance change excluding gas     const playerBalanceChange = finalPlayerBalance - initialPlayerBalance + gasCost;          // In original: player sent 10, received 9 → net -1 wei     // In mutant: player sent 10, received 8 → net -2 wei     // So if playerBalanceChange is -1n, it's original; if -2n, it's mutant     expect(playerBalanceChange).to.equal(-1n);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant detection - m88f20210", function () {
+  it("should detect mutant that underfunds pot by 1 wei", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = 10n;
+    const FEE_AMOUNT = 1n;
+
+    // Get initial balances
+    const initialBankBalance = await ethers.provider.getBalance(owner.address);
+    const initialPlayerBalance = await ethers.provider.getBalance(player.address);
+
+    // Player plays exactly once
+    const tx = await instance.connect(player).play({ value: TICKET_AMOUNT });
+    const receipt = await tx.wait();
+
+    // Calculate gas costs
+    const gasCost = receipt.gasUsed * receipt.gasPrice;
+
+    // Get final balances
+    const finalBankBalance = await ethers.provider.getBalance(owner.address);
+    const finalPlayerBalance = await ethers.provider.getBalance(player.address);
+
+    // The player sent 10 wei. In the original, pot becomes 10, then bank gets 1 fee, player gets 9.
+    // In the mutant, pot becomes 9, bank gets 1, player gets 8.
+    // Player net change should be: -10 (sent) + 9 (won) = -1 wei (plus gas) in original
+    // In mutant: -10 + 8 = -2 wei (plus gas)
+    // Bank net change should be: +1 wei in original, +1 wei in mutant (fee still transferred)
+    
+    // Check that the pot was reset to 0 after the game
+    expect(await instance.pot()).to.equal(0n);
+
+    // If the mutant is present, the bank balance will still increase by exactly 1 (fee)
+    // but the player will have lost an extra wei compared to expected
+    // The key assertion: the player should have received exactly 9 wei from the contract
+    // We can check by computing player's balance change excluding gas
+    const playerBalanceChange = finalPlayerBalance - initialPlayerBalance + gasCost;
+    
+    // In original: player sent 10, received 9 → net -1 wei
+    // In mutant: player sent 10, received 8 → net -2 wei
+    // So if playerBalanceChange is -1n, it's original; if -2n, it's mutant
+    expect(playerBalanceChange).to.equal(-1n);
+  });
+});
+```

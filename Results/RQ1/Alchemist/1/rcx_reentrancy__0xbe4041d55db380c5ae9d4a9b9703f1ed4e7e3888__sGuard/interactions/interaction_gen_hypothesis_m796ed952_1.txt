@@ -1,0 +1,28 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract MONEY_BOX:
+        Contract Code: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } } contract MONEY_BOX is sGuard { struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; uint public MinSum; Log LogFile; bool intitalized; function SetMinSum(uint _val)  public nonReentrant_ { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log)  public nonReentrant_ { if(intitalized)revert(); LogFile = Log(_log); } function Initialized()  public nonReentrant_ { intitalized = true; } function Put(uint _lockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); if(add_uint256(block.timestamp, _lockTime)>acc.unlockTime)acc.unlockTime=add_uint256(block.timestamp, _lockTime); LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); LogFile.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } } contract Log is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+
+    Consider the following mutant of MONEY_BOX:
+        Mutant m796ed952 of function Put replaces msg.value with msg.value+1
+        Mutant Diff: ---|         acc.balance = add_uint256(acc.balance, msg.value); +++|         acc.balance = add_uint256(acc.balance, msg.value+1);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes `msg.value` to `msg.value + 1` in the `Put` function, meaning the contract will record a balance increase one wei higher than what was actually sent.  
+
+A test case that should detect this:  
+- Send a specific amount of ether (e.g., 1 wei) to the `Put` function.  
+- Then call `Collect` with that same amount (1 wei).  
+- In the original contract, the balance would be exactly 1 wei and the collect would succeed.  
+- In the mutant, the recorded balance would be 2 wei, but the actual contract balance is only 1 wei, so when `Collect` tries to send 1 wei, it will succeed and the recorded balance will become 1 wei (2 - 1). The real balance is now 0, but the recorded balance is still 1, causing inconsistency.  
+- To kill the mutant, the test should check that after depositing exactly 1 wei, the contract's recorded balance for the user is 1 wei (not 2). This assertion will pass on the original and fail on the mutant.  
+
+"Hypothesis": The mutant adds 1 to `msg.value` when updating the balance. Therefore, a test case that deposits a precise amount (e.g., 1 wei) and then checks that the stored balance equals exactly that amount (and not the amount plus one) should kill the mutant.

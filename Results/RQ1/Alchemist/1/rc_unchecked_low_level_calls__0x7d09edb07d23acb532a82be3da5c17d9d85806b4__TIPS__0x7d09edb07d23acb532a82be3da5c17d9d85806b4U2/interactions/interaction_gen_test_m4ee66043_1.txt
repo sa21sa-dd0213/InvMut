@@ -1,0 +1,309 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m4ee66043 of PoCGame.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PoCGame.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PoCGame:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PoCGame reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PoCGame by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PoCGame"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PoCGame mutant detection - m4ee66043", function () {
+  it("should detect mutant by testing win condition with difficulty/2 vs difficulty-2", async function () {
+    const [owner, player] = await ethers.getSigners();
+    
+    // Deploy with whale address and bet limit
+    const betLimit = ethers.parseEther("1");
+    const Factory = await ethers.getContractFactory("PoCGame");
+    const instance = await Factory.deploy(owner.address, betLimit);
+    await instance.waitForDeployment();
+
+    // Open to public
+    await (await instance.OpenToThePublic()).wait();
+
+    // Set difficulty to 10
+    const difficulty = 10;
+    await (await instance.AdjustDifficulty(difficulty)).wait();
+
+    // Player wagers exact bet limit
+    await (await instance.connect(player).wager({ value: betLimit })).wait();
+
+    // Mine a block to advance block number (so timestamps[player] < block.number)
+    await ethers.provider.send("evm_mine", []);
+
+    // Get player's balance before play
+    const balanceBefore = await ethers.provider.getBalance(player.address);
+
+    // Calculate winning number for original contract: difficulty / 2 = 5
+    // The mutant expects difficulty - 2 = 8
+    // For difficulty=10, the original win condition is winningNumber == 5
+    // The player's winningNumber is deterministic: keccak256(blockhash(blockNumber), player) % 10 + 1
+    // We need to ensure the player gets winningNumber == 5
+    
+    // Since we can't control the hash, we deploy with a different difficulty where
+    // difficulty/2 != difficulty-2 to guarantee the mutant behaves differently
+    
+    // Let's use difficulty = 4 where:
+    // Original: win when winningNumber == 2
+    // Mutant: win when winningNumber == 2 (same! need different values)
+    
+    // Use difficulty = 6 where:
+    // Original: win when winningNumber == 3
+    // Mutant: win when winningNumber == 4
+    
+    // Re-deploy with better test parameters
+    const Factory2 = await ethers.getContractFactory("PoCGame");
+    const instance2 = await Factory2.deploy(owner.address, betLimit);
+    await instance2.waitForDeployment();
+    
+    await (await instance2.OpenToThePublic()).wait();
+    
+    // Set difficulty to 6
+    await (await instance2.AdjustDifficulty(6)).wait();
+    
+    // Player wagers
+    await (await instance2.connect(player).wager({ value: betLimit })).wait();
+    
+    // Mine block
+    await ethers.provider.send("evm_mine", []);
+    
+    // Get block number when player wagered
+    const blockNumber = await ethers.provider.getBlockNumber();
+    
+    // Calculate what winningNumber would be
+    const blockHash = (await ethers.provider.getBlock(blockNumber - 1)).hash;
+    const winningNumber = (BigInt(ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["bytes32", "address"], [blockHash, player.address]))) % 6n) + 1n;
+    
+    // Only run this test if winningNumber happens to be 3 (original win condition for difficulty=6)
+    // This test is probabilistic - we need to ensure the condition triggers
+    // Better approach: test both scenarios
+    
+    // Instead, let's use a deterministic approach:
+    // Deploy a new contract, play multiple times and verify behavior
+    
+    const Factory3 = await ethers.getContractFactory("PoCGame");
+    const instance3 = await Factory3.deploy(owner.address, betLimit);
+    await instance3.waitForDeployment();
+    
+    await (await instance3.OpenToThePublic()).wait();
+    await (await instance3.AdjustDifficulty(6)).wait();
+    
+    // Play multiple rounds to cover different winning numbers
+    for (let i = 0; i < 10; i++) {
+      const [tempPlayer] = await ethers.getSigners();
+      // Use different players each time
+      // Actually just use same player but wager again
+    }
+    
+    // Simpler deterministic test: check the payout logic directly
+    // For the original, when winningNumber == difficulty/2, payout happens
+    // For mutant, when winningNumber == difficulty-2, payout happens
+    
+    // Test: with difficulty=6, original wins on 3, mutant wins on 4
+    // We can verify by checking the contract's winnersPot() behavior
+    
+    // Player wagers
+    await (await instance3.connect(player).wager({ value: betLimit })).wait();
+    await ethers.provider.send("evm_mine", []);
+    
+    const balanceBeforePlay = await ethers.provider.getBalance(player.address);
+    
+    // Execute play - this may revert or succeed depending on winning number
+    // We catch the result
+    try {
+      const tx = await instance3.connect(player).play();
+      const receipt = await tx.wait();
+      
+      // If tx succeeded, check what happened
+      const balanceAfter = await ethers.provider.getBalance(player.address);
+      const winEvent = receipt.logs.find(log => {
+        try {
+          return instance3.interface.parseLog(log)?.name === "Win";
+        } catch {
+          return false;
+        }
+      });
+      
+      // For the original contract with difficulty=6:
+      // - winningNumber=3 triggers Win event and payout of half the balance
+      // - For the mutant, winningNumber=4 triggers Win event instead
+      
+      // We can't easily force the winning number, but we can check:
+      // If the player's winningNumber is 3, original would pay but mutant wouldn't
+      // If winningNumber is 4, mutant would pay but original wouldn't
+      
+      // This test is probabilistic - to make it deterministic we'd need to
+      // control the block hash, which isn't possible in testing
+      
+      // Alternative: check that the condition logic is different by comparing
+      // behavior with known difficulty values
+      
+      // For difficulty=6:
+      // - If winningNumber=3, original pays, mutant doesn't
+      // - If winningNumber=4, original doesn't pay, mutant does
+      
+      // We can verify by checking the contract balance after play
+      // In either case, the mutant will behave differently than the original
+      
+      // Since we can't predict winningNumber, we check that the event emitted
+      // corresponds to the mutant's logic, not the original's
+      
+      if (winEvent) {
+        const parsedLog = instance3.interface.parseLog(winEvent);
+        // Original would only emit Win when winningNumber == 3 (difficulty/2)
+        // Mutant emits Win when winningNumber == 4 (difficulty-2)
+        // We can't determine which logic was used from just the event
+      }
+      
+    } catch (error) {
+      // Play reverted - this could happen in both versions
+    }
+    
+    // Deterministic approach: verify the condition difference by checking
+    // that the win condition in the mutant differs from the original
+    
+    // For difficulty=6:
+    // Original: win when winningNumber == 3
+    // Mutant: win when winningNumber == 4
+    
+    // We can test this by deploying and checking which winningNumber causes payout
+    // But since we can't control the hash, we need a different strategy
+    
+    // Final approach: use difficulty=2 where:
+    // Original: win when winningNumber == 1 (difficulty/2 = 1)
+    // Mutant: win when winningNumber == 0 (difficulty-2 = 0)
+    // Since winningNumber is always >= 1 (mod difficulty + 1), mutant never wins!
+    
+    const Factory4 = await ethers.getContractFactory("PoCGame");
+    const instance4 = await Factory4.deploy(owner.address, betLimit);
+    await instance4.waitForDeployment();
+    
+    await (await instance4.OpenToThePublic()).wait();
+    await (await instance4.AdjustDifficulty(2)).wait();
+    
+    // Player wagers
+    await (await instance4.connect(player).wager({ value: betLimit })).wait();
+    await ethers.provider.send("evm_mine", []);
+    
+    const balanceBeforePlay2 = await ethers.provider.getBalance(player.address);
+    
+    // For difficulty=2, original wins when winningNumber=1 (always possible)
+    // Mutant never wins because winningNumber is 1 or 2, never 0
+    // If the original would pay out, the player's balance increases
+    // If mutant, player never wins
+    
+    try {
+      await (await instance4.connect(player).play()).wait();
+      const balanceAfterPlay = await ethers.provider.getBalance(player.address);
+      
+      // If balance changed, original logic triggered a win
+      // For the mutant, balance should never change from win
+      // This is the deterministic test!
+      
+      // Check if a win event was emitted
+      const filter = instance4.filters.Win();
+      const events = await instance4.queryFilter(filter, -1, "latest");
+      
+      // The key insight: for difficulty=2
+      // Original: winningNumber can be 1 or 2, wins when it's 1
+      // Mutant: winningNumber can be 1 or 2, wins when it's 0 (never!)
+      // So the mutant should NEVER emit a Win event
+      
+      // Since we can't know if the original would win (depends on hash),
+      // we check that the mutant would never win vs original sometimes wins
+      
+      // Actually, for difficulty=2, winningNumber is (hash % 2) + 1 = 1 or 2
+      // Original: win when == 1 (50% chance)
+      // Mutant: win when == 0 (0% chance)
+      
+      // So if we play multiple rounds with the same difficulty=2,
+      // the original would win ~50% of the time, mutant never wins
+      
+    } catch (error) {
+      // Play reverted - this shouldn't happen for valid plays
+    }
+    
+    // Most elegant deterministic test:
+    // For difficulty=1:
+    // Original: winningNumber = (hash % 1) + 1 = 1 always, win when == 0 (never!)
+    // Mutant: winningNumber = 1 always, win when == -1 (never!)
+    // Both never win - not useful
+    
+    // For difficulty=3:
+    // Original: winningNumber = 1,2,3; win when == 1 (floor(3/2)=1)
+    // Mutant: winningNumber = 1,2,3; win when == 1 (3-2=1)
+    // Same! Not useful
+    
+    // For difficulty=5:
+    // Original: win when == 2 (floor(5/2)=2)
+    // Mutant: win when == 3 (5-2=3)
+    // Different! But probabilistic
+    
+    // Given the constraints, the best test is to use difficulty=6 and
+    // verify that the contract behaves differently than expected
+    
+    // Actually, let's just verify the mutant changes the logic by checking
+    // that the condition is different for a specific difficulty value
+    
+    // For difficulty=6:
+    // Original condition: winningNumber == 3
+    // Mutant condition: winningNumber == 4
+    // These are different numbers, so the mutant IS different
+    
+    // The test should pass on original (winningNumber=3 triggers win)
+    // The test should fail on mutant (winningNumber=3 does NOT trigger win)
+    
+    // Since we can't control the hash, we accept the probabilistic nature
+    // and run the test with difficulty=6, checking that the result matches
+    // original behavior
+    
+    // Clean deterministic approach: deploy with difficulty=6
+    const Factory5 = await ethers.getContractFactory("PoCGame");
+    const instance5 = await Factory5.deploy(owner.address, betLimit);
+    await instance5.waitForDeployment();
+    
+    await (await instance5.OpenToThePublic()).wait();
+    await (await instance5.AdjustDifficulty(6)).wait();
+    
+    // Player wagers
+    await (await instance5.connect(player).wager({ value: betLimit })).wait();
+    const wagerBlock = await ethers.provider.getBlock("latest");
+    await ethers.provider.send("evm_mine", []);
+    
+    // Get the actual winning number
+    const blockHash2 = wagerBlock.hash;
+    const actualWinningNumber = (BigInt(ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["bytes32", "address"], [blockHash2, player.address]))) % 6n) + 1n;
+    
+    const balanceBeforePlay3 = await ethers.provider.getBalance(player.address);
+    
+    try {
+      const tx = await instance5.connect(player).play();
+      const receipt = await tx.wait();
+      
+      const balanceAfterPlay3 = await ethers.provider.getBalance(player.address);
+      
+      // Check if win event was emitted
+      const winEvents = receipt.logs.filter(log => {
+        try {
+          return instance5.interface.parseLog(log)?.name === "Win";
+        } catch {
+          return false;
+        }
+      });
+      
+      if (actualWinningNumber === 3n) {
+        // Original: should win (winningNumber == difficulty/2 == 3)
+        // Mutant: should NOT win (winningNumber != difficulty-2 == 4)
+        expect(winEvents.length).to.equal(1, "Original would win, mutant should not

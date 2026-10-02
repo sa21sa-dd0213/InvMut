@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Roulette:
+        Contract Code: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+
+    Consider the following mutant of Roulette:
+        Mutant m79c348ea of function fallback replaces block.timestamp with block.prevrandao
+        Mutant Diff: ---|         pastBlockTime = block.timestamp; +++|         pastBlockTime = block.prevrandao;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant replaces `block.timestamp` with `block.prevrandao` when setting the `pastBlockTime` state variable. In the original contract, `pastBlockTime` is used to enforce that each new call must occur at a later timestamp than the previous call. By using `block.prevrandao` (a randomness value that does not increase monotonically with time), this time-ordering check can be bypassed or become unpredictable.  
+
+**Hypothesis:** A test case that submits two valid transactions in quick succession (within the same block or with the same timestamp) should pass on the original contract because the second transaction would revert due to the timestamp not being greater than the previous one. However, on the mutant, the second transaction would not revert (since `block.prevrandao` can be equal or unrelated to the previous value), thus the test would detect the mutant by failing to see the expected revert.

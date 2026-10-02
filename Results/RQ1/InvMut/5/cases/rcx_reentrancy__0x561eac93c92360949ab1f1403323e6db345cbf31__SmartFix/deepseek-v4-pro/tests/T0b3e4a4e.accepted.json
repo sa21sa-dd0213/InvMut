@@ -1,0 +1,12 @@
+{
+ "difference_id": "T0b3e4a4e",
+ "property_summary": "After any successful Collect, the caller's mapped balance must decrease by the exact amount collected; the bug skips the deduction, so the balance remains unchanged.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Remove the balance deduction so Collect sends funds without reducing the caller's balance.",
+ "mutated_unit_code": "    function Collect(uint _am)\n    public\n    payable\n    {\n        if(balances[msg.sender]>=MinSum && balances[msg.sender]>=_am)\n        {\n\n            (bool _veri_ok,) = msg.sender.call{value: _am}(\"\");\n            if(_veri_ok)\n            {\n\n                Log.AddMessage(msg.sender,_am,\"Collect\");\n            } else {revert (); }\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {BANK_SAFE} from \"../src/BANK_SAFE.sol\";\n\ncontract InvMutTest is Test {\n    BANK_SAFE c;\n    function setUp() public {\n        c = new BANK_SAFE();\n        c.SetMinSum(0);\n        c.SetLogFile(address(new HelperLog()));\n        c.Initialized();\n    }\n\n    function testFuzz_property(uint256 depositAmt, uint256 collectAmt) public {\n        vm.assume(depositAmt > 0);\n        vm.assume(collectAmt <= depositAmt);\n\n        address actor = address(0x4242);\n        vm.deal(actor, depositAmt);\n\n        vm.prank(actor);\n        c.Deposit{value: depositAmt}();\n\n        uint256 balBefore = c.balances(actor);\n\n        vm.prank(actor);\n        c.Collect(collectAmt);\n\n        assertEq(c.balances(actor), balBefore - collectAmt);\n    }\n}\n\ncontract HelperLog {\n    function AddMessage(address, uint, string memory) external {}\n}\n"
+}

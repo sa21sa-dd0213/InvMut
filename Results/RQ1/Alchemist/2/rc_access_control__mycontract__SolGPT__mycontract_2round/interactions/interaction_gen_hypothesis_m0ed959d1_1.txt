@@ -1,0 +1,24 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract MyContract:
+        Contract Code: pragma solidity ^0.8.0; contract MyContract { address owner; constructor() public { owner = payable(msg.sender); } function sendTo(address receiver, uint amount) public { require(msg.sender == owner); require(receiver != address(0)); require(amount > 0); payable(receiver).transfer(amount); } }
+
+    Consider the following mutant of MyContract:
+        Mutant m0ed959d1 of function sendTo replaces != with ==
+        Mutant Diff: ---|         require(receiver != address(0)); +++|         require(receiver == address(0));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the require statement from checking that the receiver is **not** the zero address (`!=`) to checking that the receiver **is** the zero address (`==`). 
+
+In the original contract, calling `sendTo` with `receiver = address(0)` will revert because the condition `receiver != address(0)` is false. In the mutant, calling `sendTo` with `receiver = address(0)` will pass the require check and proceed to execute the transfer, which will revert at the `transfer` call itself (since sending to the zero address is invalid), but the behavior differs: the revert reason changes and the require check no longer prevents the execution.
+
+**Hypothesis:**  
+A test case that calls `sendTo` from the owner with `receiver = address(0)` and a valid `amount`, and then asserts that the transaction reverts with the specific reason "receiver is zero address" (or simply that the require statement at that line causes the revert), should pass on the original but fail on the mutant because the mutant will revert at a different point (the `transfer` call) instead of at the require statement.

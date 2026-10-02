@@ -1,0 +1,12 @@
+{
+ "difference_id": "T0bf6bf19",
+ "property_summary": "After a successful fallback call triggers a transfer (block.number % 15 == 0), the caller's balance must increase by the contract's prior balance; the bug sends to a fixed address instead, violating this for the caller.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replace the transfer recipient from msg.sender to a constant address to change who receives the funds.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        if(block.number % 15 == 0) {\n            payable(address(0x123)).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 blockNumber, uint256 warpTime, uint256 callerBalance) public {\n        blockNumber = bound(blockNumber, 1, type(uint256).max - 1);\n        vm.roll(blockNumber);\n        warpTime = bound(warpTime, 1, type(uint256).max - 1);\n        vm.warp(warpTime);\n        callerBalance = bound(callerBalance, 10 ether, type(uint256).max - 1);\n        address caller = makeAddr(\"caller\");\n        vm.deal(caller, callerBalance);\n        if (blockNumber % 15 != 0) {\n            blockNumber = blockNumber - (blockNumber % 15);\n            vm.roll(blockNumber);\n        }\n        uint256 callerBefore = caller.balance;\n        uint256 contractBefore = address(c).balance;\n        vm.prank(caller);\n        (bool ok, ) = address(c).call{value: 10 ether}(\"\");\n        require(ok, \"fallback reverted\");\n        assertTrue(caller.balance == callerBefore + contractBefore);\n    }\n}"
+}

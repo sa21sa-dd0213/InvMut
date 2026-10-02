@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tda6ce9ca",
+ "property_summary": "After a call to fallback with 10 ether and strictly increasing timestamp, the contract's balance after the call is zero if and only if block.number is divisible by 15; the mutant instead zeroes the balance when block.number is not divisible by 15.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replace 'if(block.number % 15 == 0)' with 'if(block.number % 15 != 0)'",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        if(block.number % 15 != 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 blockNumber, uint256 warpTime) public {\n        vm.assume(blockNumber > 0);\n        vm.assume(warpTime > 0);\n        vm.roll(blockNumber);\n        vm.warp(warpTime);\n        address sender = address(0x1337);\n        vm.deal(sender, 10 ether);\n        vm.prank(sender);\n        (bool success,) = address(c).call{value: 10 ether}(\"\");\n        require(success, \"call failed\");\n\n        bool isDivisible = (blockNumber % 15 == 0);\n        bool balanceIsZero = (address(c).balance == 0);\n        assertTrue(balanceIsZero == isDivisible);\n    }\n}"
+}

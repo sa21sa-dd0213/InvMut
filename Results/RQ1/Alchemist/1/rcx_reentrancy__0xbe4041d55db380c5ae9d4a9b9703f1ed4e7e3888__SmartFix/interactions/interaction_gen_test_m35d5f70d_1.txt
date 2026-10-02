@@ -1,0 +1,63 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m35d5f70d of MONEY_BOX.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test MONEY_BOX.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for MONEY_BOX:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("MONEY_BOX reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy MONEY_BOX by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("MONEY_BOX"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("MONEY_BOX mutant detection test", function () {
+  it("should detect mutant m35d5f70d where Collect condition is replaced with false", async function () {
+    const [owner, user] = await ethers.getSigners();
+    
+    // Deploy Log contract first (required by MONEY_BOX)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy MONEY_BOX with Log address
+    const MoneyBoxFactory = await ethers.getContractFactory("MONEY_BOX");
+    const moneyBox = await MoneyBoxFactory.deploy();
+    await moneyBox.waitForDeployment();
+    
+    // Setup: Set MinSum, set LogFile, initialize
+    await (await moneyBox.SetMinSum(ethers.parseEther("0.1"))).wait();
+    await (await moneyBox.SetLogFile(log.target)).wait();
+    await (await moneyBox.Initialized()).wait();
+    
+    // User deposits 1 ETH with 1 second lock time
+    const depositAmount = ethers.parseEther("1");
+    await (await moneyBox.connect(user).Put(1, { value: depositAmount })).wait();
+    
+    // Wait for lock time to expire
+    await ethers.provider.send("evm_increaseTime", [2]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // Attempt to collect 0.5 ETH (valid: balance >= MinSum && balance >= _am && time > unlockTime)
+    const collectAmount = ethers.parseEther("0.5");
+    
+    // On original: should succeed; on mutant: will revert due to false condition
+    await expect(
+      moneyBox.connect(user).Collect(collectAmount)
+    ).to.be.reverted;
+    
+    // Verify balance unchanged (mutant prevents withdrawal)
+    const holder = await moneyBox.Acc(user.address);
+    expect(holder.balance).to.equal(depositAmount);
+  });
+});
+```

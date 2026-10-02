@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "Call transfer with two recipients, v = [1, 0]; the reference processes both (last token transfer succeeds), the bug skips the last address (initial token amount never transferred, so after the call token count is 1 vs 0).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Replace the for loop condition from i<_tos.length to i<_tos.length-1, causing the last element to be skipped.",
+ "mutated_unit_code": "function transfer(address[] memory _tos,uint[] memory v)public returns (bool){\n        require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9);\n        require(_tos.length > 0);\n        bytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0;i<_tos.length-1;i++){\n\n            require(((v[i] == 0) || (((v[i] * 1000000000000000000) / v[i]) == 1000000000000000000)));\n            caddress.call(abi.encodePacked(id,from,_tos[i],v[i]*1000000000000000000));\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EBU} from \"../src/EBU.sol\";\n\ncontract InvMutTest is Test {\n    EBU c;\n    function setUp() public { c = new EBU(); }\n    function testRegression_property() public {\n        address[] memory tos = new address[](2);\n        tos[0] = address(0x1111111111111111111111111111111111111111);\n        tos[1] = address(0x2222222222222222222222222222222222222222);\n        uint[] memory v = new uint[](2);\n        v[0] = 1;\n        v[1] = 0;\n\n        vm.prank(0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9);\n        c.transfer(tos, v);\n\n        v[0] = 1;\n        v[1] = type(uint).max;\n\n        bool ok;\n        vm.prank(0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9);\n        try c.transfer(tos, v) { ok = true; } catch { ok = false; }\n        assertTrue(ok == false, \"Reference should revert, but it didn't (or bug didn't revert)\");\n    }\n}"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T3a81b485",
+ "property_summary": "After any call to fallback, pastBlockTime is either zero (never called) or the timestamp at some call where msg.value was exactly 10 ether; the bug allows a 0-ether call to update pastBlockTime, leaving it at a timestamp where no 10-ether call occurred.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change require value from 10 ether to 0 ether so fallback can be called with different msg.value.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 0 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 msgValue, uint256 warpTime) public {\n        vm.assume(msgValue <= 100 ether);\n        vm.assume(warpTime > 0);\n        vm.warp(warpTime);\n        vm.roll(1);\n\n        address actor = makeAddr(\"actor\");\n        vm.deal(actor, msgValue);\n        vm.prank(actor);\n        (bool ok, ) = address(c).call{value: msgValue}(\"\");\n\n        uint256 currentPastBlockTime = c.pastBlockTime();\n        if (currentPastBlockTime > 0) {\n            assertTrue(msgValue == 10 ether);\n        }\n    }\n}"
+}

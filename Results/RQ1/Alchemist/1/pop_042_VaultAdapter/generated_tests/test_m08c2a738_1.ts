@@ -1,0 +1,133 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("VaultAdapter mutant m08c2a738 - _applySlopes division replaced with addition", function () {
+  let vaultAdapter: any;
+  let mockVault: any;
+  let owner: any;
+  let addr1: any;
+  const ASSET = "0x0000000000000000000000000000000000000001";
+  const VAULT = "0x0000000000000000000000000000000000000002";
+
+  before(async function () {
+    [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy VaultAdapter (constructor has no arguments, uses _disableInitializers())
+    const VaultAdapterFactory = await ethers.getContractFactory("VaultAdapter");
+    vaultAdapter = await VaultAdapterFactory.deploy();
+    await vaultAdapter.waitForDeployment();
+
+    // Deploy a minimal mock vault that implements IVault interface
+    const MockVaultFactory = await ethers.getContractFactory("MockVault");
+    mockVault = await MockVaultFactory.deploy();
+    await mockVault.waitForDeployment();
+
+    // Initialize VaultAdapter
+    const accessControlAddress = await deployAccessControl();
+    await vaultAdapter.initialize(accessControlAddress);
+  });
+
+  it("should detect the mutant by comparing interest rate calculation when utilization is below kink", async function () {
+    // Setup: Set slopes with kink at 50% (5e26 out of 1e27)
+    const kink = ethers.parseEther("0.5"); // 5e26
+    const slope0 = ethers.parseEther("0.1"); // 1e26
+    const slope1 = ethers.parseEther("0.2"); // 2e26
+    
+    await vaultAdapter.setSlopes(ASSET, {
+      kink: kink,
+      slope0: slope0,
+      slope1: slope1
+    });
+
+    // Set limits
+    await vaultAdapter.setLimits(
+      ethers.parseEther("2"),   // maxMultiplier = 2
+      ethers.parseEther("0.5"), // minMultiplier = 0.5
+      ethers.parseEther("0.1")  // rate = 0.1
+    );
+
+    // Setup mock vault to return utilization = 30% (below kink of 50%)
+    const utilization = ethers.parseEther("0.3"); // 3e26
+    await mockVault.setUtilization(ASSET, utilization);
+    
+    // Call rate() which triggers _applySlopes internally
+    const result = await vaultAdapter.rate(await mockVault.getAddress(), ASSET);
+
+    // Expected calculation for original code:
+    // utilization = 0.3e27, kink = 0.5e27
+    // elapsed = 0 (first call)
+    // multiplier = multiplier * 1e27 / (1e27 + (1e27 * (kink - utilization) / kink) * elapsed * rate / 1e27)
+    // With elapsed = 0: multiplier stays at initial value (1e27)
+    // interestRate = (slope0 * utilization / kink) * multiplier / 1e27
+    // = (0.1e27 * 0.3e27 / 0.5e27) * 1e27 / 1e27
+    // = 0.06e27 = 6e25
+    
+    const expectedRate = ethers.parseEther("0.06"); // 6e25
+    expect(result).to.equal(expectedRate);
+    
+    // Now call again with elapsed > 0 to trigger the denominator calculation
+    // Advance time by 100 seconds
+    await ethers.provider.send("evm_increaseTime", [100]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // Set new utilization index to simulate elapsed time
+    const newIndex = ethers.parseEther("0.35"); // 35% utilization index
+    await mockVault.setCurrentUtilizationIndex(ASSET, newIndex);
+    
+    const result2 = await vaultAdapter.rate(await mockVault.getAddress(), ASSET);
+    
+    // For the original code with elapsed=100, rate=0.1:
+    // denominator = 1e27 + (1e27 * (0.5e27 - 0.3e27) / 0.5e27) * 100 * 0.1e27 / 1e27
+    // = 1e27 + (0.2e27 * 2 * 100 * 0.1e27 / 1e27) // simplified
+    // = 1e27 + 4e27 = 5e27
+    // multiplier = 1e27 * 1e27 / 5e27 = 0.2e27
+    // Since 0.2e27 < minMultiplier (0.5e27), multiplier becomes 0.5e27
+    // interestRate = (0.1e27 * 0.3e27 / 0.5e27) * 0.5e27 / 1e27 = 0.03e27
+    
+    const expectedRate2 = ethers.parseEther("0.03");
+    expect(result2).to.equal(expectedRate2);
+    
+    // The mutant would compute denominator as:
+    // 1e27 + (1e27 * (0.5e27 - 0.3e27) + 0.5e27) * 100 * 0.1e27 / 1e27
+    // = 1e27 + (0.2e27 + 0.5e27) * 100 * 0.1e27 / 1e27
+    // = 1e27 + 0.7e27 * 100 * 0.1e27 / 1e27
+    // = 1e27 + 7e27 = 8e27
+    // multiplier = 1e27 * 1e27 / 8e27 = 0.125e27
+    // Since 0.125e27 < minMultiplier (0.5e27), multiplier becomes 0.5e27
+    // This would give same result due to minMultiplier clamping
+    
+    // To truly detect the mutant, we need to set minMultiplier low enough
+    await vaultAdapter.setLimits(
+      ethers.parseEther("2"),
+      ethers.parseEther("0.01"), // Very low minMultiplier
+      ethers.parseEther("0.1")
+    );
+    
+    // Reset multiplier by calling with zero elapsed
+    await ethers.provider.send("evm_setNextBlockTimestamp", [await ethers.provider.getBlock("latest").then(b => b!.timestamp + 1)]);
+    await vaultAdapter.rate(await mockVault.getAddress(), ASSET);
+    
+    // Advance time again
+    await ethers.provider.send("evm_increaseTime", [100]);
+    await ethers.provider.send("evm_mine", []);
+    
+    const result3 = await vaultAdapter.rate(await mockVault.getAddress(), ASSET);
+    
+    // Original: denominator = 5e27, multiplier = 0.2e27, rate = 0.06e27 * 0.2 = 0.012e27
+    // Mutant: denominator = 8e27, multiplier = 0.125e27, rate = 0.06e27 * 0.125 = 0.0075e27
+    const expectedOriginal = ethers.parseEther("0.012");
+    const expectedMutant = ethers.parseEther("0.0075");
+    
+    expect(result3).to.equal(expectedOriginal);
+    expect(result3).to.not.equal(expectedMutant);
+  });
+});
+
+// Helper to deploy a minimal access control contract
+async function deployAccessControl() {
+  const AccessControlFactory = await ethers.getContractFactory("AccessControl");
+  const accessControl = await AccessControlFactory.deploy();
+  await accessControl.waitForDeployment();
+  await accessControl.initialize(await owner.getAddress());
+  return await accessControl.getAddress();
+}

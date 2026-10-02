@@ -1,0 +1,65 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m6ea85a0a of ACCURAL_DEPOSIT.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test ACCURAL_DEPOSIT.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for ACCURAL_DEPOSIT:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("ACCURAL_DEPOSIT reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy ACCURAL_DEPOSIT by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("ACCURAL_DEPOSIT"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ACCURAL_DEPOSIT mutant m6ea85a0a test", function () {
+  it("should revert when Collect fails to send ether to a rejecting contract", async function () {
+    const [owner, user] = await ethers.getSigners();
+    
+    // Deploy the ACCURAL_DEPOSIT contract (no constructor arguments)
+    const Factory = await ethers.getContractFactory("ACCURAL_DEPOSIT");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Deploy a simple contract that rejects ether
+    const RejectorFactory = await ethers.getContractFactory("contract Rejector { receive() external payable { revert(); } }");
+    const rejector = await RejectorFactory.deploy();
+    await rejector.waitForDeployment();
+    
+    const rejectorAddress = await rejector.getAddress();
+    const instanceAddress = await instance.getAddress();
+    
+    // Send ether to user so they have balance
+    await owner.sendTransaction({
+      to: rejectorAddress,
+      value: ethers.parseEther("10")
+    });
+    
+    // User deposits ether into ACCURAL_DEPOSIT
+    await instance.connect(user).Deposit({ value: ethers.parseEther("5") });
+    
+    // Set MinSum to allow withdrawal
+    await instance.SetMinSum(ethers.parseEther("1"));
+    
+    // Initialize the contract
+    await instance.Initialized();
+    
+    // Verify balance
+    expect(await instance.balances(user.address)).to.equal(ethers.parseEther("5"));
+    
+    // Now try to collect from the rejecting contract address
+    // In original contract this should revert, in mutant it would succeed (wrongly)
+    await expect(
+      instance.connect(user).Collect(ethers.parseEther("3"))
+    ).to.be.reverted;
+  });
+});
+```

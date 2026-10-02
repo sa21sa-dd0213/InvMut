@@ -1,0 +1,22 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Roulette:
+        Contract Code: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp + 1; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+
+    Consider the following mutant of Roulette:
+        Mutant m79c348ea of function fallback replaces block.timestamp with block.prevrandao
+        Mutant Diff: ---|         pastBlockTime = block.timestamp + 1; +++|         pastBlockTime = block.prevrandao + 1;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract uses `block.timestamp` to enforce a time delay between calls, requiring the current block timestamp to be greater than the previously recorded timestamp. The mutant replaces `block.timestamp` with `block.prevrandao`, which is a randomness value derived from the beacon chain and does not represent time.  
+
+**Hypothesis**:  
+The mutant changes the condition that sets `pastBlockTime` from a time-based value (`block.timestamp + 1`) to a randomness-based value (`block.prevrandao + 1`). Therefore, a test case that calls the `fallback` function twice in quick succession within the same block should pass on the original (since the second call would revert due to `block.timestamp` not being greater than the stored `pastBlockTime`), but on the mutant it would likely succeed because `block.prevrandao` can be equal or different in the same block, potentially allowing the second call to bypass the time check. This test would kill the mutant.

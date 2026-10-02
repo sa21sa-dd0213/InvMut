@@ -1,0 +1,70 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant maf8a1472 of XBORNID.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test XBORNID.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for XBORNID:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("XBORNID reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy XBORNID by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("XBORNID"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("XBORNID mutant maf8a1472 - transferFrom return value", function () {
+  it("should return true on successful transferFrom and kill mutant that removes return true", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    const Factory = await ethers.getContractFactory("XBORNID");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Approve addr1 to spend 1000 tokens from owner
+    const approveAmount = ethers.parseEther("1000");
+    await instance.connect(owner).approve(addr1.address, approveAmount);
+    
+    // Have addr1 transfer tokens from owner to addr2
+    const transferAmount = ethers.parseEther("500");
+    const tx = await instance.connect(addr1).transferFrom(owner.address, addr2.address, transferAmount);
+    const receipt = await tx.wait();
+    
+    // The critical assertion: check that transferFrom returns true
+    // In ethers v6, the return value is accessible from the transaction response
+    expect(tx).to.not.be.undefined;
+    
+    // Verify the transfer actually happened by checking balances
+    const ownerBalance = await instance.balanceOf(owner.address);
+    const addr2Balance = await instance.balanceOf(addr2.address);
+    
+    expect(ownerBalance).to.equal(ethers.parseEther("199999999500")); // initial totalDistributed - 500
+    expect(addr2Balance).to.equal(transferAmount);
+    
+    // The mutant removes "return true;" so the function returns false by default
+    // We need to decode the return value from the transaction
+    // In ethers v6, we can use the contract interface to decode the return data
+    const iface = new ethers.Interface(Factory.interface.format(true));
+    const decodedReturn = iface.decodeFunctionResult("transferFrom", receipt.logs[0].data);
+    // Actually for ethers v6, we should check the function return directly
+    
+    // Alternative approach: call transferFrom as static call to get return value
+    const success = await instance.connect(addr1).transferFrom.staticCall(owner.address, addr2.address, ethers.parseEther("0"));
+    expect(success).to.be.true;
+    
+    // Or more directly - the transaction receipt should indicate success
+    // and we can verify the function actually returned true by checking event emissions
+    const transferEvent = receipt.logs.find(log => 
+      log.topics[0] === ethers.id("Transfer(address,address,uint256)")
+    );
+    expect(transferEvent).to.not.be.undefined;
+  });
+});
+```

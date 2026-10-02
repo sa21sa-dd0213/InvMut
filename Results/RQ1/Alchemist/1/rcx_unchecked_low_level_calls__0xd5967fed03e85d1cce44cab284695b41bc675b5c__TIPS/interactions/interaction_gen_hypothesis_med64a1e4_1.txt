@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract demo:
+        Contract Code: pragma solidity ^0.8.0; contract demo { function transfer(address from, address caddress, address[] memory _tos, uint v)  public returns (bool) { require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); _d; if (! _s) { revert();} } } return true; } }
+
+    Consider the following mutant of demo:
+        Mutant med64a1e4 of function transfer replaces keccak256 with sha256
+        Mutant Diff: ---| 	bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); +++| 	bytes4 id = bytes4(sha256("transferFrom(address,address,uint256)"));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant replaces `keccak256` with `sha256`, which will produce a completely different hash and therefore a different function selector for the `transferFrom` call. This means the mutated contract will call the wrong function on the target contract (or call a non-existent function), causing the external call to fail silently or revert.
+
+**Hypothesis**: A test case that calls the `transfer` function with valid parameters, where the target contract at `caddress` correctly implements the `transferFrom(address,address,uint256)` function and expects a successful transfer, should detect the mutant. In the original contract, the call succeeds and returns `true`. In the mutant, the incorrect function selector causes the external call to either fail (returning `false`) or call a different function, leading to a revert or unexpected behavior, thus failing the test.

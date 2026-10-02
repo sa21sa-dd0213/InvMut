@@ -1,0 +1,43 @@
+{
+ "difference_id": "N0024",
+ "property_summary": "A Put call with lockTime such that block.timestamp + lockTime overflows, but lockTime does not overflow when added to block.timestamp, reverts only when the caller's incoming balance overflows; otherwise it succeeds and updates the caller's unlocked balance.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill:m_no_cex_within_bound",
+ "origin": "primary",
+ "success_route": null,
+ "oracle_origin": null,
+ "kill_entrypoint": null,
+ "property_based_core": null,
+ "standalone_replay": null,
+ "oracle_reach": "proved",
+ "ce_id": null,
+ "source_difference_id": null,
+ "source_property_focus": null,
+ "confirmed_difference": {
+  "validation_level": "reference_validated",
+  "arm": "no_mg",
+  "focus": {
+   "index": 3,
+   "target_id": "T0003",
+   "boundary": "Put",
+   "category": "explicit_revert",
+   "locus": "C.Put(uint256)",
+   "state_kind": null,
+   "passes": 5
+  },
+  "thread_focus": "whether a call `Put(args)` reverts or completes, and on which inputs",
+  "boundary": "Put",
+  "target_id": "T0003",
+  "test_hash": "05722924dfe051c1",
+  "assert_fingerprint": "59b820e2be52e85b"
+ },
+ "oracle_asset": null,
+ "change_summary": null,
+ "mutated_unit_code": null,
+ "esbmc_test_source": "contract InvMutTest {\n    C c;\n    constructor() { c = new C(); }\n    function __ESBMC_reverted() internal returns (bool) {}\n    function __ESBMC_assume(bool) internal pure {}\n\n    function run(uint lockTime, uint amount) public payable { __ESBMC_assume(address(c).balance >= 1000000000000000000000000); require(address(this).balance >= (amount)); require(amount <= 1000000000000000000000000000000);\n        // Only test lockTime values where block.timestamp + lockTime overflows in Solidity.\n        require(lockTime > type(uint).max - block.timestamp);\n        // Ensure no other overflow affects the balance update.\n        require(address(this).balance >= amount);\n\n        (uint unlockBefore, uint balBefore) = c.Acc(address(this)); if (__ESBMC_reverted()) return;\n        require(balBefore + amount >= balBefore);\n\n        bool reverted;\n        c.Put{value: amount}(lockTime); bool __rev0 = __ESBMC_reverted(); if (__rev0) {\n            reverted = true;\n        } else {\n            reverted = false;\n        }\n\n        (uint unlockAfter, uint balAfter) = c.Acc(address(this)); if (__ESBMC_reverted()) return;\n\n        // The call may revert, but if it does, the caller's account must be unchanged.\n        assert(!reverted || (balAfter == balBefore && unlockAfter == unlockBefore));\n    }\n\n    receive() external payable {}\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {PENNY_BY_PENNY} from \"../src/PENNY_BY_PENNY.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    PENNY_BY_PENNY c;\n\n    function setUp() public {\n        c = new PENNY_BY_PENNY();\n    }\n\n    function _run(uint256 lockTime, uint256 amount) internal {\n        amount = bound(amount, 0, 1000000000000000000000000000000);\n        vm.deal(address(this), VALUE_CAP);\n        vm.deal(address(c), VALUE_CAP);\n        vm.assume(lockTime > type(uint).max - block.timestamp);\n        vm.assume(address(this).balance >= amount);\n        uint256 unlockBefore;\n        uint256 balBefore;\n        try c.Acc(address(this)) returns (uint256 __r0, uint256 __r1) { unlockBefore = __r0; balBefore = __r1; } catch { return; }\n        vm.assume(balBefore + amount >= balBefore);\n        bool reverted;\n        try c.Put{value: amount}(lockTime) {\n            reverted = false;\n        } catch {\n            reverted = true;\n        }\n        uint256 unlockAfter;\n        uint256 balAfter;\n        try c.Acc(address(this)) returns (uint256 __r0, uint256 __r1) { unlockAfter = __r0; balAfter = __r1; } catch { return; }\n        assertTrue(!reverted || (balAfter == balBefore && unlockAfter == unlockBefore));\n    }\n\n    function testFuzz_run(uint256 lockTime, uint256 amount) public {\n        _run(lockTime, amount);\n    }\n\n    receive() external payable {}\n}\n",
+ "workspace_P_log": "{\"test/InvMutTest.t.sol:InvMutTest\":{\"duration\":\"10s 81ms 357µs 662ns\",\"test_results\":{\"testFuzz_run(uint256,uint256)\":{\"status\":\"Success\",\"reason\":null,\"counterexample\":null,\"logs\":[],\"decoded_logs\":[],\"kind\":{\"Fuzz\":{\"first_case\":{\"gas\":71149,\"stipend\":21752},\"runs\":10000,\"mean_gas\":49611,\"median_gas\":50868,\"failed_corpus_replays\":0}},\"traces\":[],\"labeled_addresses\":{},\"duration\":\"10s 80ms 665µs 331ns\",\"breakpoints\":{},\"gas_snapshots\":{}}},\"warnings\":[]}}\n",
+ "workspace_M_log": null
+}

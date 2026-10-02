@@ -1,0 +1,52 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m8099f82a of airDrop.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test airDrop.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for airDrop:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("airDrop reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy airDrop by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("airDrop"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airDrop mutant kill test - m8099f82a", function () {
+  it("should kill mutant by calling transfer with a non-empty _tos array, expecting the original to succeed but the mutant to revert due to out-of-bounds access", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("airDrop");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy a simple ERC20-like token for testing transferFrom
+    const TokenFactory = await ethers.getContractFactory("contracts/TestERC20.sol:TestERC20");
+    const token = await TokenFactory.deploy();
+    await token.waitForDeployment();
+
+    // Setup: owner approves the airDrop contract to transfer tokens from addr1
+    const amount = ethers.parseUnits("10", 18);
+    await token.connect(addr1).approve(await instance.getAddress(), amount);
+
+    // Prepare call parameters
+    const from = addr1.address;
+    const tokenAddress = await token.getAddress();
+    const recipients = [addr2.address]; // Non-empty array
+    const value = 10;
+    const decimals = 18;
+
+    // This call will succeed on the original (i < length) but revert on mutant (i <= length) due to out-of-bounds
+    await expect(
+      instance.transfer(from, tokenAddress, recipients, value, decimals)
+    ).to.be.reverted;
+  });
+});
+```

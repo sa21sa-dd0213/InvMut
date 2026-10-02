@@ -1,0 +1,69 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m14ba9b32 of Roulette.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Roulette.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Roulette:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Roulette reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Roulette by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Roulette"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant m14ba9b32 detection", function () {
+  it("should detect mutant by checking payout at block number divisible by 15", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy the contract (constructor is payable but takes no arguments)
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy({ value: 0 });
+    await instance.waitForDeployment();
+    
+    // Fund the contract with some initial balance so we can detect transfers
+    const fundTx = await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    await fundTx.wait();
+    
+    // Get the current block number and calculate the next block divisible by 15
+    const currentBlock = await ethers.provider.getBlockNumber();
+    const targetBlock = currentBlock + (15 - (currentBlock % 15));
+    
+    // Mine blocks until we reach the target block
+    while ((await ethers.provider.getBlockNumber()) < targetBlock) {
+      await ethers.provider.send("evm_mine", []);
+    }
+    
+    // Record balances before the transaction
+    const balanceBefore = await ethers.provider.getBalance(addr1.address);
+    const contractBalanceBefore = await ethers.provider.getBalance(await instance.getAddress());
+    
+    // Send exactly 10 ether from addr1 - this should trigger payout on original
+    const tx = await addr1.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    await tx.wait();
+    
+    // Check balances after
+    const balanceAfter = await ethers.provider.getBalance(addr1.address);
+    const contractBalanceAfter = await ethers.provider.getBalance(await instance.getAddress());
+    
+    // In the original: addr1 gets back the contract balance (which includes the initial 10 ether + their 10 ether = 20 ether)
+    // In the mutant: addr1's 10 ether stays in the contract
+    expect(balanceAfter).to.be.gt(balanceBefore);
+    expect(contractBalanceAfter).to.be.lt(contractBalanceBefore);
+  });
+});
+```

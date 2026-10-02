@@ -1,0 +1,68 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m14ba9b32 of Roulette.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Roulette.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Roulette:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Roulette reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Roulette by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Roulette"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant m14ba9b32 test", function () {
+  it("should kill mutant by detecting shifted winning block condition", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Fund the contract with 10 ETH
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+
+    // Get current block number and calculate a block where block.number % 15 == 0 (original winning condition)
+    const currentBlock = await ethers.provider.getBlockNumber();
+    const targetBlock = currentBlock + (15 - (currentBlock % 15));
+
+    // Mine to that block
+    await ethers.provider.send("hardhat_mine", [(targetBlock - currentBlock).toString()]);
+
+    // Verify we are at the correct block
+    const blockNow = await ethers.provider.getBlockNumber();
+    expect(blockNow % 15).to.equal(0);
+
+    // Get contract balance before
+    const balanceBefore = await ethers.provider.getBalance(await instance.getAddress());
+    expect(balanceBefore).to.equal(ethers.parseEther("10"));
+
+    // Call fallback with exactly 10 ETH from addr1 - should trigger transfer in original but NOT in mutant
+    const tx = await addr1.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10"),
+      gasLimit: 100000
+    });
+    await tx.wait();
+
+    // Get contract balance after
+    const balanceAfter = await ethers.provider.getBalance(await instance.getAddress());
+
+    // In original: balance would be ~10 ETH (transferred 10 to caller, but 10 was added)
+    // In mutant: balance would be ~20 ETH (no transfer, just added 10)
+    // So we expect the balance to be ~20 ETH, proving the mutant did NOT transfer
+    expect(balanceAfter).to.equal(ethers.parseEther("20"));
+  });
+});
+```

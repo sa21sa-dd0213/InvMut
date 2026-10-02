@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0004",
+ "property_summary": "With _tos of length 2 (addresses [A, B]), the reference contract calls transferFrom for both A and B, while the buggy contract only calls transferFrom for B, leaving A's balance unchanged.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "Change the iteration to start at i = 1, skipping the first element of _tos.",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v)  public returns (bool) {\n\trequire(_tos.length > 0);\n\tbytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n\tfor(uint i = 1;i < _tos.length;i++){\n\t{ (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); _d; if (! _s) {\n\trevert();} }\n\t}\n\treturn true;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {demo} from \"../src/demo.sol\";\n\ncontract InvMutTest is Test {\n    demo c;\n    function setUp() public { c = new demo(); }\n    function testRegression_property() public {\n        address token = address(new Token());\n        address from = address(0xdead);\n        address to1 = address(0xbeef);\n        address to2 = address(0xcafe);\n        address[] memory tos = new address[](2);\n        tos[0] = to1;\n        tos[1] = to2;\n        uint256 value = 100;\n        c.transfer(from, token, tos, value);\n        assertTrue(Token(token).balances(to1) == value);\n    }\n}\n\ncontract Token {\n    mapping(address => uint256) public balances;\n    function transferFrom(address, address to, uint256 value) external returns (bool) {\n        balances[to] += value;\n        return true;\n    }\n}"
+}

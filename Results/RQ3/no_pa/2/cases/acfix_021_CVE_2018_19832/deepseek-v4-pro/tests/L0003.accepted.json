@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "After NETM() sets the owner's balance to totalDistributed (250000000e18), calling transfer from the owner to another address with the full exact amount succeeds in the reference but reverts in the buggy version because the buggy require uses < instead of <=.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Replace `require(_amount <= balances[msg.sender]);` with `require(_amount < balances[msg.sender]);` so that transferring the exact balance is disallowed.",
+ "mutated_unit_code": "    function transfer(address _to, uint256 _amount) onlyPayloadSize(2 * 32) public override virtual returns (bool success) {\n        require(_to != address(0));\n        require(_amount < balances[msg.sender]);\n\n        balances[msg.sender] = (balances[msg.sender] - (_amount));\n        balances[_to] = (balances[_to] + (_amount));\n        emit Transfer(msg.sender, _to, _amount);\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {NewIntelTechMedia} from \"../src/NewIntelTechMedia.sol\";\n\ncontract InvMutTest is Test {\n    NewIntelTechMedia c;\n    function setUp() public { c = new NewIntelTechMedia(); }\n    function testRegression_property() public {\n        address owner = address(this);\n        uint256 totalDistributed = 250000000e18;\n\n        c.NETM();\n\n        assertEq(c.balanceOf(owner), totalDistributed);\n\n        address recipient = address(0x1234);\n\n        bool success;\n        try c.transfer(recipient, totalDistributed) {\n            success = true;\n        } catch {\n            success = false;\n        }\n\n        assertTrue(success, \"transfer should succeed on reference\");\n    }\n}"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0006",
+ "property_summary": "With an array of two addresses, the reference contract transfers v tokens from 'from' to both addresses, while the modified version increments i twice per loop, skipping the second address, so only the first address receives tokens.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "+i++;",
+ "mutated_unit_code": "function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){\nrequire(_tos.length > 0);\nbytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\nfor(uint i=0;i<_tos.length;i++){\n\n{ (bool _s,) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v)); require(_s); }\ni++;\n}\nreturn true;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airdrop} from \"../src/airdrop.sol\";\n\ncontract InvMutTest is Test {\n    airdrop c;\n    function setUp() public { c = new airdrop(); }\n    function testRegression_property() public {\n        address tokenAddr = address(new Token());\n        address from = address(0x123);\n        address to1 = address(0x456);\n        address to2 = address(0x789);\n        address[] memory tos = new address[](2);\n        tos[0] = to1;\n        tos[1] = to2;\n        uint v = 100;\n        Token(tokenAddr).mint(from, 200);\n        bool success = c.transfer(from, tokenAddr, tos, v);\n        assertEq(Token(tokenAddr).balanceOf(to1), v);\n        assertEq(Token(tokenAddr).balanceOf(to2), v);\n    }\n}\n\ncontract Token {\n    mapping(address => uint256) public balanceOf;\n    function mint(address to, uint256 amount) public {\n        balanceOf[to] += amount;\n    }\n    function transferFrom(address from, address to, uint256 amount) public returns (bool) {\n        require(balanceOf[from] >= amount);\n        balanceOf[from] -= amount;\n        balanceOf[to] += amount;\n        return true;\n    }\n}"
+}

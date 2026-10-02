@@ -1,0 +1,11 @@
+{
+ "difference_id": "L0002",
+ "property_summary": "Call transfer with v=1, decimals=1, _tos length 1, where caddress is a mock that records the transferred value; reference computes _value=10, bug computes _value=2, observed via a getter.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "change_summary": "Replace multiplication with addition in the _value assignment.",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v, uint _decimals)  public returns (bool) {\n\trequire(_tos.length > 0);\n\tbytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n\tuint _value = v + 10 ** _decimals;\n\tfor(uint i = 0;i < _tos.length;i++){\n\t{ (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], _value)); _d; if (! _s) {\n\trevert();} }\n\t}\n\treturn true;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airDrop} from \"../src/airDrop.sol\";\n\ncontract MockToken {\n    uint256 public lastValue;\n    address public lastFrom;\n    address public lastTo;\n\n    function transferFrom(address from, address to, uint256 value) external returns (bool) {\n        lastFrom = from;\n        lastTo = to;\n        lastValue = value;\n        return true;\n    }\n}\n\ncontract InvMutTest is Test {\n    airDrop c;\n    MockToken mock;\n\n    function setUp() public {\n        c = new airDrop();\n        mock = new MockToken();\n    }\n\n    function testRegression_property() public {\n        address[] memory tos = new address[](1);\n        tos[0] = address(0x1234);\n\n        c.transfer(address(0xAbc), address(mock), tos, 1, 1);\n\n        uint256 val = mock.lastValue();\n        assertTrue(val == 10, \"value should be 10 for correct contract\");\n    }\n}\n"
+}

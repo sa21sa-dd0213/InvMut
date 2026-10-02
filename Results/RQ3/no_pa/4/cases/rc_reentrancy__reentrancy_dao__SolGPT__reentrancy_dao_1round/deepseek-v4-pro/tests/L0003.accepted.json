@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "After a deposit of 1 wei by a user and a withdrawal to a malicious contract that reverts on receive, the correct contract reverts and preserves state (balance remains 1 wei, credit remains 1 wei), while the buggy contract does not revert and incorrectly sets balance to 0 and credit to 0.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Delete the require statement so ether can be sent even if call fails",
+ "mutated_unit_code": "    function withdrawAll() public {\n        uint oCredit = credit[msg.sender];\n        if (oCredit > 0) {\n            balance -= oCredit;\n            credit[msg.sender] = 0;\n            (bool callResult, ) = msg.sender.call{value: oCredit}(\"\");\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ReentrancyDAO} from \"../src/ReentrancyDAO.sol\";\n\ncontract InvMutTest is Test {\n    ReentrancyDAO c;\n    function setUp() public { c = new ReentrancyDAO(); }\n    function testRegression_property() public {\n        address payable malicious = payable(address(new MaliciousReceiver()));\n\n        vm.deal(address(this), 1 ether);\n\n        vm.deal(malicious, 1 wei);\n        vm.prank(malicious);\n        c.deposit{value: 1 wei}();\n\n        vm.prank(malicious);\n        (bool success, ) = address(c).call(abi.encodeWithSignature(\"withdrawAll()\"));\n\n        assertTrue(!success, \"Expected withdrawAll to revert\");\n    }\n}\n\ncontract MaliciousReceiver {\n    receive() external payable {\n        revert(\"I refuse to receive\");\n    }\n}"
+}

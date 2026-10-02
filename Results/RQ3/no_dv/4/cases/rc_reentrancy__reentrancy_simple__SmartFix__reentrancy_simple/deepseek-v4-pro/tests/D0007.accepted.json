@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0007",
+ "property_summary": "After any deposit by an address and a subsequent successful withdrawal, the depositor's ETH balance (not the contract's) must increase by the deposited amount minus gas; the mutant fails because it sends the withdrawn funds back to itself, so the caller never receives them.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replace the transfer recipient msg.sender with address(this) in the call, keeping funds in the contract.",
+ "mutated_unit_code": "function withdrawBalance() public{\n\n         uint256 tmp__1 = userBalance[msg.sender];\n         userBalance[msg.sender] = 0;\n         { (bool _s, bytes memory _d) = address(this).call{value: tmp__1}(\"\"); _d; if (! _s) {\n             revert();\n         } }\n\n     }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n    function testFuzz_property(uint256 amount, address actor) public {\n        vm.assume(amount > 0);\n        vm.assume(actor != address(0));\n        vm.assume(actor != address(c));\n        vm.assume(actor.code.length == 0);\n\n        uint256 balanceBefore = actor.balance;\n        vm.deal(actor, amount);\n        vm.prank(actor);\n        c.addToBalance{value: amount}();\n        vm.prank(actor);\n        c.withdrawBalance();\n        uint256 balanceAfter = actor.balance;\n\n        assertTrue(balanceAfter > balanceBefore);\n    }\n}\n"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0004",
+ "property_summary": "In the reference contract only the owner can successfully call burn(uint256) so any burn attempt by a non-owner must leave totalSupply equal to the caller's pre-call balance unchanged (i.e., non-owners cannot reduce totalSupply); the mutant removing onlyOwner allows non-owners to reduce totalSupply for some caller/amount, violating this rule.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the owner-only restriction so burn is callable by anyone (remove onlyOwner modifier).",
+ "mutated_unit_code": "function burn(uint256 _value)  public returns (bool success) {\n        require(balanceOf[msg.sender] >= _value);\n        balanceOf[msg.sender] -= _value;\n        totalSupply -= _value;\n        emit Burn(msg.sender, _value);\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ERCDDAToken} from \"../src/ERCDDAToken.sol\";\n\ncontract InvMutTest is Test {\n    ERCDDAToken c;\n    function setUp() public { c = new ERCDDAToken(0, \"\", \"\"); }\n\n    function testFuzz_property(address caller, uint256 amount) public {\n        vm.assume(caller != address(0));\n        vm.assume(caller != address(this));\n\n        uint256 mintAmount = bound(amount, 1, type(uint256).max / 2);\n        vm.startPrank(address(this));\n        c.mintToken(caller, mintAmount);\n        vm.stopPrank();\n\n        uint256 preTotal = c.totalSupply();\n\n        vm.prank(caller);\n        bool ok;\n        try c.burn(amount) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        uint256 postTotal = c.totalSupply();\n\n        assertTrue(postTotal == preTotal);\n    }\n}\n"
+}

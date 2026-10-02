@@ -1,0 +1,65 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant md7e179a2 of MultiplicatorX3.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test MultiplicatorX3.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for MultiplicatorX3:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("MultiplicatorX3 reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy MultiplicatorX3 by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("MultiplicatorX3"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MultiplicatorX3 mutant test - md7e179a2", function () {
+  it("should detect the mutant by sending exact contract balance and verifying transfer", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("MultiplicatorX3");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    const instanceAddress = await instance.getAddress();
+
+    // Fund the contract with some ether
+    const initialBalance = ethers.parseEther("2.0");
+    await owner.sendTransaction({
+      to: instanceAddress,
+      value: initialBalance
+    });
+
+    // Get contract balance before calling multiplicate
+    const contractBalanceBefore = await ethers.provider.getBalance(instanceAddress);
+    
+    // Send exactly the contract balance to multiplicate
+    const sendAmount = contractBalanceBefore;
+    const addr2BalanceBefore = await ethers.provider.getBalance(addr2.address);
+
+    // Call multiplicate with msg.value equal to contract balance
+    const tx = await instance.connect(owner).multiplicate(addr2.address, { value: sendAmount });
+    await tx.wait();
+
+    // Check that the transfer happened (original behavior)
+    // The expected transfer amount should be contractBalanceBefore + sendAmount = 2 * contractBalanceBefore
+    const expectedTransfer = contractBalanceBefore + sendAmount;
+    const addr2BalanceAfter = await ethers.provider.getBalance(addr2.address);
+    const actualTransfer = addr2BalanceAfter - addr2BalanceBefore;
+
+    // In the original contract, the transfer should happen
+    // In the mutant (with > instead of >=), the transfer will NOT happen when msg.value == contract balance
+    // So we expect the transfer to NOT have occurred for the mutant
+    expect(actualTransfer).to.equal(ethers.parseEther("0"));
+    
+    // Verify contract is now empty (since mutant didn't transfer)
+    const contractBalanceAfter = await ethers.provider.getBalance(instanceAddress);
+    expect(contractBalanceAfter).to.equal(sendAmount);
+  });
+});
+```

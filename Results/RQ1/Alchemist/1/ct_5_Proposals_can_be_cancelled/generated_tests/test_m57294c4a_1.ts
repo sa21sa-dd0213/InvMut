@@ -1,0 +1,64 @@
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("DAO mutant kill test - m57294c4a", function () {
+  it("should kill mutant by finalising a proposal that did not reach quorum during voting", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy VADER mock
+    const VADERFactory = await ethers.getContractFactory("iVADER");
+    const vader = await VADERFactory.deploy();
+    await vader.waitForDeployment();
+    
+    // Deploy VAULT mock
+    const VAULTFactory = await ethers.getContractFactory("iVAULT");
+    const vault = await VAULTFactory.deploy();
+    await vault.waitForDeployment();
+    
+    // Deploy USDV mock
+    const USDVFactory = await ethers.getContractFactory("iERC20");
+    const usdv = await USDVFactory.deploy();
+    await usdv.waitForDeployment();
+    
+    // Deploy DAO
+    const DAOFactory = await ethers.getContractFactory("DAO");
+    const dao = await DAOFactory.deploy();
+    await dao.waitForDeployment();
+    
+    // Initialize DAO
+    await dao.init(await vader.getAddress(), await usdv.getAddress(), await vault.getAddress());
+    
+    // Create a new grant proposal
+    await dao.newGrantProposal(addr1.address, ethers.parseEther("100"));
+    const proposalId = 1;
+    
+    // Vote but ensure no quorum (need less than 1/3 of totalWeight)
+    // Set up vault mock to return small totalWeight and member weight
+    // For simplicity, we'll assume vault returns 0 for member weight
+    // This means votes remain 0, which is less than quorum (0 < totalWeight/3)
+    
+    // Call voteProposal - will not trigger _finalise since no quorum
+    await dao.voteProposal(proposalId);
+    
+    // Verify proposal is NOT finalising (should still be false)
+    expect(await dao.mapPID_finalising(proposalId)).to.equal(false);
+    
+    // Now call finaliseProposal - in original, it should call _finalise internally
+    // because !hasQuorum is true (votes=0 < totalWeight/3)
+    // In mutant, the if(false) will skip _finalise, causing require(mapPID_finalising) to fail
+    
+    // We need to set up vault to return some totalWeight so quorum check works
+    // The actual behavior depends on vault mock - let's assume vault.totalWeight() returns 100
+    
+    // Wait for coolOffPeriod (1 second) to pass
+    await ethers.provider.send("evm_increaseTime", [2]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // This should revert on mutant because _finalise was never called
+    // On original, it succeeds because _finalise is called inside finaliseProposal
+    await expect(dao.finaliseProposal(proposalId)).to.not.be.reverted;
+    
+    // Additional check: on original, proposal should now be finalising
+    expect(await dao.mapPID_finalising(proposalId)).to.equal(true);
+  });
+});

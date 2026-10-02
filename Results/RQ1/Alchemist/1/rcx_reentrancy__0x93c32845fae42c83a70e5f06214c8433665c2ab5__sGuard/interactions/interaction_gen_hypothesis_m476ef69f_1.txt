@@ -1,0 +1,45 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract X_WALLET:
+        Contract Code: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } } contract X_WALLET is sGuard { function Put(uint _unlockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); LogFile.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+
+    Consider the following mutant of X_WALLET:
+        Mutant m476ef69f of function Put replaces > with <
+        Mutant Diff: ---|         acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; +++|         acc.unlockTime = _unlockTime<block.timestamp?_unlockTime:block.timestamp;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's analyze the mutation step-by-step.
+
+**Original `Put` function logic:**  
+```solidity
+acc.unlockTime = _unlockTime > block.timestamp ? _unlockTime : block.timestamp;
+```
+This sets `unlockTime` to the larger of `_unlockTime` and `block.timestamp`.  
+- If `_unlockTime` is in the future (> now), it uses that future time.  
+- If `_unlockTime` is in the past or now, it uses `block.timestamp` (i.e., the current time).
+
+This prevents immediate withdrawal if `_unlockTime` is set in the future — you must wait.
+
+**Mutant `Put` function logic:**  
+```solidity
+acc.unlockTime = _unlockTime < block.timestamp ? _unlockTime : block.timestamp;
+```
+This sets `unlockTime` to the **smaller** of `_unlockTime` and `block.timestamp`.  
+- If `_unlockTime` is in the past (< now), it uses that past time (so the lock is immediately expired).  
+- If `_unlockTime` is in the future (> now), it uses `block.timestamp` (current time), meaning the lock is also effectively expired immediately.
+
+Thus the mutant **always makes the balance withdrawable immediately**, regardless of the intended unlock time.
+
+**Test hypothesis:**  
+A test case that deposits funds with a future `_unlockTime`, then immediately calls `Collect` with the full balance, expecting it to **fail** (revert) in the original contract, but the mutant would allow the withdrawal to succeed — so the test would detect the mutant by expecting a revert but getting a success.  
+
+**Hypothesis:**  
+"Hypothesis": "The mutant changes the ternary condition from `>` to `<`, which makes `unlockTime` always set to the current or past time, effectively removing the time lock. Therefore, a test case that deposits with a future `_unlockTime` and then immediately attempts to withdraw (expecting a revert due to the lock) should kill the mutant, because the mutant would incorrectly allow the withdrawal."

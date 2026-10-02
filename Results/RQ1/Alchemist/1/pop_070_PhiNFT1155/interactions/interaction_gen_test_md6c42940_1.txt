@@ -1,0 +1,109 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant md6c42940 of PhiNFT1155.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PhiNFT1155.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PhiNFT1155:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PhiNFT1155 reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PhiNFT1155 by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PhiNFT1155"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PhiNFT1155 mutant detection - supportsInterface", function () {
+  it("should return false for an arbitrary interfaceId that is numerically less than IPhiNFT1155 interfaceId", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("PhiNFT1155");
+    
+    // Deploy with constructor arguments - PhiNFT1155 constructor takes no arguments
+    // but we need to initialize it
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Initialize the contract with required parameters
+    // Parameters: credChainId, credId, verificationType, protocolFeeDestination
+    await instance.initialize(
+      1, // credChainId
+      1, // credId
+      "test", // verificationType
+      owner.address // protocolFeeDestination
+    );
+    
+    // Calculate IPhiNFT1155 interfaceId - we need to compute it from the interface
+    // The interface IPhiNFT1155 extends ICreatorRoyaltiesControl and IERC1155
+    // We'll use a bytes4 value that is numerically less than the actual interfaceId
+    // but not equal to it
+    
+    // First, get the actual interfaceId of IPhiNFT1155 by computing it
+    // For the test, we can use any bytes4 value that is less than the actual interfaceId
+    // The actual interfaceId of IPhiNFT1155 would be computed from its function selectors
+    // We'll use 0x00000001 which is numerically smaller than any valid interfaceId
+    
+    const arbitraryInterfaceId = "0x00000001";
+    const result = await instance.supportsInterface(arbitraryInterfaceId);
+    
+    // The original contract should return false for this arbitrary interfaceId
+    // The mutant with <= would incorrectly return true
+    expect(result).to.equal(false);
+  });
+  
+  it("should return true for the actual IPhiNFT1155 interfaceId", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("PhiNFT1155");
+    
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    await instance.initialize(
+      1,
+      1,
+      "test",
+      owner.address
+    );
+    
+    // Compute IPhiNFT1155 interfaceId from the interface functions
+    // IPhiNFT1155 has: tokenIdCounter(), credId(), getTokenIdFromFactoryArtId(uint256),
+    // getFactoryArtId(uint256), verificationType(), pause(), unPause(),
+    // updateRoyalties(uint256, (uint32,address))
+    
+    // Calculate the interfaceId using the selector of the first function
+    const interfaceId = ethers.id("tokenIdCounter()").substring(0, 10);
+    const result = await instance.supportsInterface(interfaceId);
+    
+    // Both original and mutant should return true for the actual interfaceId
+    expect(result).to.equal(true);
+  });
+  
+  it("should return false for an interfaceId between IERC165 and IPhiNFT1155", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("PhiNFT1155");
+    
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    await instance.initialize(
+      1,
+      1,
+      "test",
+      owner.address
+    );
+    
+    // Use an interfaceId that is not supported but could be numerically less than IPhiNFT1155
+    // 0xffffffff is a common unsupported interfaceId
+    const unsupportedInterfaceId = "0xffffffff";
+    const result = await instance.supportsInterface(unsupportedInterfaceId);
+    
+    expect(result).to.equal(false);
+  });
+});
+```

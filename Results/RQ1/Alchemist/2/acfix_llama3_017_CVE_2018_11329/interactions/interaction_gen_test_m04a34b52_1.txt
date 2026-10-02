@@ -1,0 +1,63 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m04a34b52 of EtherCartel.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EtherCartel.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EtherCartel:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EtherCartel reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EtherCartel by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EtherCartel"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherCartel - Kill mutant m04a34b52 (block.timestamp replaced by block.prevrandao)", function () {
+  it("should revert when collectDrugs is called and prevrandao breaks time-based drug calculation", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy contract (no constructor arguments needed for EtherCartel)
+    const Factory = await ethers.getContractFactory("EtherCartel");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Seed the market first to initialize
+    await instance.connect(owner).seedMarket(100, { value: ethers.parseEther("1") });
+    
+    // Give addr1 some free kilos to start producing drugs
+    await instance.connect(addr1).getFreeKilo();
+    
+    // Record the current block timestamp
+    const blockNumBefore = await ethers.provider.getBlockNumber();
+    const blockBefore = await ethers.provider.getBlock(blockNumBefore);
+    const timestampBefore = blockBefore.timestamp;
+    
+    // Call collectDrugs which sets lastCollect to block.prevrandao instead of block.timestamp
+    await instance.connect(addr1).collectDrugs(ethers.ZeroAddress);
+    
+    // Get the block where collectDrugs was called
+    const blockNumAfter = await ethers.provider.getBlockNumber();
+    const blockAfter = await ethers.provider.getBlock(blockNumAfter);
+    
+    // Check that lastCollect for addr1 is NOT equal to block.timestamp (should be prevrandao)
+    const lastCollect = await instance.lastCollect(addr1.address);
+    expect(lastCollect).to.not.equal(blockAfter.timestamp);
+    
+    // Verify that getMyDrugs returns 0 because prevrandao > timestamp causing underflow in subtraction
+    const myDrugs = await instance.getMyDrugs();
+    expect(myDrugs).to.equal(0);
+    
+    // The mutant fails because prevrandao is much larger than current timestamp,
+    // so SafeMath.sub reverts on underflow, making getMyDrugs() return 0
+    // In the original, lastCollect = timestamp, so drugsSinceLastCollect would be positive
+  });
+});
+```

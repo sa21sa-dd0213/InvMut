@@ -1,0 +1,60 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("demo mutant mded6cd15 test", function () {   it("should kill mutant by verifying transferFrom is correctly called via keccak256 selector", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy a simple ERC20-like token contract that has transferFrom function     const TokenFactory = await ethers.getContractFactory("ERC20Mock");     const token = await TokenFactory.deploy("Test", "TST", ethers.parseEther("1000"));     await token.waitForDeployment();          // Fund addr1 with some tokens     await token.transfer(addr1.address, ethers.parseEther("100"));          // Deploy the demo contract (no constructor arguments)     const DemoFactory = await ethers.getContractFactory("demo");     const demo = await DemoFactory.deploy();     await demo.waitForDeployment();          // Approve demo contract to spend tokens from addr1     await token.connect(addr1).approve(await demo.getAddress(), ethers.parseEther("50"));          // Get initial balance of addr2     const initialBalance = await token.balanceOf(addr2.address);          // Call transfer function - should call transferFrom on the token     const recipients = [addr2.address];     const tx = await demo.connect(owner).transfer(       addr1.address,       await token.getAddress(),       recipients,       ethers.parseEther("10")     );     await tx.wait();          // Check that tokens were actually transferred (sha256 would produce wrong selector)     const finalBalance = await token.balanceOf(addr2.address);          // If the mutant uses sha256, the transferFrom call will fail silently     // and addr2's balance will remain unchanged, killing the mutant     expect(finalBalance).to.equal(initialBalance + ethers.parseEther("10"));   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract demo{ function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){ require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ caddress.call(abi.encodeWithSelector(id,from,_tos[i],v)); } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("demo mutant mded6cd15 test", function () {
+  it("should kill mutant by verifying transferFrom is correctly called via keccak256 selector", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy a simple ERC20-like token contract that has transferFrom function
+    const TokenFactory = await ethers.getContractFactory("ERC20Mock");
+    const token = await TokenFactory.deploy("Test", "TST", ethers.parseEther("1000"));
+    await token.waitForDeployment();
+
+    // Fund addr1 with some tokens
+    await token.transfer(addr1.address, ethers.parseEther("100"));
+
+    // Deploy the demo contract (no constructor arguments)
+    const DemoFactory = await ethers.getContractFactory("demo");
+    const demo = await DemoFactory.deploy();
+    await demo.waitForDeployment();
+
+    // Approve demo contract to spend tokens from addr1
+    await token.connect(addr1).approve(await demo.getAddress(), ethers.parseEther("50"));
+
+    // Get initial balance of addr2
+    const initialBalance = await token.balanceOf(addr2.address);
+
+    // Call transfer function - should call transferFrom on the token
+    const recipients = [addr2.address];
+    const tx = await demo.connect(owner).transfer(
+      addr1.address,
+      await token.getAddress(),
+      recipients,
+      ethers.parseEther("10")
+    );
+    await tx.wait();
+
+    // Check that tokens were actually transferred (sha256 would produce wrong selector)
+    const finalBalance = await token.balanceOf(addr2.address);
+
+    // If the mutant uses sha256, the transferFrom call will fail silently
+    // and addr2's balance will remain unchanged, killing the mutant
+    expect(finalBalance).to.equal(initialBalance + ethers.parseEther("10"));
+  });
+});
+```

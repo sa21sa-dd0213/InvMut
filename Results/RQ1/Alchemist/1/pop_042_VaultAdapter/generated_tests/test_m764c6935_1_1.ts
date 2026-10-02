@@ -1,0 +1,113 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("VaultAdapter mutant m764c6935 - rate function condition inversion", function () {
+  let vaultAdapter: any;
+  let mockVault: any;
+  let accessControl: any;
+  let owner: any;
+  let addr1: any;
+  let mockAsset: string;
+  let mockVaultAddress: string;
+
+  beforeEach(async function () {
+    [owner, addr1] = await ethers.getSigners();
+
+    // Deploy a mock vault that returns known utilization values
+    const MockVault = await ethers.getContractFactory("MockVault");
+    mockVault = await MockVault.deploy();
+    await mockVault.waitForDeployment();
+    mockVaultAddress = await mockVault.getAddress();
+
+    // Deploy mock access control that allows all calls
+    const MockAccessControl = await ethers.getContractFactory("MockAccessControl");
+    accessControl = await MockAccessControl.deploy();
+    await accessControl.waitForDeployment();
+
+    // Deploy VaultAdapter (no constructor args needed - it uses _disableInitializers())
+    const VaultAdapter = await ethers.getContractFactory("VaultAdapter");
+    vaultAdapter = await VaultAdapter.deploy();
+    await vaultAdapter.waitForDeployment();
+
+    // Initialize the vault adapter
+    await vaultAdapter.initialize(await accessControl.getAddress());
+
+    // Set up slopes for the asset
+    mockAsset = ethers.Wallet.createRandom().address;
+    const slopes = {
+      kink: ethers.parseEther("0.8"), // 80% utilization kink
+      slope0: ethers.parseEther("0.05"), // 5% base slope
+      slope1: ethers.parseEther("2") // 200% slope above kink
+    };
+
+    // Grant access to setSlopes
+    const setSlopesSelector = vaultAdapter.interface.getFunction("setSlopes").selector;
+    await accessControl.grantAccess(setSlopesSelector, await vaultAdapter.getAddress(), owner.address);
+
+    await vaultAdapter.setSlopes(mockAsset, slopes);
+
+    // Set limits
+    const setLimitsSelector = vaultAdapter.interface.getFunction("setLimits").selector;
+    await accessControl.grantAccess(setLimitsSelector, await vaultAdapter.getAddress(), owner.address);
+
+    await vaultAdapter.setLimits(
+      ethers.parseEther("5"),   // maxMultiplier: 5x
+      ethers.parseEther("0.2"), // minMultiplier: 0.2x
+      ethers.parseEther("0.1")  // rate: 10%
+    );
+  });
+
+  it("should detect mutant by comparing rate calculation with index-based formula when time has passed", async function () {
+    // Set initial utilization to 50% (below kink)
+    await mockVault.setUtilization(ethers.parseEther("0.5"));
+
+    // Set initial utilization index
+    const initialIndex = ethers.parseEther("1000");
+    await mockVault.setCurrentUtilizationIndex(initialIndex);
+
+    // First call to initialize the storage
+    await vaultAdapter.rate(mockVaultAddress, mockAsset);
+
+    // Fast forward time by 100 seconds
+    await ethers.provider.send("evm_increaseTime", [100]);
+    await ethers.provider.send("evm_mine", []);
+
+    // Set new utilization index (simulating interest accrual)
+    const newIndex = ethers.parseEther("1050"); // 5% increase over 100 seconds
+    await mockVault.setCurrentUtilizationIndex(newIndex);
+
+    // Set utilization to a different value than what the index calculation would produce
+    // Index-based: (1050 - 1000) / 100 = 0.5 (50% utilization)
+    // We set mock utilization to 70% to differentiate the two paths
+    await mockVault.setUtilization(ethers.parseEther("0.7"));
+
+    // Call rate - the original uses index-based calculation (elapsed != block.timestamp is always true)
+    // The mutant uses the fallback utilization call instead (elapsed == block.timestamp is never true)
+    const result = await vaultAdapter.rate(mockVaultAddress, mockAsset);
+
+    // Calculate expected result using the original logic (index-based)
+    // elapsed = 100, utilization = (1050 - 1000) / 100 = 0.5 (50%)
+    // Since 0.5 < 0.8 (kink), we use the else branch
+    // multiplier calculation: multiplier = prev_multiplier * 1e27 / (1e27 + (1e27 * (kink - utilization) / kink) * elapsed * rate / 1e27)
+    // prev_multiplier starts at 1e27 (default)
+    // (1e27 * (0.8 - 0.5) / 0.8) = 1e27 * 0.3 / 0.8 = 3.75e26
+    // 3.75e26 * 100 * 0.1 / 1e27 = 3.75e26 * 100 / 1e28 = 3.75
+    // multiplier = 1e27 / (1e27 + 3.75) ≈ 1e27 (minimal change)
+    // interestRate = (0.05 * 0.5 / 0.8) * 1e27 / 1e27 = 0.03125
+    // = 3.125e25 (0.03125 * 1e27 / 1e27)
+
+    // For the mutant (using utilization=0.7 directly):
+    // interestRate = (0.05 * 0.7 / 0.8) * 1e27 / 1e27 = 0.04375
+
+    // The two paths produce different results, so the mutant should be detected
+    const expectedOriginal = ethers.parseEther("0.03125");
+    const expectedMutant = ethers.parseEther("0.04375");
+
+    // The result should match the original logic, not the mutant
+    expect(result).to.equal(expectedOriginal);
+    expect(result).to.not.equal(expectedMutant);
+  });
+});
+
+// Mock contracts needed for testing
+// Note: In a real test environment, these would be deployed as separate contracts

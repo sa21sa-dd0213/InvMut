@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "Put reverts exactly when msg.value is so large that adding it to the sender's current balance gives a result that is not strictly greater than the current balance (i.e., an unsigned overflow occurred).",
+ "render_status": "rendered",
+ "validation_status": "skipped",
+ "validation_error": null,
+ "kill": "bug_no_kill:holds_on_modified",
+ "origin": "primary",
+ "change_summary": "Swap the addition in the require to use a wrong inequality that still passes but changes behavior only via overflow (if unchecked).",
+ "mutated_unit_code": "    function Put(uint _unlockTime)\n     public payable {\n        Holder storage acc = Acc[msg.sender];\n        require(((acc.balance + msg.value) > acc.balance));\n        acc.balance += msg.value;\n        acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp;\n        LogFile.AddMessage(msg.sender,msg.value,\"Put\");\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {MY_BANK} from \"../src/MY_BANK.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    MY_BANK c;\n\n    function setUp() public {\n        c = new MY_BANK(address(this));\n    }\n\n    function _run(uint256 _unlockTime, uint256 amount) internal {\n        amount = bound(amount, 0, 1000000000000000000000000000000);\n        vm.deal(address(this), VALUE_CAP);\n        vm.deal(address(c), VALUE_CAP);\n        vm.assume(address(this).balance >= amount);\n        uint balBefore = address(c).balance;\n        bool reverted;\n        try c.Put{value: amount}(_unlockTime) { reverted = false; } catch { reverted = true; }\n        uint balAfter = address(c).balance;\n        assertTrue(reverted == ((balBefore + amount) < balAfter));\n    }\n\n    function testFuzz_run(uint256 _unlockTime, uint256 amount) public {\n        _run(_unlockTime, amount);\n    }\n\n    receive() external payable {}\n}\n"
+}

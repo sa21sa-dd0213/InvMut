@@ -1,0 +1,52 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PredictTheBlockHashChallenge - kill mutant m56d7a580", function () {   it("should kill mutant that changes >= to == in settle function by having extra balance", async function () {     const [owner, player1, player2] = await ethers.getSigners();          // Deploy contract with 1 ETH     const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge");     const instance = await Factory.deploy({ value: ethers.parseEther("1") });     await instance.waitForDeployment();          // Player1 locks in a guess (we'll make it correct later by mining)     const lockTx1 = await instance.connect(player1).lockInGuess(       ethers.keccak256(ethers.toUtf8Bytes("placeholder")),       { value: ethers.parseEther("1") }     );     await lockTx1.wait();          // Player2 also locks in a guess (adding extra balance to the contract)     const lockTx2 = await instance.connect(player2).lockInGuess(       ethers.keccak256(ethers.toUtf8Bytes("another")),       { value: ethers.parseEther("1") }     );     await lockTx2.wait();          // Mine a block to advance past the guess block     await ethers.provider.send("evm_mine", []);          // Player1 settles - contract now has 3 ETH total (1 deploy + 2 from players)     // Original: require(balance >= 2) passes, mutant: require(balance == 2) fails     await expect(       instance.connect(player1).settle()     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PredictTheBlockHashChallenge { struct Guess { uint block; bytes32 guess; } mapping(address => Guess) guesses; constructor() public payable { require(msg.value == 1 ether); } function lockInGuess(bytes32 hash) public payable { require(guesses[msg.sender].block == 0); require(msg.value == 1 ether); guesses[msg.sender].guess = hash; guesses[msg.sender].block = block.number + 1; } function settle() public { require(guesses[msg.sender].block != 0); require(block.number > guesses[msg.sender].block); bytes32 answer = keccak256(abi.encodePacked(blockhash(guesses[msg.sender].block))); guesses[msg.sender].block = 0; if (guesses[msg.sender].guess == answer) { require(address(this).balance >= 2 ether); payable(msg.sender).transfer(2 ether); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PredictTheBlockHashChallenge - kill mutant m56d7a580", function () {
+  it("should kill mutant that changes >= to == in settle function by having extra balance", async function () {
+    const [owner, player1, player2] = await ethers.getSigners();
+
+    // Deploy contract with 1 ETH
+    const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge");
+    const instance = await Factory.deploy({ value: ethers.parseEther("1") });
+    await instance.waitForDeployment();
+
+    // Player1 locks in a guess (we'll make it correct later by mining)
+    const lockTx1 = await instance.connect(player1).lockInGuess(
+      ethers.keccak256(ethers.toUtf8Bytes("placeholder")),
+      { value: ethers.parseEther("1") }
+    );
+    await lockTx1.wait();
+
+    // Player2 also locks in a guess (adding extra balance to the contract)
+    const lockTx2 = await instance.connect(player2).lockInGuess(
+      ethers.keccak256(ethers.toUtf8Bytes("another")),
+      { value: ethers.parseEther("1") }
+    );
+    await lockTx2.wait();
+
+    // Mine a block to advance past the guess block
+    await ethers.provider.send("evm_mine", []);
+
+    // Player1 settles - contract now has 3 ETH total (1 deploy + 2 from players)
+    // Original: require(balance >= 2) passes, mutant: require(balance == 2) fails
+    await expect(
+      instance.connect(player1).settle()
+    ).to.be.reverted;
+  });
+});
+```

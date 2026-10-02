@@ -1,0 +1,23 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EtherLotto:
+        Contract Code: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+
+    Consider the following mutant of EtherLotto:
+        Mutant m6f420c88 of function play replaces - with +
+        Mutant Diff: ---|             payable(msg.sender).transfer(pot - FEE_AMOUNT); +++|             payable(msg.sender).transfer(pot + FEE_AMOUNT);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+First, let’s analyze the difference:  
+In the original contract, when `random == 0`, the winner receives `pot - FEE_AMOUNT` (the pot minus the fee).  
+In the mutant, the winner receives `pot + FEE_AMOUNT` (the pot plus the fee), which means the contract sends out more ether than it holds if the pot is only the ticket amount (10 wei) and the fee is 1 wei — it would try to send 11 wei from a balance of 10 wei, causing a failed transfer or an underflow scenario (though underflow is prevented in Solidity 0.8+, so it would revert).
+
+**Hypothesis**: The mutant changes the subtraction to addition in the payout calculation. Therefore, a test case that calls `play()` exactly once (so the pot equals `TICKET_AMOUNT` = 10), expects the winner to receive 9 wei (pot - fee), and verifies that the contract’s balance after the transaction is zero should kill the mutant, because the mutant would attempt to send 11 wei from a balance of 10 wei, causing the transaction to revert.

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T9c4bfaf0",
+ "property_summary": "For any target that increments its state in its payable fallback/receive, calling C.sendMoney(target, value, data) as owner must forward enough gas so that the target's fallback executes and increments its counter when value is nonzero; replacing call with transfer (which only forwards 2300 gas) can prevent that increment for some target implementations.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace call with transfer, which forwards only 2300 gas and may prevent the target's fallback from incrementing depositsCount if it needs more gas.",
+ "mutated_unit_code": "function sendMoney(address _target, uint _value, bytes memory _data) public onlyOwner {\n\n        payable(_target).transfer(_value);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n\n    function testFuzz_property(uint256 amount, uint256 ) public {\n        amount = bound(amount, 0, 1 ether);\n\n        AttackerLike attacker = new AttackerLike();\n\n        vm.deal(address(c), 1 ether);\n\n        vm.prank(address(this));\n        bool ok;\n        try c.sendMoney(address(attacker), amount, \"\") {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        if (amount > 0) {\n            assertTrue(attacker.counter() == 1);\n        } else {\n            assertTrue(ok == true);\n        }\n    }\n}\n\ncontract AttackerLike {\n    uint public counter;\n\n    receive() external payable {\n        for (uint i = 0; i < 10; i++) {\n            counter += 1;\n        }\n        counter = 1;\n    }\n}\n"
+}

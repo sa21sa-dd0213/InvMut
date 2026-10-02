@@ -1,0 +1,12 @@
+{
+ "difference_id": "T5e7a1bc4",
+ "property_summary": "The reference contract only updates pastBlockTime when exactly 10 ether is sent to fallback; for any other sent amount pastBlockTime remains unchanged, while the mutant (which deletes the msg.value require) can change pastBlockTime for other amounts.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the require that msg.value equals 10 ether, allowing other values and thereby changing observable behavior.",
+ "mutated_unit_code": "fallback() external payable {\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n\n    function testFuzz_property(uint256 amount, address actor) public {\n        vm.assume(actor != address(0));\n\n        uint256 sendAmt = bound(amount, 0, 100 ether);\n        vm.deal(actor, sendAmt);\n\n        uint256 before = c.pastBlockTime();\n\n        vm.prank(actor);\n        (bool ok, ) = address(c).call{value: sendAmt}(\"\");\n\n        if (sendAmt != 10 ether) {\n            assertTrue(c.pastBlockTime() == before);\n        } else {\n            assertTrue(c.pastBlockTime() >= before);\n        }\n    }\n}\n"
+}

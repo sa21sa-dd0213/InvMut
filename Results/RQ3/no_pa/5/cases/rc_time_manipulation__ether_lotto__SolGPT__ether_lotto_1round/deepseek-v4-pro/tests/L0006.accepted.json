@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0006",
+ "property_summary": "After calling play() twice where both calls result in random == 0, the second version resets pot=0 after the first play's transfer but before the second play's pot update, causing pot to be less than TICKET_AMOUNT + FEE_AMOUNT after both calls, while the reference keeps the full pot.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "+pot = 0;",
+ "mutated_unit_code": "    function play()  public payable {\n        require(msg.value == TICKET_AMOUNT);\n        pot += msg.value;\n\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n\n        if (random == 0) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n        pot = 0;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    function setUp() public { c = new EtherLotto(); }\n    function testRegression_property() public {\n        vm.warp(1);\n        vm.roll(1);\n\n        address player1 = address(0x1);\n        vm.deal(player1, 10);\n        vm.prank(player1);\n        c.play{value: 10}();\n\n        \n\n        vm.warp(2);\n        vm.roll(2);\n\n        uint firstRandom = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n        vm.warp(2);\n        vm.roll(2);\n\n        address player2 = address(0x2);\n        vm.deal(player2, 10);\n        vm.prank(player2);\n        c.play{value: 10}();\n\n        \n        vm.warp(3);\n        vm.roll(3);\n\n        address player3 = address(0x3);\n        vm.deal(player3, 10);\n        vm.prank(player3);\n        c.play{value: 10}();\n\n        \n\n        \n        c = new EtherLotto();\n        vm.warp(1);\n        vm.roll(1);\n\n        vm.warp(2);\n        vm.roll(2);\n        address player = address(0x1);\n        vm.deal(player, 10);\n        vm.prank(player);\n        c.play{value: 10}();\n\n        \n        assertEq(c.pot(), 10);\n    }\n}"
+}

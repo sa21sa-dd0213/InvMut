@@ -1,0 +1,76 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m76521aa5 of DCF.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test DCF.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for DCF:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("DCF reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy DCF by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("DCF"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DCF mutant test - kill m76521aa5 (&& instead of || in blacklist check)", function () {
+  it("should revert when transferring from a blacklisted address to a non-blacklisted address", async function () {
+    const [owner, blacklistedUser, normalUser] = await ethers.getSigners();
+    
+    // Deploy DCF with a liquidity receive address
+    const DCF = await ethers.getContractFactory("DCF");
+    const instance = await DCF.deploy(normalUser.address);
+    await instance.waitForDeployment();
+    
+    // Set CFO (caller) to owner so owner can set blacklist
+    await instance.setCaller(owner.address);
+    
+    // Transfer some tokens to blacklistedUser for testing
+    const transferAmount = ethers.parseEther("100");
+    await instance.transfer(blacklistedUser.address, transferAmount);
+    
+    // Blacklist the sender (blacklistedUser)
+    await instance.setBlack(blacklistedUser.address, true);
+    
+    // Attempt to transfer from blacklisted sender to normal recipient
+    // In original: !blackAddress[from] || !blackAddress[to] -> false || true -> false -> require fails -> revert
+    // In mutant: !blackAddress[from] && !blackAddress[to] -> false && true -> false -> require passes -> no revert (bug)
+    await expect(
+      instance.connect(blacklistedUser).transfer(normalUser.address, ethers.parseEther("10"))
+    ).to.be.revertedWith("black address not transfer");
+  });
+  
+  it("should revert when transferring from a non-blacklisted address to a blacklisted address", async function () {
+    const [owner, normalUser, blacklistedRecipient] = await ethers.getSigners();
+    
+    // Deploy DCF with a liquidity receive address
+    const DCF = await ethers.getContractFactory("DCF");
+    const instance = await DCF.deploy(normalUser.address);
+    await instance.waitForDeployment();
+    
+    // Set CFO (caller) to owner so owner can set blacklist
+    await instance.setCaller(owner.address);
+    
+    // Transfer some tokens to normalUser for testing
+    const transferAmount = ethers.parseEther("100");
+    await instance.transfer(normalUser.address, transferAmount);
+    
+    // Blacklist the recipient
+    await instance.setBlack(blacklistedRecipient.address, true);
+    
+    // Attempt to transfer from normal sender to blacklisted recipient
+    // In original: !blackAddress[from] && !blackAddress[to] -> true && false -> false -> require fails -> revert
+    // In mutant: !blackAddress[from] && !blackAddress[to] -> true && false -> false -> require fails -> revert (both same here)
+    await expect(
+      instance.connect(normalUser).transfer(blacklistedRecipient.address, ethers.parseEther("10"))
+    ).to.be.revertedWith("black address not transfer");
+  });
+});
+```

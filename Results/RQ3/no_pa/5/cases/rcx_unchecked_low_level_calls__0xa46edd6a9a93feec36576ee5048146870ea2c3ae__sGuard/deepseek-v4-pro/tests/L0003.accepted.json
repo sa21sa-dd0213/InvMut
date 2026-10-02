@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "Calling transfer with a single address and value should transfer tokens from the from address to the to address; the buggy version starts the loop at index 1, skipping the first recipient.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "-for(uint i=0;i<_tos.length;i++){; +for(uint i=1;i<_tos.length;i++){",
+ "mutated_unit_code": "    function transfer(address from,address caddress, address[] memory _tos, uint[] memory v)public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=1;i<_tos.length;i++){\n\n            caddress.call(abi.encodeWithSelector(id,from,_tos[i],v[i]));\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EBU} from \"../src/EBU.sol\";\n\ncontract InvMutTest is Test {\n    EBU c;\n    function setUp() public { c = new EBU(); }\n    function testRegression_property() public {\n        address token = address(new Token());\n        address from = address(0x123);\n        address to = address(0x456);\n        uint256 amount = 100;\n\n        Token(token).mint(from, amount);\n        vm.prank(from);\n        Token(token).approve(address(c), amount);\n\n        address[] memory tos = new address[](1);\n        tos[0] = to;\n        uint256[] memory vals = new uint256[](1);\n        vals[0] = amount;\n        c.transfer(from, token, tos, vals);\n\n        assertEq(Token(token).balanceOf(to), amount);\n    }\n}\n\ncontract Token {\n    mapping(address => uint256) public balanceOf;\n    mapping(address => mapping(address => uint256)) public allowance;\n\n    function mint(address to, uint256 amount) external {\n        balanceOf[to] += amount;\n    }\n\n    function approve(address spender, uint256 amount) external returns (bool) {\n        allowance[msg.sender][spender] = amount;\n        return true;\n    }\n\n    function transferFrom(address from, address to, uint256 amount) external returns (bool) {\n        require(allowance[from][msg.sender] >= amount);\n        allowance[from][msg.sender] -= amount;\n        balanceOf[from] -= amount;\n        balanceOf[to] += amount;\n        return true;\n    }\n}"
+}

@@ -1,0 +1,40 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Reentrancy_bonus mutant m7fc86598 test", function () {   it("should revert when withdrawing to a contract that rejects ETH (require(success) check)", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Reentrancy_bonus");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Deploy a contract that reverts on ETH reception     const RejectorFactory = await ethers.getContractFactory("contracts/Rejector.sol:Rejector");     const rejector = await RejectorFactory.deploy();     await rejector.waitForDeployment();      // First, give addr1 a reward by calling getFirstWithdrawalBonus     await instance.connect(addr1).getFirstWithdrawalBonus(addr1.address);          // Now try to withdraw to the rejecting contract address (should revert in original, succeed in mutant)     await expect(       instance.connect(addr1).withdrawReward(await rejector.getAddress())     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract SmartFix { bool public _locked = false; modifier _nonReentrant() { require(!_locked); _locked = true; _; _locked = false; } } contract Reentrancy_bonus is SmartFix { mapping (address => uint) private userBalances; mapping (address => bool) private claimedBonus; mapping (address => uint) private rewardsForA; function withdrawReward(address recipient)  public _nonReentrant  { uint amountToWithdraw = rewardsForA[recipient]; rewardsForA[recipient] = 0; (bool success, ) = recipient.call{value: amountToWithdraw}(""); require(success); } function getFirstWithdrawalBonus(address recipient) public { require(!claimedBonus[recipient]); rewardsForA[recipient] += 100; withdrawReward(recipient); claimedBonus[recipient] = true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Reentrancy_bonus mutant m7fc86598 test", function () {
+  it("should revert when withdrawing to a contract that rejects ETH (require(success) check)", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Reentrancy_bonus");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy a contract that reverts on ETH reception
+    const RejectorFactory = await ethers.getContractFactory("Rejector");
+    const rejector = await RejectorFactory.deploy();
+    await rejector.waitForDeployment();
+
+    // First, give addr1 a reward by calling getFirstWithdrawalBonus
+    await instance.connect(addr1).getFirstWithdrawalBonus(addr1.address);
+
+    // Now try to withdraw to the rejecting contract address (should revert in original, succeed in mutant)
+    await expect(
+      instance.connect(addr1).withdrawReward(await rejector.getAddress())
+    ).to.be.reverted;
+  });
+});
+```

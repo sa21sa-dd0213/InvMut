@@ -1,0 +1,11 @@
+{
+ "difference_id": "L0002",
+ "property_summary": "After two consecutive play() calls where only the second wins (random=0), the reference C pays out the pot accumulated from both calls (20 - fee = 19), then sets pot=0, while the buggy version only pays out the pot from the first call (10 - fee = 9) because pot never increased on the second call, so the final pot after second play is 1 (the leftover fee from the first win that was never added).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "change_summary": "Replace 'pot += msg.value;' with 'pot += 0;' so that pot does not increase on any play call.",
+ "mutated_unit_code": "    function play()  public payable {\n        require(msg.value == TICKET_AMOUNT);\n        pot += 0;\n\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n\n        if (random == 0) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    function setUp() public { c = new EtherLotto(); }\n    function testRegression_property() public {\n        address alice = address(0x1111);\n        address bob = address(0x2222);\n        vm.deal(alice, 10 ether);\n        vm.deal(bob, 10 ether);\n\n        vm.warp(0);\n        vm.roll(0);\n        vm.prank(alice);\n        c.play{value: 10}();\n        assertTrue(c.pot() == 10);\n    }\n}\n"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0014",
+ "property_summary": "After calling DrugDealer() then buyDrugs() with 1 ether, the reference contract deducts a 4% devFee from drugsBought and credits less claimable drugs to msg.sender, while the buggy version skips the fee deduction and credits the full amount, causing c.claimedDrugs(msg.sender) to differ.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Delete the line that subtracts devFee from drugsBought.",
+ "mutated_unit_code": "    function buyDrugs() public payable{\n        require(initialized);\n        uint256 drugsBought=calculateDrugBuy(msg.value,SafeMath.sub(address(this).balance,msg.value));\n        payable(ceoAddress).transfer(devFee(msg.value));\n        claimedDrugs[msg.sender]=SafeMath.add(claimedDrugs[msg.sender],drugsBought);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherCartel} from \"../src/EtherCartel.sol\";\n\ncontract InvMutTest is Test {\n    EtherCartel c;\n    function setUp() public { c = new EtherCartel(); }\n    function testRegression_property() public {\n        c.seedMarket(1000);\n\n        vm.prank(address(0xdead));\n        c.getFreeKilo();\n\n        vm.prank(c.ceoAddress());\n        c.DrugDealer();\n\n        address buyer = address(0xbeef);\n        vm.deal(buyer, 1 ether);\n        vm.prank(buyer);\n        c.buyDrugs{value: 1 ether}();\n\n        uint256 drugsClaimed = c.claimedDrugs(buyer);\n\n        uint256 contractBalBefore = 0;\n        uint256 drugsBought = c.calculateDrugBuy(1 ether, contractBalBefore);\n        uint256 fee = c.devFee(drugsBought);\n        uint256 expectedReference = drugsBought - fee;\n\n        assertTrue(drugsClaimed == expectedReference, \"Reference deducts devFee; bug does not\");\n    }\n}\n"
+}

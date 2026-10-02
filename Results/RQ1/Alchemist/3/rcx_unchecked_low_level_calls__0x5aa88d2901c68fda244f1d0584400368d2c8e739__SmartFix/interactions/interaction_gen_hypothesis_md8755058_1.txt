@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract MultiplicatorX3:
+        Contract Code: pragma solidity ^0.8.0; contract MultiplicatorX3 { address public Owner = msg.sender; receive() external payable {} function withdraw() payable public { require(msg.sender == Owner); payable(Owner).transfer(address(this).balance); } function Command(address adr,bytes memory data) payable public { require(msg.sender == Owner); adr.call{value: msg.value}(data); } function multiplicate(address adr) public payable { if(msg.value>=address(this).balance) { require(((address(this).balance + msg.value) >= address(this).balance)); payable(adr).transfer(address(this).balance+msg.value); } } }
+
+    Consider the following mutant of MultiplicatorX3:
+        Mutant md8755058 of function multiplicate replaces >= with <=
+        Mutant Diff: ---|             require(((address(this).balance + msg.value) >= address(this).balance)); +++|             require(((address(this).balance + msg.value) <= address(this).balance));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract's `multiplicate` function contains a `require` statement that checks if `(address(this).balance + msg.value) >= address(this).balance`. This is a tautological overflow protection that always passes for positive values. The mutant changes `>=` to `<=`, making the condition only pass if the sum is less than or equal to the contract's balance, which is only possible if `msg.value` is zero (since adding a positive number would make the sum strictly greater than the original balance).  
+
+**Hypothesis**: A test case that sends a non-zero `msg.value` (e.g., 1 wei) when calling `multiplicate` from the Owner address, while the contract's balance is also non-zero, and expects the function to execute successfully (i.e., transfer the entire contract balance plus the sent value to the target address), will fail on the mutant because the mutated require condition will revert.

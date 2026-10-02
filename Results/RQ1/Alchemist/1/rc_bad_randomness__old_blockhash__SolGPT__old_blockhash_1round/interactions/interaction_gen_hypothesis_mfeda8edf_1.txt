@@ -1,0 +1,27 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract PredictTheBlockHashChallenge:
+        Contract Code: pragma solidity ^0.8.0; contract PredictTheBlockHashChallenge { struct guess { uint block; bytes32 guess; } mapping(address => guess) guesses; constructor() public payable { require(msg.value == 1 ether); } function lockInGuess(bytes32 hash) public payable { require(guesses[msg.sender].block == 0); require(msg.value == 1 ether); guesses[msg.sender].guess = hash; guesses[msg.sender].block = block.number + 1; } function settle() public { require(guesses[msg.sender].block != 0); require(block.number > guesses[msg.sender].block); bytes32 answer = blockhash(guesses[msg.sender].block); guesses[msg.sender].block = 0; if (answer != 0 && guesses[msg.sender].guess == answer) { payable(msg.sender).transfer(2 ether); } } }
+
+    Consider the following mutant of PredictTheBlockHashChallenge:
+        Mutant mfeda8edf of function lockInGuess replaces + with *
+        Mutant Diff: ---|         guesses[msg.sender].block = block.number + 1; +++|         guesses[msg.sender].block = block.number * 1;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let’s break this down:
+
+- In the **original** contract, `guesses[msg.sender].block = block.number + 1`. This sets the target block to the *next* block (the one after the current transaction block).
+- In the **mutant**, it becomes `guesses[msg.sender].block = block.number * 1`, which equals the *current* `block.number` (since multiplying by 1 does nothing).
+- This means the mutant records the current block number instead of the next one. In the `settle` function, the check `block.number > guesses[msg.sender].block` would then require the current block number to be *greater* than itself, which can never be true (since a block number is not greater than itself at the time of settlement). So `settle` would always revert or fail to proceed normally.
+- However, a more subtle effect: if the transaction in `lockInGuess` is mined in block N, then the original sets the target to N+1; the mutant sets it to N. For settlement to succeed in the mutant, `block.number` would have to be > N, which is true only from block N+1 onward, but the `blockhash(N)` would then be used. This could still allow a valid guess if the attacker can predict block N’s hash (which is impossible in practice), but the main issue is that the *logic shift* changes the expected behavior.
+
+**Hypothesis:**  
+"The mutant changes the assignment from `block.number + 1` to `block.number * 1`, so the stored block number equals the current block instead of the next block. A test case that calls `lockInGuess` in block N, then calls `settle` in block N+1 (or later), and expects the settlement to compare the guess against the hash of block N+1 (as per the original) should fail on the mutant because the mutant will compare against the hash of block N, not block N+1. Therefore, a test that checks that the correct block hash is used (e.g., by making a correct guess for block N+1 and expecting a payout in the original) will kill the mutant."

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T9092784b",
+ "property_summary": "For any inputs with a non-empty _tos list and a callee that reverts on the called selector, the reference contract always propagates that revert (i.e., the external call fails and transfer reverts or returns false via a caught failure), whereas the mutant with an early unconditional return will return true without performing the external calls and thus will not revert when the callee would have caused a failure.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Insert an early unconditional return true before performing any calls, causing the function to return true without invoking calls.",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v, uint _decimals)  public returns (bool) {\n\trequire(_tos.length > 0);\n\treturn true;\n\tbytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n\tuint _value = v * 10 ** _decimals;\n\tfor(uint i = 0;i < _tos.length;i++){\n\t{ (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], _value)); _d; if (! _s) {\n\trevert();} }\n\t}\n\treturn true;\n\t}\n",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airDrop} from \"../src/airDrop.sol\";\n\ncontract InvMutTest is Test {\n    airDrop c;\n    function setUp() public { c = new airDrop(); }\n\n    function testFuzz_property(address from, uint256 v, uint8 decimals, uint256 tosCount) public {\n        tosCount = bound(tosCount, 0, 8);\n        vm.assume(tosCount > 0);\n\n        Reverter rev = new Reverter();\n\n        address[] memory tos = new address[](tosCount);\n        for (uint i = 0; i < tosCount; i++) tos[i] = address(rev);\n\n        bool ok;\n        try c.transfer(from, address(rev), tos, v, uint(decimals)) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(!ok);\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"revert\");\n    }\n    receive() external payable { revert(\"revert\"); }\n}\n"
+}

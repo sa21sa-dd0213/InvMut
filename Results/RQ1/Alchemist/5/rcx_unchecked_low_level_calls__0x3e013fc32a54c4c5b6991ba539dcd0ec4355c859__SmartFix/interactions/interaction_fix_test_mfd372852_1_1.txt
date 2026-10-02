@@ -1,0 +1,50 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MultiplicatorX4 mutant detection", function () {   it("should detect mutant mfd372852 by sending more than contract balance", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("MultiplicatorX4");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Fund the contract with 1 ETH     await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("1")     });          const contractBalanceBefore = await ethers.provider.getBalance(await instance.getAddress());     const addr2BalanceBefore = await ethers.provider.getBalance(addr2.address);          // Send 2 ETH which is strictly greater than the contract balance of 1 ETH     const tx = await instance.connect(owner).multiplicate(addr2.address, {       value: ethers.parseEther("2")     });     await tx.wait();          const contractBalanceAfter = await ethers.provider.getBalance(await instance.getAddress());     const addr2BalanceAfter = await ethers.provider.getBalance(addr2.address);          // In the original, the entire balance (1 + 2 = 3 ETH) should be transferred to addr2     // In the mutant, the condition msg.value == address(this).balance fails (2 != 1), so no transfer occurs     expect(addr2BalanceAfter - addr2BalanceBefore).to.equal(ethers.parseEther("3"));     expect(contractBalanceAfter).to.equal(0);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract MultiplicatorX4 { address public Owner = msg.sender; receive() external payable {} function withdraw() payable public { require(msg.sender == Owner); payable(Owner).transfer(address(this).balance); } function Command(address adr,bytes memory data) payable public { require(msg.sender == Owner); adr.call{value: msg.value}(data); } function multiplicate(address adr) public payable { if(msg.value>=address(this).balance) { require(((address(this).balance + msg.value) >= address(this).balance)); payable(adr).transfer(address(this).balance+msg.value); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MultiplicatorX4 mutant detection", function () {
+  it("should detect mutant mfd372852 by sending more than contract balance", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("MultiplicatorX4");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Fund the contract with 1 ETH
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("1")
+    });
+    
+    const contractBalanceBefore = await ethers.provider.getBalance(await instance.getAddress());
+    const addr2BalanceBefore = await ethers.provider.getBalance(addr2.address);
+    
+    // Send 2 ETH which is strictly greater than the contract balance of 1 ETH
+    const tx = await instance.connect(owner).multiplicate(addr2.address, {
+      value: ethers.parseEther("2")
+    });
+    await tx.wait();
+    
+    const contractBalanceAfter = await ethers.provider.getBalance(await instance.getAddress());
+    const addr2BalanceAfter = await ethers.provider.getBalance(addr2.address);
+    
+    // In the original, the entire balance (1 + 2 = 3 ETH) should be transferred to addr2
+    // In the mutant, the condition msg.value == address(this).balance fails (2 != 1), so no transfer occurs
+    expect(addr2BalanceAfter - addr2BalanceBefore).to.equal(ethers.parseEther("3"));
+    expect(contractBalanceAfter).to.equal(0);
+  });
+});
+```

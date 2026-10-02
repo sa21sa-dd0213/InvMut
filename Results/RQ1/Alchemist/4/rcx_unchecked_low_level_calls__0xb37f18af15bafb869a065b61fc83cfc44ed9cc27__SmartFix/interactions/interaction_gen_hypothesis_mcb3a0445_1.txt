@@ -1,0 +1,27 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract SimpleWallet:
+        Contract Code: pragma solidity ^0.8.0; contract SimpleWallet { address public owner = msg.sender; uint public depositsCount; modifier onlyOwner { require(msg.sender == owner); _; } receive() external payable { require(((depositsCount + 1) >= depositsCount)); depositsCount++; } function withdrawAll() public onlyOwner { withdraw(address(this).balance); } function withdraw(uint _value) public onlyOwner { payable(msg.sender).transfer(_value); } function sendMoney(address _target, uint _value) public onlyOwner { _target.call{value: _value}(""); } }
+
+    Consider the following mutant of SimpleWallet:
+        Mutant mcb3a0445 of function receive replaces >= with >
+        Mutant Diff: ---|         require(((depositsCount + 1) >= depositsCount)); +++|         require(((depositsCount + 1)  > depositsCount));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original `require` statement uses `>=` which ensures that `depositsCount + 1` is always greater than or equal to `depositsCount`, which is always true (since adding 1 to any non-negative integer will always be greater than or equal to the original number). The mutant changes this to `>`, which also always holds true under normal conditions.
+
+However, the key difference is that the original condition with `>=` would pass even if `depositsCount` could somehow overflow back to 0 (though in Solidity 0.8+ arithmetic overflow is checked by default). The mutant with `>` would fail if `depositsCount` ever reached its maximum value and overflowed to 0, because then `0 + 1 > 0` would be true but that scenario is prevented by Solidity's built-in overflow checks.
+
+Since both conditions are effectively always true in practice, the test case must exploit a scenario where the subtle difference matters. The only realistic way to kill this mutant is to test the boundary condition at the maximum value of `uint`.
+
+**Hypothesis**: A test case that repeatedly calls `receive()` until `depositsCount` reaches its maximum value (`type(uint).max`), then attempts one more call, should pass on the original contract (where `>=` still holds even if overflow were possible) but kill the mutant because the mutant's `>` condition would fail when `depositsCount` overflows to 0, making `0 + 1 > 0` true, but the overflow itself is prevented by Solidity 0.8+, so the test would need to exploit that the mutant's logic is semantically identical to the original under all normal circumstances. 
+
+Given the constraints of Solidity 0.8+, the mutant is actually functionally identical to the original, so no test can kill it. However, if we assume an older compiler version without overflow protection, a test that pushes `depositsCount` to `type(uint).max` and then sends one more Ether would pass on the original (since `0 + 1 >= 0` is true) but revert on the mutant (since `0 + 1 > 0` is true, so it would actually pass too). The mutant would only be killed if `depositsCount` overflowed to a value where `depositsCount + 1 > depositsCount` is false

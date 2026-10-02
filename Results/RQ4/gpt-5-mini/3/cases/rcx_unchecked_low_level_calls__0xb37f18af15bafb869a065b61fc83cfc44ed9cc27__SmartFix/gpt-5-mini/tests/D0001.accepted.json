@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "For all callers and amounts, the contract owner (deployer) can invoke sendMoney to forward Ether out (so executing sendMoney from owner never reverts and the contract balance does not unexpectedly decrease when owner calls), while the mutant inverting onlyOwner allows non-owners to trigger owner-only behavior causing differing observable state (some non-owner call can cause a withdrawal that changes address(c).balance).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change onlyOwner modifier to require msg.sender != owner (invert check) so only non-owner can call withdrawAll, altering observed behavior.",
+ "mutated_unit_code": "modifier onlyOwner {\n        require(msg.sender != owner);\n        _;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n\n    function setUp() public { c = new SimpleWallet(); }\n\n    function testFuzz_property(address caller, uint256 value) public {\n        vm.assume(caller != address(0));\n        value = bound(value, 0, 1 ether);\n\n        vm.deal(address(this), 1 ether);\n        (bool sent, ) = address(c).call{value: 1 ether}('');\n        require(sent, \"funding failed\");\n\n        uint256 before = address(c).balance;\n        vm.prank(address(this));\n        bool ok;\n        try c.sendMoney(caller, value) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok);\n    }\n}\n"
+}

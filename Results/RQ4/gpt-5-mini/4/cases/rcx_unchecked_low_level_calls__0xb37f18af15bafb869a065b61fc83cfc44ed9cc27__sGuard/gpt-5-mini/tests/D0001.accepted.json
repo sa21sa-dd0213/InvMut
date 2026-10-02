@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "For any caller and amount, only the contract owner can make C.sendMoney(...) succeed (i.e. causes the low-level call to be attempted and the contract balance to decrease by the sent amount when caller is owner); the mutant inverts onlyOwner so there exist callers/amounts where the owner cannot send and a non-owner can, making address(c).balance behave differently.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change onlyOwner modifier to require msg.sender is not the owner (inverting the access control).",
+ "mutated_unit_code": "modifier onlyOwner {\n        require(msg.sender != owner);\n        _;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n\n    function setUp() public { c = new SimpleWallet(); }\n\n    function testFuzz_property(address actor, uint256 amount) public {\n        vm.assume(actor != address(0));\n\n        vm.deal(address(c), 1 ether);\n\n        vm.deal(actor, 1 ether);\n\n        uint256 bounded = amount % (address(c).balance + 1);\n\n        vm.prank(actor);\n        try c.sendMoney(actor, bounded) {\n        } catch {\n        }\n\n        address owner = address(this);\n\n        if (actor != owner) {\n            assertTrue(address(c).balance == 1 ether);\n        } else {\n            assertTrue(address(c).balance <= 1 ether);\n        }\n    }\n}\n"
+}

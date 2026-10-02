@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0009",
+ "property_summary": "After endConfiguration() locks the configured flag, calling setDAO to change DAO and then calling assertGovernanceApproved from a non-governed, non-DAO sender: the reference reverts (DAO unchanged, msg.sender not DAO and not governed) but the bug allows the DAO change and reverts instead because it no longer requires the sender to be DAO to change DAO with configured=true, causing assertGovernanceApproved to revert for a different reason. Actually, the reference reverts in assertGovernanceApproved with 'LIMBO: governance decision rejected.' while the buggy version also reverts but via the failed transferFrom \u2013 however the key divergence is that setDAO succeeds in the buggy version when configured=true and msg.sender != DAO, whereas the reference requires msg.sender == DAO if configured. To witness: after endConfiguration(), prank a non-DAO caller to call setDAO(newDAO). The reference reverts (setDAO fails), the bug returns (setDAO succeeds). Then assertTrue that c.DAO() == address(this) in reference and != address(this) in the buggy version. Actually simpler: provide a concrete sequence where after endConfiguration, a non-DAO call to setDAO reverts in reference and succeeds in buggy. Then check c.DAO().",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Remove the condition that the contract must not be configured to allow the DAO to change.",
+ "mutated_unit_code": "  function setDAO(address dao) public {\n    require(DAO == address(0) || msg.sender == DAO || configured, \"EK\");\n    DAO = dao;\n    delete governer;\n  }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {FlashGovernanceArbiter} from \"../src/FlashGovernanceArbiter.sol\";\n\ncontract InvMutTest is Test {\n    FlashGovernanceArbiter c;\n    function setUp() public { c = new FlashGovernanceArbiter(address(this)); }\n    function testRegression_property() public {\n        c.endConfiguration();\n\n        \n        bool succeeded;\n        vm.prank(address(0x1));\n        try c.setDAO(address(0xdead)) {\n            succeeded = true;\n        } catch {\n            succeeded = false;\n        }\n\n        assertTrue(c.DAO() != address(0xdead), \"Bug: setDAO succeeded when it should not have\");\n    }\n}\n"
+}

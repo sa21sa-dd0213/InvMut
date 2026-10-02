@@ -1,0 +1,76 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m447c62cf of airdrop.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test airdrop.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for airdrop:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("airdrop reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy airdrop by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("airdrop"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airdrop reference (ethers v6; deploy may require constructor arguments)", function () {
+  it("should revert when loop iterates out-of-bounds due to <= in mutant", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("airdrop");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy a simple ERC20-like token that the airdrop contract will call
+    const TokenFactory = await ethers.getContractFactory("TestToken");
+    const token = await TokenFactory.deploy();
+    await token.waitForDeployment();
+
+    // Fund owner with tokens and approve the airdrop contract to spend
+    const amount = ethers.parseEther("1");
+    await token.mint(owner.address, amount);
+    await token.approve(await instance.getAddress(), amount);
+
+    // Prepare single recipient array - this will cause out-of-bounds access on mutant
+    const recipients = [addr1.address];
+    
+    // The mutant changes i < _tos.length to i <= _tos.length
+    // With 1 element, loop runs for i=0 and i=1, where i=1 accesses _tos[1] which is out of bounds
+    await expect(
+      instance.transfer(owner.address, await token.getAddress(), recipients, amount)
+    ).to.be.reverted;
+  });
+});
+
+// Minimal ERC20 token for testing
+contract TestToken {
+    string public name = "TestToken";
+    string public symbol = "TT";
+    uint8 public decimals = 18;
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    function mint(address to, uint256 amount) external {
+        balanceOf[to] += amount;
+    }
+
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        require(allowance[from][msg.sender] >= amount);
+        allowance[from][msg.sender] -= amount;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+}
+```

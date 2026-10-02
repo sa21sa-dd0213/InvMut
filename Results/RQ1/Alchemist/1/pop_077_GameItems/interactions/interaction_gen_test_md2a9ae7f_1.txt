@@ -1,0 +1,85 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant md2a9ae7f of GameItems.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test GameItems.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for GameItems:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("GameItems reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy GameItems by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("GameItems"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("GameItems mutant test - md2a9ae7f", function () {
+  it("should detect mutant where <= is replaced with >= in finite supply check", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const treasuryAddress = owner.address;
+    
+    // Deploy GameItems
+    const GameItemsFactory = await ethers.getContractFactory("GameItems");
+    const gameItems = await GameItemsFactory.deploy(owner.address, treasuryAddress);
+    await gameItems.waitForDeployment();
+
+    // Deploy Neuron token (required for minting)
+    const NeuronFactory = await ethers.getContractFactory("Neuron");
+    const neuron = await NeuronFactory.deploy(owner.address, treasuryAddress, addr1.address);
+    await neuron.waitForDeployment();
+
+    // Set up Neuron contract in GameItems
+    await gameItems.connect(owner).instantiateNeuronContract(await neuron.getAddress());
+
+    // Give owner some NRN tokens for minting
+    const nrnAmount = ethers.parseEther("1000");
+    await neuron.connect(owner).mint(owner.address, nrnAmount);
+
+    // Create a finite supply game item with 5 items remaining
+    const itemsRemaining = 5;
+    const itemPrice = ethers.parseEther("10");
+    const dailyAllowance = 10;
+    
+    await gameItems.connect(owner).createGameItem(
+      "Test Item",
+      "https://test.uri",
+      true,  // finiteSupply = true
+      true,  // transferable
+      itemsRemaining,
+      itemPrice,
+      dailyAllowance
+    );
+
+    const tokenId = 0;
+
+    // Approve GameItems to spend NRN on behalf of owner
+    await neuron.connect(owner).approveSpender(await gameItems.getAddress(), nrnAmount);
+
+    // Mint exactly 5 items (quantity equals itemsRemaining)
+    // This should succeed on original (5 <= 5) but fail on mutant (5 >= 5 is true, but logic is inverted)
+    const mintQuantity = 5;
+    
+    // First mint should work on original
+    await expect(
+      gameItems.connect(owner).mint(tokenId, mintQuantity)
+    ).to.not.be.reverted;
+
+    // Verify the items were minted
+    const balance = await gameItems.balanceOf(owner.address, tokenId);
+    expect(balance).to.equal(mintQuantity);
+
+    // Now try to mint again - on original this should fail (0 <= 0 succeeds but no items left)
+    // On mutant this should also fail differently
+    await expect(
+      gameItems.connect(owner).mint(tokenId, 1)
+    ).to.be.reverted;
+  });
+});
+```

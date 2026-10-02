@@ -1,0 +1,55 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EtherLotto mutant detection - m60b26066", function () {   it("should detect that mutant replaces % with / by verifying pot is never cleared", async function () {     const [owner, player] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("EtherLotto");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const TICKET_AMOUNT = ethers.parseEther("10");     const FEE_AMOUNT = ethers.parseEther("1");      // Play multiple times - in the original, sometimes pot gets cleared     // In the mutant (division instead of modulo), random will never be 0,     // so pot will never be reset and player never gets paid     for (let i = 0; i < 10; i++) {       const potBefore = await instance.pot();              await expect(         player.sendTransaction({           to: await instance.getAddress(),           value: TICKET_AMOUNT         })       ).to.not.be.reverted;              const potAfter = await instance.pot();              // In the mutant, pot should only increase (never reset to 0)       // If pot ever goes down or becomes 0, the mutant is killed       // because that would mean the original % logic was working       expect(potAfter).to.be.gte(potBefore);     }      // After many plays, verify the pot is large (mutant never pays out)     const finalPot = await instance.pot();     expect(finalPot).to.be.gte(ethers.parseEther("90")); // At least 9 tickets worth accumulated   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant detection - m60b26066", function () {
+  it("should detect that mutant replaces % with / by verifying pot is never cleared", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = ethers.parseEther("10");
+    const FEE_AMOUNT = ethers.parseEther("1");
+
+    // Play multiple times - in the original, sometimes pot gets cleared
+    // In the mutant (division instead of modulo), random will never be 0,
+    // so pot will never be reset and player never gets paid
+    for (let i = 0; i < 10; i++) {
+      const potBefore = await instance.pot();
+
+      await expect(
+        player.sendTransaction({
+          to: await instance.getAddress(),
+          value: TICKET_AMOUNT
+        })
+      ).to.not.be.reverted;
+
+      const potAfter = await instance.pot();
+
+      // In the mutant, pot should only increase (never reset to 0)
+      // If pot ever goes down or becomes 0, the mutant is killed
+      // because that would mean the original % logic was working
+      expect(potAfter).to.be.gte(potBefore);
+    }
+
+    // After many plays, verify the pot is large (mutant never pays out)
+    const finalPot = await instance.pot();
+    expect(finalPot).to.be.gte(ethers.parseEther("90")); // At least 9 tickets worth accumulated
+  });
+});
+```

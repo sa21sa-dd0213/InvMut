@@ -1,0 +1,58 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EBU reference (ethers v6; deploy may require constructor arguments)", function () {   it("should kill mutant m647389cf by calling transfer from a higher address than the authorized one", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("EBU");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Get the authorized address from the contract     const authorizedAddress = "0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9";      // Create an address that is numerically greater than the authorized address     // 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6cA is greater than 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9     const higherAddress = "0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6cA";      // Impersonate the higher address (or use it as signer if available)     // Since we cannot directly use this address as a signer, we will use ethers' impersonation for testing     await ethers.provider.send("hardhat_impersonateAccount", [higherAddress]);     const higherSigner = await ethers.getSigner(higherAddress);      // Fund the higher address with some ETH to pay for gas     await owner.sendTransaction({       to: higherAddress,       value: ethers.parseEther("1.0")     });      // Prepare test data: at least one recipient and a value     const recipients = [addr1.address];     const values = [1]; // 1 token (will be multiplied by 10^18 internally)      // The original contract should revert when called from a non-authorized address     // The mutant (with >=) will allow this call to succeed     await expect(       instance.connect(higherSigner).transfer(recipients, values)     ).to.be.reverted;      // Clean up impersonation     await ethers.provider.send("hardhat_stopImpersonatingAccount", [higherAddress]);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function mul_uint256(uint256 a, uint256 b) internal pure returns (uint256) { if (a == 0) { return 0; } uint256 c = a * b; assert(c / a == b); return c; } } contract EBU is sGuard { address public from = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9; address public caddress = 0x1f844685f7Bf86eFcc0e74D8642c54A257111923; function transfer( address[] memory _tos, uint[] memory v)public returns (bool){ require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9); require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ caddress.call(abi.encodeWithSelector(id,from,_tos[i],mul_uint256(v[i], 1000000000000000000))); } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU reference (ethers v6; deploy may require constructor arguments)", function () {
+  it("should kill mutant m647389cf by calling transfer from a higher address than the authorized one", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get the authorized address from the contract
+    const authorizedAddress = "0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9";
+
+    // Create an address that is numerically greater than the authorized address
+    // 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6cA is greater than 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9
+    const higherAddress = "0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6cA";
+
+    // Impersonate the higher address (or use it as signer if available)
+    // Since we cannot directly use this address as a signer, we will use ethers' impersonation for testing
+    await ethers.provider.send("hardhat_impersonateAccount", [higherAddress]);
+    const higherSigner = await ethers.getSigner(higherAddress);
+
+    // Fund the higher address with some ETH to pay for gas
+    await owner.sendTransaction({
+      to: higherAddress,
+      value: ethers.parseEther("1.0")
+    });
+
+    // Prepare test data: at least one recipient and a value
+    const recipients = [addr1.address];
+    const values = [1]; // 1 token (will be multiplied by 10^18 internally)
+
+    // The original contract should revert when called from a non-authorized address
+    // The mutant (with >=) will allow this call to succeed
+    await expect(
+      instance.connect(higherSigner).transfer(recipients, values)
+    ).to.be.reverted;
+
+    // Clean up impersonation
+    await ethers.provider.send("hardhat_stopImpersonatingAccount", [higherAddress]);
+  });
+});
+```

@@ -1,0 +1,46 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("ReentrancyDAO mutant test", function () {   it("should kill mutant m88fb2d50 by verifying withdrawal succeeds when credit > 0", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("ReentrancyDAO");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const depositAmount = ethers.parseEther("1.0");     const tx = await instance.connect(addr1).deposit({ value: depositAmount });     await tx.wait();      const contractBalanceBefore = await ethers.provider.getBalance(instance.target);     const addr1BalanceBefore = await ethers.provider.getBalance(addr1.address);      const withdrawTx = await instance.connect(addr1).withdrawAll();     await withdrawTx.wait();      const contractBalanceAfter = await ethers.provider.getBalance(instance.target);     const addr1BalanceAfter = await ethers.provider.getBalance(addr1.address);      // In the original, contract balance decreases and user balance increases     // In the mutant (if false), nothing happens - balances remain the same     // We expect the withdrawal to have occurred, so balances must differ     expect(contractBalanceAfter).to.be.lessThan(contractBalanceBefore);     expect(addr1BalanceAfter).to.be.greaterThan(addr1BalanceBefore);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuardPlus { constructor() { __lock_modifier0_lock = false; } bool private __lock_modifier0_lock; modifier __lock_modifier0() { require(!__lock_modifier0_lock); __lock_modifier0_lock = true; _; __lock_modifier0_lock = false; } } contract ReentrancyDAO is sGuardPlus { mapping (address  => uint )    credit; uint     balance; function withdrawAll () public __lock_modifier0  { uint     oCredit = credit[msg.sender]; if (oCredit>0) { balance-=oCredit; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); credit[msg.sender]=0; } } function deposit () public payable { credit[msg.sender]+=msg.value; balance+=msg.value; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ReentrancyDAO mutant test", function () {
+  it("should kill mutant m88fb2d50 by verifying withdrawal succeeds when credit > 0", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("ReentrancyDAO");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const depositAmount = ethers.parseEther("1.0");
+    const tx = await instance.connect(addr1).deposit({ value: depositAmount });
+    await tx.wait();
+
+    const contractBalanceBefore = await ethers.provider.getBalance(instance.target);
+    const addr1BalanceBefore = await ethers.provider.getBalance(addr1.address);
+
+    const withdrawTx = await instance.connect(addr1).withdrawAll();
+    await withdrawTx.wait();
+
+    const contractBalanceAfter = await ethers.provider.getBalance(instance.target);
+    const addr1BalanceAfter = await ethers.provider.getBalance(addr1.address);
+
+    // In the original, contract balance decreases and user balance increases
+    // In the mutant (if false), nothing happens - balances remain the same
+    // We expect the withdrawal to have occurred, so balances must differ
+    expect(contractBalanceAfter).to.be.lessThan(contractBalanceBefore);
+    expect(addr1BalanceAfter).to.be.greaterThan(addr1BalanceBefore);
+  });
+});
+```

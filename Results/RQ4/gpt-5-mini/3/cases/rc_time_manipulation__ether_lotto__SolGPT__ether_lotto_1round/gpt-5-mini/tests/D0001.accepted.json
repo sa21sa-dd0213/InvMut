@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "For every admissible caller and ticket payment, the reference contract either leaves pot increased by TICKET_AMOUNT or resets it to 0 depending on its internal randomness; in particular, there exists an admissible caller/payment where the mutant (which always resets pot) makes pot==0 while the reference can leave pot non-zero — so: after a single valid play call from any caller sending exactly TICKET_AMOUNT, the reference's pot is either previous pot+TICKET_AMOUNT or 0, but it is NOT forced to be 0 for all inputs (the mutant forces 0); the test asserts that there exists an admissible single-play scenario where pot != 0 for the reference (i.e., the reference may keep the pot after play) which the mutant will violate for some fuzz input.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Change the condition so transfer path always executes (replace if (random == 0) with if (true)), causing pot to be reset every successful play.",
+ "mutated_unit_code": "function play()  public payable {\n        require(msg.value == TICKET_AMOUNT);\n        pot += msg.value;\n\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n\n        if (true) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    function setUp() public { c = new EtherLotto(); }\n\n    function testFuzz_property(address actor, uint256 priorPlays) public {\n        vm.assume(actor != address(0));\n        priorPlays = bound(priorPlays, 0, 10);\n\n        uint256 TICKET = 10;\n        vm.deal(actor, (priorPlays + 1) * TICKET + 1 ether);\n\n        for (uint256 i = 0; i < priorPlays; i++) {\n            vm.prank(actor);\n            c.play{value: TICKET}();\n        }\n\n        uint256 potBefore = c.pot();\n\n        vm.prank(actor);\n        c.play{value: TICKET}();\n\n        uint256 potAfter = c.pot();\n\n        assertTrue(potAfter == 0 || potAfter == potBefore + TICKET);\n    }\n}\n"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T799b66f7",
+ "property_summary": "For any valid fallback call (msg.value == 10 ether and block.timestamp > pastBlockTime) the reference contract only drains its balance to the caller when block.number % 15 == 0, so address(c).balance remains nonzero after a qualifying call when block.number % 15 != 0; the mutant unconditionally drains the balance after updating pastBlockTime, violating this by making address(c).balance == 0 for some inputs where block.number % 15 != 0.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Insert an unconditional transfer to sender after updating pastBlockTime so every qualifying call drains the contract.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        payable(msg.sender).transfer(address(this).balance);\n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n\n    function setUp() public { c = new Roulette(); }\n\n    function testFuzz_property(address actor, uint64 tsAdvance, uint32 blockNum) public {\n        vm.assume(actor != address(0));\n\n        uint256 curBlock = block.number;\n        uint256 targetBlock = bound(uint256(blockNum), curBlock, curBlock + 1000);\n        vm.roll(targetBlock);\n\n        uint256 curTs = block.timestamp;\n        uint256 advance = bound(uint256(tsAdvance), 1, 1 days);\n        vm.warp(curTs + advance);\n\n        vm.deal(actor, 20 ether);\n        vm.deal(address(c), 5 ether);\n\n        vm.prank(actor);\n        (bool ok, ) = address(c).call{value: 10 ether}(\"\");\n\n        if (block.number % 15 != 0) {\n            assertTrue(address(c).balance > 0);\n        } else {\n            assertTrue(address(c).balance == 0 || address(c).balance > 0);\n        }\n    }\n}\n"
+}

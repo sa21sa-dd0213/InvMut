@@ -1,0 +1,120 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("StaxLPStaking - Mutant m1f0eb9d6 Test", function () {
+  it("should revert when calling notifyRewardAmount after periodFinish with block.prevrandao mutant", async function () {
+    const [owner, distributor, user] = await ethers.getSigners();
+    
+    // Deploy a mock ERC20 token for staking
+    const MockERC20 = await ethers.getContractFactory("MockERC20");
+    const stakingToken = await MockERC20.deploy("Staking Token", "STK", ethers.parseEther("1000000"));
+    await stakingToken.waitForDeployment();
+    
+    // Deploy a mock reward token
+    const rewardToken = await MockERC20.deploy("Reward Token", "RWD", ethers.parseEther("1000000"));
+    await rewardToken.waitForDeployment();
+    
+    // Deploy StaxLPStaking
+    const Factory = await ethers.getContractFactory("StaxLPStaking");
+    const instance = await Factory.deploy(await stakingToken.getAddress(), distributor.address);
+    await instance.waitForDeployment();
+    
+    // Add reward token
+    await instance.connect(owner).addReward(await rewardToken.getAddress());
+    
+    // Transfer some reward tokens to distributor for funding
+    await rewardToken.connect(owner).transfer(distributor.address, ethers.parseEther("10000"));
+    await rewardToken.connect(distributor).approve(await instance.getAddress(), ethers.parseEther("10000"));
+    
+    // First notify reward - this sets periodFinish to block.timestamp + DURATION
+    await instance.connect(distributor).notifyRewardAmount(
+      await rewardToken.getAddress(),
+      ethers.parseEther("1000")
+    );
+    
+    // Get the periodFinish after first notification
+    const periodFinish = await instance.rewardPeriodFinish(await rewardToken.getAddress());
+    
+    // Fast forward time past periodFinish
+    await ethers.provider.send("evm_increaseTime", [86400 * 7 + 1]); // DURATION + 1 second
+    await ethers.provider.send("evm_mine", []);
+    
+    // Now try to notify reward again - original should work, mutant should fail
+    // The mutant uses block.prevrandao instead of block.timestamp
+    // block.prevrandao returns a random value, not the actual timestamp
+    // So the condition block.prevrandao >= periodFinish will likely evaluate incorrectly
+    // causing the reward rate calculation to be wrong
+    
+    // Get block info to verify we're past periodFinish
+    const block = await ethers.provider.getBlock("latest");
+    expect(block.timestamp).to.be.greaterThan(Number(periodFinish));
+    
+    // This call should succeed in original but will have incorrect behavior in mutant
+    // We check by comparing reward rates
+    const tx = await instance.connect(distributor).notifyRewardAmount(
+      await rewardToken.getAddress(),
+      ethers.parseEther("500")
+    );
+    await tx.wait();
+    
+    // Get the reward data after the call
+    const rewardData = await instance.rewardData(await rewardToken.getAddress());
+    
+    // In the original, since we're past periodFinish, rewardRate = amount / DURATION
+    // In the mutant, block.prevrandao could be less than periodFinish, causing it to
+    // calculate leftover + amount / DURATION instead, resulting in different rewardRate
+    
+    // Calculate expected rewardRate for original behavior (past periodFinish)
+    const expectedRate = ethers.parseEther("500") / BigInt(86400 * 7);
+    
+    // The mutant will likely produce a different rewardRate because block.prevrandao
+    // is not the actual timestamp, so the condition may evaluate differently
+    expect(rewardData.rewardRate).to.equal(expectedRate);
+  });
+});
+
+// Helper contract for testing
+const mockERC20Artifact = `
+contract MockERC20 {
+    string public name;
+    string public symbol;
+    uint8 public decimals = 18;
+    uint256 public totalSupply;
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+    
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+    
+    constructor(string memory _name, string memory _symbol, uint256 _initialSupply) {
+        name = _name;
+        symbol = _symbol;
+        totalSupply = _initialSupply;
+        balanceOf[msg.sender] = _initialSupply;
+    }
+    
+    function transfer(address to, uint256 amount) external returns (bool) {
+        require(balanceOf[msg.sender] >= amount);
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        emit Transfer(msg.sender, to, amount);
+        return true;
+    }
+    
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        emit Approval(msg.sender, spender, amount);
+        return true;
+    }
+    
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        require(balanceOf[from] >= amount);
+        require(allowance[from][msg.sender] >= amount);
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        allowance[from][msg.sender] -= amount;
+        emit Transfer(from, to, amount);
+        return true;
+    }
+}
+`;

@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tb52e089f",
+ "property_summary": "For any nonzero address `account` and any `id` where tokens have been minted to `account`, `balanceOf(account, id)` must be > 0; the mutant returns 0, violating this minted-balance positivity invariant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the entire balance-check logic and always return 0, changing a positive balance call to return 0.",
+ "mutated_unit_code": "function balanceOf(address account, uint256 id) public view virtual override returns (uint256) {\n        require(account != address(0), \"ERC1155: address zero is not a valid owner\");\n        return 0;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {GameItems} from \"../src/GameItems.sol\";\n\ncontract InvMutTest is Test {\n    GameItems c;\n    function setUp() public {\n        c = new GameItems(address(this), address(this));\n        c.adjustAdminAccess(address(this), true);\n    }\n\n    function testFuzz_property(uint256 tokenIdSeed, uint256 quantity) public {\n        quantity = bound(quantity, 1, 1000);\n        address holder = address(uint160(uint256(keccak256(abi.encode(tokenIdSeed)))));\n        vm.assume(holder != address(0));\n\n        c.createGameItem(\"Test\", \"\", false, true, 1000000, 1, type(uint16).max);\n\n        MockNeuron mockNrn = new MockNeuron();\n        c.instantiateNeuronContract(address(mockNrn));\n\n        mockNrn.setBalanceOf(holder, type(uint256).max);\n\n        uint256 tokenId = 0;\n\n        vm.startPrank(holder);\n        c.mint(tokenId, quantity);\n        vm.stopPrank();\n\n        uint256 balance = c.balanceOf(holder, tokenId);\n\n        assertTrue(balance == quantity);\n    }\n}\n\ncontract MockNeuron {\n    mapping(address => uint256) private _balances;\n\n    function setBalanceOf(address account, uint256 amount) external {\n        _balances[account] = amount;\n    }\n\n    function balanceOf(address account) external view returns (uint256) {\n        return _balances[account];\n    }\n\n    function approveSpender(address, uint256) external pure {}\n\n    function transferFrom(address from, address to, uint256 amount) external returns (bool) {\n        _balances[from] -= amount;\n        _balances[to] += amount;\n        return true;\n    }\n}"
+}

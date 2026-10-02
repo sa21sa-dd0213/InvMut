@@ -1,0 +1,117 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("LRTDepositPool mutant detection - mdfa4895e", function () {
+  it("should revert when depositing without approval, detecting the mutant that removed transferFrom check", async function () {
+    const [owner, user] = await ethers.getSigners();
+    
+    // Deploy mock ERC20 token
+    const MockERC20Factory = await ethers.getContractFactory("MockERC20");
+    const mockToken = await MockERC20Factory.deploy("Mock Token", "MTK", ethers.parseEther("1000000"));
+    await mockToken.waitForDeployment();
+    
+    // Deploy LRTConfig mock
+    const LRTConfigFactory = await ethers.getContractFactory("MockLRTConfig");
+    const lrtConfig = await LRTConfigFactory.deploy();
+    await lrtConfig.waitForDeployment();
+    
+    // Setup LRTConfig to support our mock asset
+    await lrtConfig.setSupportedAsset(await mockToken.getAddress(), ethers.parseEther("1000000"));
+    
+    // Deploy LRTDepositPool
+    const LRTDepositPoolFactory = await ethers.getContractFactory("LRTDepositPool");
+    const depositPool = await LRTDepositPoolFactory.deploy();
+    await depositPool.waitForDeployment();
+    
+    // Initialize the deposit pool
+    await depositPool.initialize(await lrtConfig.getAddress());
+    
+    // Deploy mock rsETH token
+    const MockRsETHFactory = await ethers.getContractFactory("MockRSETH");
+    const rsethToken = await MockRsETHFactory.deploy();
+    await rsethToken.waitForDeployment();
+    
+    // Set rsETH in config
+    await lrtConfig.setRsETH(await rsethToken.getAddress());
+    
+    // Fund user with some tokens
+    const depositAmount = ethers.parseEther("100");
+    await mockToken.transfer(await user.getAddress(), depositAmount);
+    
+    // User tries to deposit WITHOUT approving the contract
+    // The original contract should revert with TokenTransferFailed
+    // The mutant would incorrectly proceed and mint rsETH
+    await expect(
+      depositPool.connect(user).depositAsset(
+        await mockToken.getAddress(),
+        depositAmount
+      )
+    ).to.be.revertedWith("TokenTransferFailed");
+  });
+});
+
+// Helper mock contracts to be deployed
+// Note: These would need to be compiled and deployed alongside the test
+// MockERC20
+contract MockERC20 {
+    string public name;
+    string public symbol;
+    uint8 public decimals = 18;
+    uint256 public totalSupply;
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+    
+    constructor(string memory _name, string memory _symbol, uint256 _initialSupply) {
+        name = _name;
+        symbol = _symbol;
+        totalSupply = _initialSupply;
+        balanceOf[msg.sender] = _initialSupply;
+    }
+    
+    function transfer(address to, uint256 amount) external returns (bool) {
+        require(balanceOf[msg.sender] >= amount);
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+    
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
+    }
+    
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        require(balanceOf[from] >= amount);
+        require(allowance[from][msg.sender] >= amount);
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        allowance[from][msg.sender] -= amount;
+        return true;
+    }
+}
+
+// MockLRTConfig
+contract MockLRTConfig {
+    address public rsETH;
+    mapping(address => uint256) public depositLimitByAsset;
+    mapping(address => bool) public isSupportedAsset;
+    
+    function setSupportedAsset(address asset, uint256 limit) external {
+        isSupportedAsset[asset] = true;
+        depositLimitByAsset[asset] = limit;
+    }
+    
+    function setRsETH(address _rsETH) external {
+        rsETH = _rsETH;
+    }
+    
+    function getContract(bytes32) external view returns (address) {
+        return address(0);
+    }
+}
+
+// MockRSETH
+contract MockRSETH {
+    function mint(address, uint256) external {}
+    function burn(address, uint256) external {}
+}

@@ -1,0 +1,109 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mfeda8edf of PredictTheBlockHashChallenge.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PredictTheBlockHashChallenge.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PredictTheBlockHashChallenge:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PredictTheBlockHashChallenge reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PredictTheBlockHashChallenge by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PredictTheBlockHashChallenge mutant detection", function () {
+  it("should detect the mutant by verifying that settle() uses the correct block number", async function () {
+    const [owner, player] = await ethers.getSigners();
+    
+    // Deploy the contract with 1 ether
+    const Factory = await ethers.getContractFactory("PredictTheBlockHashChallenge");
+    const contract = await Factory.deploy({ value: ethers.parseEther("1") });
+    await contract.waitForDeployment();
+
+    // Player locks in a guess with 1 ether
+    const guessHash = ethers.keccak256(ethers.toUtf8Bytes("test"));
+    const lockTx = await contract.connect(player).lockInGuess(guessHash, { value: ethers.parseEther("1") });
+    await lockTx.wait();
+
+    // Get the block number when lockInGuess was mined
+    const lockBlock = await ethers.provider.getBlock(lockTx.blockNumber);
+    const lockBlockNumber = lockBlock.number;
+
+    // Mine one more block so block.number > stored block
+    await ethers.provider.send("evm_mine", []);
+
+    // Settle the challenge
+    const settleTx = await contract.connect(player).settle();
+    const settleReceipt = await settleTx.wait();
+
+    // Get the blockhash that would be used in the original contract (block.number + 1)
+    const expectedBlockNumber = lockBlockNumber + 1;
+    const expectedBlock = await ethers.provider.getBlock(expectedBlockNumber);
+    const expectedBlockHash = expectedBlock.hash;
+
+    // The original contract uses blockhash(guesses[msg.sender].block) where block = block.number + 1
+    // The mutant uses block = block.number * 1, which equals lockBlockNumber
+    // If the mutant is present, it will use blockhash(lockBlockNumber) instead of blockhash(lockBlockNumber + 1)
+    
+    // To detect the mutant, we check if the contract behaved correctly:
+    // The correct behavior (original) uses blockhash of lockBlockNumber + 1
+    // The mutant uses blockhash of lockBlockNumber
+    
+    // If the player's guess matches the expected blockhash (original behavior), 
+    // the transfer of 2 ether should happen. If mutant is present, it won't match.
+    
+    // We can verify by checking if the player's balance increased by 2 ether
+    const playerBalanceBefore = await ethers.provider.getBalance(player.address);
+    
+    // If guess matches expectedBlockHash (which it doesn't - we just set a random hash),
+    // then in original: no transfer happens
+    // In mutant: no transfer happens either (since guess doesn't match lockBlockNumber's hash)
+    
+    // To properly detect, we need to make the guess match what the mutant would check
+    // Let's redo with proper guess for mutant detection
+    
+    // Deploy new contract for clean test
+    const contract2 = await Factory.deploy({ value: ethers.parseEther("1") });
+    await contract2.waitForDeployment();
+
+    // Get current block number
+    const currentBlock = await ethers.provider.getBlock("latest");
+    const currentBlockNum = currentBlock.number;
+
+    // Lock in guess with the actual blockhash of current block (what mutant would use)
+    const currentBlockHash = currentBlock.hash;
+    const lockTx2 = await contract2.connect(player).lockInGuess(currentBlockHash, { value: ethers.parseEther("1") });
+    await lockTx2.wait();
+
+    // Mine two blocks to satisfy block.number > stored block
+    await ethers.provider.send("evm_mine", []);
+    await ethers.provider.send("evm_mine", []);
+
+    // Check player balance before settle
+    const balanceBefore = await ethers.provider.getBalance(player.address);
+    
+    // Settle - in original: uses blockhash(currentBlockNum + 1) != currentBlockHash, so no transfer
+    // In mutant: uses blockhash(currentBlockNum) == currentBlockHash, so transfer of 2 ether happens
+    await contract2.connect(player).settle();
+    
+    const balanceAfter = await ethers.provider.getBalance(player.address);
+    const difference = balanceAfter - balanceBefore;
+
+    // The original would not transfer (difference = 0 minus gas costs)
+    // The mutant would transfer 2 ether (difference = 2 ether minus gas costs)
+    // So if difference is close to 2 ether, mutant is present
+    // If difference is close to 0 (or negative due to gas), original is present
+    expect(difference).to.be.lessThan(ethers.parseEther("2"));
+    expect(difference).to.be.greaterThan(ethers.parseEther("-0.1")); // Allow for gas costs
+  });
+});
+```

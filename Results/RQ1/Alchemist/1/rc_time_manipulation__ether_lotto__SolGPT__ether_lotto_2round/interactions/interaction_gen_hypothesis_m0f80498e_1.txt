@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EtherLotto:
+        Contract Code: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+
+    Consider the following mutant of EtherLotto:
+        Mutant m0f80498e of function play replaces msg.value with msg.value-1
+        Mutant Diff: ---|         pot += msg.value; +++|         pot += msg.value-1;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes `pot += msg.value` to `pot += msg.value - 1`, meaning the pot is incremented by 9 wei instead of 10 wei when a player sends exactly 10 wei.  
+
+**Hypothesis**: A test case that plays the game and, after a losing round (where random == 1, so no payout occurs), checks that the contract's balance equals exactly 10 wei (the full ticket amount sent) will pass on the original but fail on the mutant. In the mutant, after the same losing round, the contract balance will be 10 wei but the pot will only be 9 wei, causing a mismatch between actual balance and stored pot, which can be detected by checking the pot value directly or by verifying the contract's balance after multiple plays.

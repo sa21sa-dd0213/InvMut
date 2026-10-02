@@ -1,0 +1,11 @@
+{
+ "difference_id": "L0006",
+ "property_summary": "When the caller is not authorized (wards[caller] != 1), the reference contract's auth modifier allows the call (require(wards[msg.sender] == 1) fails and reverts), while the buggy version allows the call (require(wards[msg.sender] != 1) passes). The test calls allowance(address,address) via the reference's fallback to share's allowance, but the key difference is that the auth modifier on mint/burn would revert for unauthorized callers in the reference but not in the buggy version. Here we show the divergence by calling mint as an unauthorized user: reference reverts, buggy version succeeds.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "change_summary": "Replace '== 1' with '!= 1' in the require condition, reversing the authorization logic.",
+ "mutated_unit_code": "    modifier auth() {\n        require(wards[msg.sender] != 1, \"Auth/not-authorized\");\n        _;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {LiquidityPool} from \"../src/LiquidityPool.sol\";\n\ncontract InvMutTest is Test {\n    LiquidityPool c;\n    function setUp() public { c = new LiquidityPool(0, bytes16(0), address(this), address(this), address(this)); }\n    function testRegression_property() public {\n        c.deny(address(this));\n        bool ok;\n        try c.mint(address(1), 100) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        assertTrue(ok == false);\n    }\n}"
+}

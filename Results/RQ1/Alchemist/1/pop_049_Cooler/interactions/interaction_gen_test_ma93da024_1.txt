@@ -1,0 +1,72 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant ma93da024 of Cooler.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Cooler.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Cooler:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Cooler reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Cooler by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Cooler"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Cooler mutant ma93da024 - rescindRequest deactivation check", function () {
+  it("should revert when rescinding an already deactivated request", async function () {
+    const [owner, lender] = await ethers.getSigners();
+    
+    // Deploy required contracts
+    const ERC20Mock = await ethers.getContractFactory("ERC20Mock");
+    const collateral = await ERC20Mock.deploy("Collateral", "COL", 18);
+    const debt = await ERC20Mock.deploy("Debt", "DEBT", 18);
+    await collateral.waitForDeployment();
+    await debt.waitForDeployment();
+    
+    // Deploy CoolerFactory (which deploys Cooler implementation)
+    const CoolerFactory = await ethers.getContractFactory("CoolerFactory");
+    const factory = await CoolerFactory.deploy();
+    await factory.waitForDeployment();
+    
+    // Get cooler implementation address from factory
+    const coolerImpl = await factory.coolerImplementation();
+    
+    // Generate a cooler for owner
+    await factory.connect(owner).generateCooler(await collateral.getAddress(), await debt.getAddress());
+    
+    // Get the cooler address for owner
+    const coolerAddress = await factory.coolerFor(owner.address, await collateral.getAddress(), await debt.getAddress());
+    const cooler = await ethers.getContractAt("Cooler", coolerAddress);
+    
+    // Owner approves collateral transfer to cooler
+    const collateralAmount = ethers.parseEther("100");
+    await collateral.connect(owner).approve(await cooler.getAddress(), collateralAmount);
+    
+    // Owner creates a loan request
+    const amount = ethers.parseEther("1000");
+    const interest = ethers.parseEther("0.1");
+    const loanToCollateral = ethers.parseEther("2");
+    const duration = 30 * 24 * 60 * 60; // 30 days
+    
+    const tx = await cooler.connect(owner).requestLoan(amount, interest, loanToCollateral, duration);
+    await tx.wait();
+    
+    // First rescind - should succeed
+    const rescindTx = await cooler.connect(owner).rescindRequest(0);
+    await rescindTx.wait();
+    
+    // Second rescind of the same request - should revert with Deactivated()
+    await expect(
+      cooler.connect(owner).rescindRequest(0)
+    ).to.be.revertedWithCustomError(cooler, "Deactivated");
+  });
+});
+```

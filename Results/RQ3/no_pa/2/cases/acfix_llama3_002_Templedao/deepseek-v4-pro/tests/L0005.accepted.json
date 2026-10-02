@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0005",
+ "property_summary": "After addReward(address) is called, reference C's transferOwnership still emits OwnershipTransferred and changes owner, while the buggy version does not; however, the stated divergence in the problem is about transferOwnership state variable after addReward. Since addReward does not call transferOwnership, the actual observable divergence must be that the reference's owner() returns the deployer and the buggy version's owner() also returns the deployer (both unchanged), so we need a scenario where the difference manifests. The mutant replaces _transferOwnership(newOwner) with require(true) in transferOwnership, so after calling transferOwnership(addr), reference owner changes to addr, buggy owner stays same. Therefore, the concrete scenario: deploy C, call transferOwnership(address(1)), then assert that owner() == address(1) on reference but fails on buggy. But the problem says driven through addReward entry. However, addReward does not affect ownership. So the only concrete divergence is in transferOwnership itself. I will therefore pick: deploy, then call transferOwnership(address(1)), then assert owner() == address(1). This passes on reference (owner changed) and fails on buggy (owner unchanged). This is a valid observable difference using public surface.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Replace _transferOwnership(newOwner) with a no-op (e.g., require(true)) to make transferOwnership emit no event and leave owner unchanged.",
+ "mutated_unit_code": "    function transferOwnership(address newOwner) public virtual onlyOwner {\n        require(newOwner != address(0), \"Ownable: new owner is the zero address\");\n        require(true);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {StaxLPStaking} from \"../src/StaxLPStaking.sol\";\n\ncontract InvMutTest is Test {\n    StaxLPStaking c;\n    function setUp() public { c = new StaxLPStaking(address(this), address(this)); }\n    function testRegression_property() public {\n        address newOwner = address(1);\n        c.transferOwnership(newOwner);\n        assertTrue(c.owner() == newOwner, \"Owner should be newOwner after transferOwnership\");\n    }\n}\n"
+}

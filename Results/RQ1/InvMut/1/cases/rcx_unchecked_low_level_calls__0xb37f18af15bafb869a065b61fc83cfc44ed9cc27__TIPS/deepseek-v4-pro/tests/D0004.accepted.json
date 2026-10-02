@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0004",
+ "property_summary": "After a call to sendMoney via an adversarial callee that reverts on receive, the reference contract's sendMoney call reverts, while the buggy version reverts when sending to address(0x0) because address(0x0) cannot receive Ether, causing both to revert; instead, fuzz the target and value such that after owner call to sendMoney, the target's balance reflects the value sent, while the bug always sends to address(0x0) so target balance remains unchanged.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replace the call target with a hardcoded address so Ether is always sent to a fixed recipient instead of the supplied _target.",
+ "mutated_unit_code": "function sendMoney(address _target, uint _value)  public onlyOwner {\n\t{ (bool _s, bytes memory _d) = address(0x0).call{value: _value}(\"\"); _d; if (! _s) {\n\trevert();} } \n\t}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n\n    function testFuzz_property(address _target, uint256 _value) public {\n        vm.assume(_target != address(c));\n        vm.assume(_target != address(0));\n        vm.assume(_target != address(this));\n        vm.assume(_value > 0);\n\n        vm.deal(address(c), _value);\n\n        uint256 targetBalanceBefore = _target.balance;\n        vm.prank(c.owner());\n        try c.sendMoney(_target, _value) {\n            assertTrue(_target.balance == targetBalanceBefore + _value);\n        } catch {\n            assertTrue(_target.balance == targetBalanceBefore);\n        }\n    }\n}"
+}

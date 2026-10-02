@@ -1,0 +1,59 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("Roulette mutant test - block.prevrandao vs block.timestamp", function () {   it("should revert on second fallback call in same block due to time check, but mutant would not revert", async function () {     const [owner] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Roulette");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Fund contract with exactly 10 ether (required by fallback)     await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10")     });      // First call - should succeed     const tx1 = await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10")     });     await tx1.wait();      // Get the block timestamp and prevrandao from the first transaction's block     const block1 = await ethers.provider.getBlock(tx1.blockNumber);          // Second call in the same block - should revert on original due to timestamp check     // On mutant, block.prevrandao may be different, so it might not revert     await expect(       owner.sendTransaction({         to: await instance.getAddress(),         value: ethers.parseEther("10")       })     ).to.be.reverted;      // Verify that the second call would have succeeded on the mutant     // by checking that block.prevrandao could differ from block.timestamp     const block2 = await ethers.provider.getBlock(tx1.blockNumber);     // On original: second call reverts because block.timestamp == pastBlockTime     // On mutant: second call might succeed because block.prevrandao != pastBlockTime     // This test kills the mutant because it expects a revert that only happens with original logic   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp + 1; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant test - block.prevrandao vs block.timestamp", function () {
+  it("should revert on second fallback call in same block due to time check, but mutant would not revert", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Fund contract with exactly 10 ether (required by fallback)
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+
+    // First call - should succeed
+    const tx1 = await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    await tx1.wait();
+
+    // Get the block timestamp and prevrandao from the first transaction's block
+    const block1 = await ethers.provider.getBlock(tx1.blockNumber);
+    
+    // Second call in the same block - should revert on original due to timestamp check
+    // On mutant, block.prevrandao may be different, so it might not revert
+    await expect(
+      owner.sendTransaction({
+        to: await instance.getAddress(),
+        value: ethers.parseEther("10")
+      })
+    ).to.be.reverted;
+
+    // Verify that the second call would have succeeded on the mutant
+    // by checking that block.prevrandao could differ from block.timestamp
+    const block2 = await ethers.provider.getBlock(tx1.blockNumber);
+    // On original: second call reverts because block.timestamp == pastBlockTime
+    // On mutant: second call might succeed because block.prevrandao != pastBlockTime
+    // This test kills the mutant because it expects a revert that only happens with original logic
+  });
+});
+```

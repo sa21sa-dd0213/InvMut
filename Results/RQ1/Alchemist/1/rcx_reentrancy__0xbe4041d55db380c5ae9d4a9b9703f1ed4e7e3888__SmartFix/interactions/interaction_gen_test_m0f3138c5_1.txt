@@ -1,0 +1,74 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m0f3138c5 of MONEY_BOX.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test MONEY_BOX.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for MONEY_BOX:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("MONEY_BOX reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy MONEY_BOX by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("MONEY_BOX"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MONEY_BOX mutant kill test - m0f3138c5", function () {
+    it("should kill the mutant by detecting timestamp vs prevrandao mismatch in unlockTime assignment", async function () {
+        const [owner, addr1] = await ethers.getSigners();
+        
+        // Deploy MONEY_BOX (no constructor arguments needed)
+        const MoneyBoxFactory = await ethers.getContractFactory("MONEY_BOX");
+        const moneyBox = await MoneyBoxFactory.deploy();
+        await moneyBox.waitForDeployment();
+        
+        // Deploy Log contract (needed for AddMessage calls)
+        const LogFactory = await ethers.getContractFactory("Log");
+        const log = await LogFactory.deploy();
+        await log.waitForDeployment();
+        
+        // Initialize the contract with LogFile and MinSum
+        await moneyBox.connect(owner).SetLogFile(await log.getAddress());
+        await moneyBox.connect(owner).SetMinSum(ethers.parseEther("0.01"));
+        await moneyBox.connect(owner).Initialized();
+        
+        // Get current block timestamp
+        const blockNumBefore = await ethers.provider.getBlockNumber();
+        const blockBefore = await ethers.provider.getBlock(blockNumBefore);
+        const currentTimestamp = blockBefore!.timestamp;
+        
+        // addr1 puts 1 ETH with 0 lock time
+        const putAmount = ethers.parseEther("1");
+        const txPut = await moneyBox.connect(addr1).Put(0, { value: putAmount });
+        await txPut.wait();
+        
+        // Check the unlock time set by the contract
+        const holder = await moneyBox.Acc(addr1.address);
+        const unlockTime = holder.unlockTime;
+        
+        // In original: unlockTime = block.timestamp + 0 = currentTimestamp
+        // In mutant: unlockTime = block.prevrandao + 0 = block.prevrandao
+        // block.prevrandao is typically a large number, not equal to currentTimestamp
+        
+        // Attempt Collect - should succeed in original, revert in mutant
+        // because mutant sets unlockTime to prevrandao which is >> currentTimestamp
+        const collectAmount = ethers.parseEther("0.5");
+        
+        // The collect should revert if mutant is active because 
+        // block.timestamp (current time) < block.prevrandao (unlockTime)
+        await expect(
+            moneyBox.connect(addr1).Collect(collectAmount)
+        ).to.be.reverted;
+        
+        // Verify the test passed (mutant killed)
+        // In original, this would NOT revert, but in mutant it does
+    });
+});
+```

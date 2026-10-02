@@ -1,0 +1,56 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m1979f4bf of MY_BANK.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test MY_BANK.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for MY_BANK:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("MY_BANK reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy MY_BANK by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("MY_BANK"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant test - m1979f4bf", function () {
+  it("should detect the mutant by calling Collect when balance is below MinSum", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy Log contract first (required constructor argument for MY_BANK)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy MY_BANK with Log contract address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+    
+    const MinSum = ethers.parseEther("1");
+    
+    // addr1 puts 0.5 ether (below MinSum)
+    const putAmount = ethers.parseEther("0.5");
+    const unlockTime = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
+    await bank.connect(addr1).Put(unlockTime, { value: putAmount });
+    
+    // Fast-forward time past unlockTime
+    await ethers.provider.send("evm_increaseTime", [3601]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // addr1 tries to collect 0.5 ether (balance < MinSum)
+    // Original contract would revert because balance (0.5) < MinSum (1)
+    // Mutant allows it because balance <= MinSum
+    await expect(
+      bank.connect(addr1).Collect(putAmount)
+    ).to.be.reverted;
+  });
+});
+```

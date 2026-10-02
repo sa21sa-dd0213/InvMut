@@ -1,0 +1,95 @@
+import { ethers } from "hardhat";
+import { expect } from "chai";
+
+describe("W_WALLET", function () {
+  let wWallet: any;
+  let logContract: any;
+  let owner: any;
+  let addr1: any;
+  let addr2: any;
+
+  beforeEach(async function () {
+    [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy Log contract first
+    const Log = await ethers.getContractFactory("Log");
+    logContract = await Log.deploy();
+    await logContract.deployed();
+
+    // Deploy W_WALLET with Log address
+    const W_WALLET = await ethers.getContractFactory("W_WALLET");
+    wWallet = await W_WALLET.deploy(logContract.address);
+    await wWallet.deployed();
+  });
+
+  describe("Put function", function () {
+    it("should accept ether and store balance", async function () {
+      const unlockTime = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
+      await addr1.sendTransaction({
+        to: wWallet.address,
+        value: ethers.utils.parseEther("1.0"),
+      });
+
+      // Call Put directly
+      await wWallet.connect(addr1).Put(unlockTime, {
+        value: ethers.utils.parseEther("1.0"),
+      });
+
+      const account = await wWallet.Acc(addr1.address);
+      expect(account.balance).to.equal(ethers.utils.parseEther("2.0"));
+      expect(account.unlockTime).to.be.at.least(unlockTime);
+    });
+  });
+
+  describe("Collect function", function () {
+    it("should allow collecting ether after unlock time", async function () {
+      const currentTime = Math.floor(Date.now() / 1000);
+      const unlockTime = currentTime + 10; // 10 seconds from now
+
+      // Put some ether
+      await wWallet.connect(addr1).Put(unlockTime, {
+        value: ethers.utils.parseEther("2.0"),
+      });
+
+      // Try to collect before unlock time (should fail)
+      await expect(
+        wWallet.connect(addr1).Collect(ethers.utils.parseEther("1.0"))
+      ).to.be.reverted;
+
+      // Wait for unlock time
+      await ethers.provider.send("evm_increaseTime", [15]);
+      await ethers.provider.send("evm_mine");
+
+      // Now collect should succeed
+      const initialBalance = await ethers.provider.getBalance(addr1.address);
+      await wWallet.connect(addr1).Collect(ethers.utils.parseEther("1.0"));
+      const finalBalance = await ethers.provider.getBalance(addr1.address);
+
+      expect(finalBalance.sub(initialBalance)).to.equal(
+        ethers.utils.parseEther("1.0")
+      );
+    });
+  });
+
+  describe("Fallback function", function () {
+    it("should call Put with 0 unlock time when receiving ether", async function () {
+      await addr1.sendTransaction({
+        to: wWallet.address,
+        value: ethers.utils.parseEther("0.5"),
+      });
+
+      const account = await wWallet.Acc(addr1.address);
+      expect(account.balance).to.equal(ethers.utils.parseEther("0.5"));
+      expect(account.unlockTime).to.equal(
+        await ethers.provider.getBlock("latest").then((b: any) => b.timestamp)
+      );
+    });
+  });
+
+  describe("MinSum check", function () {
+    it("should have MinSum set to 1 ether", async function () {
+      const minSum = await wWallet.MinSum();
+      expect(minSum).to.equal(ethers.utils.parseEther("1.0"));
+    });
+  });
+});

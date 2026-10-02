@@ -1,0 +1,61 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m4f583c86 of W_WALLET.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test W_WALLET.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for W_WALLET:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("W_WALLET reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy W_WALLET by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("W_WALLET"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("W_WALLET mutant detection - m4f583c86", function () {
+  it("should revert when withdrawing exact balance on mutant (uses > instead of >=)", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy the Log contract first (required by W_WALLET constructor)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy W_WALLET with Log address as constructor argument
+    const Factory = await ethers.getContractFactory("W_WALLET");
+    const instance = await Factory.deploy(await log.getAddress());
+    await instance.waitForDeployment();
+    
+    // Fund addr1 with some ether and deposit it into the wallet
+    const depositAmount = ethers.parseEther("2");
+    const txPut = await instance.connect(addr1).Put(0, { value: depositAmount });
+    await txPut.wait();
+    
+    // Verify balance was deposited (MinSum = 1 ether, so 2 ether is sufficient)
+    const holder = await instance.Acc(addr1.address);
+    expect(holder.balance).to.equal(depositAmount);
+    
+    // Wait for the unlock time to pass (block.timestamp was set at deposit time)
+    const currentBlock = await ethers.provider.getBlock("latest");
+    const unlockTime = holder.unlockTime;
+    if (currentBlock!.timestamp <= unlockTime) {
+      await ethers.provider.send("evm_setNextBlockTimestamp", [Number(unlockTime) + 1]);
+      await ethers.provider.send("evm_mine", []);
+    }
+    
+    // Attempt to withdraw the EXACT full balance (this should pass on original, fail on mutant)
+    const withdrawAmount = depositAmount; // Withdraw exact balance
+    await expect(
+      instance.connect(addr1).Collect(withdrawAmount)
+    ).to.be.reverted; // Mutant will revert because acc.balance > _am is false when equal
+  });
+});
+```

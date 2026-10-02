@@ -1,0 +1,52 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m21ff2350 of EtherLotto.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EtherLotto.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EtherLotto:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EtherLotto reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EtherLotto by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EtherLotto"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant kill test - m21ff2350", function () {
+  it("should send pot minus fee to the player when random == 0, kill mutant that uses false", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const ticketAmount = ethers.parseEther("10");
+    const feeAmount = ethers.parseEther("1");
+    const prizeAmount = ticketAmount - feeAmount; // 9 wei in this simplified version
+
+    // Player sends exactly ticketAmount to play
+    const tx = await instance.connect(player).play({ value: ticketAmount });
+    const receipt = await tx.wait();
+
+    // Check that player received prizeAmount (pot - fee)
+    // The original contract sends pot - FEE_AMOUNT to msg.sender when random == 0
+    // The mutant never sends, so player balance change should be 0 (or gas cost only)
+    const playerBalanceAfter = await ethers.provider.getBalance(player.address);
+    // Player spent ticketAmount but should have received prizeAmount back
+    // Net change: playerBalanceAfter - playerBalanceBefore = -ticketAmount + prizeAmount = -feeAmount
+    const playerBalanceBefore = await ethers.provider.getBalance(player.address);
+    const netChange = playerBalanceAfter - playerBalanceBefore;
+    
+    // In the original, netChange should be -feeAmount (lost only the fee)
+    // In the mutant, netChange should be -ticketAmount (lost everything, no prize sent)
+    expect(netChange).to.equal(-feeAmount);
+  });
+});
+```

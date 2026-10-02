@@ -1,0 +1,60 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mbe006077 of EtherCartel.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EtherCartel.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EtherCartel:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EtherCartel reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EtherCartel by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EtherCartel"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherCartel mutant detection - mbe006077", function () {
+  it("should revert when seedMarket is called a second time (original behavior), but mutant allows re-initialization", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherCartel");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Seed the market for the first time with some drugs
+    const initialDrugs = 1000;
+    await instance.seedMarket(initialDrugs);
+    
+    // Verify marketDrugs is set correctly after first seed
+    expect(await instance.marketDrugs()).to.equal(initialDrugs);
+
+    // Attempt to seed the market again - original contract should revert, mutant should succeed
+    // We'll catch the revert and check if it reverts (original) or not (mutant)
+    const secondDrugs = 2000;
+    
+    try {
+      await instance.seedMarket(secondDrugs);
+      // If we reach here, the mutant is alive (no revert on second call)
+      // Verify that marketDrugs changed - this indicates mutant behavior
+      const marketDrugsAfterSecondCall = await instance.marketDrugs();
+      expect(marketDrugsAfterSecondCall).to.equal(secondDrugs);
+      // If we assert this, the test will fail on original (which reverts) and pass on mutant
+      // But we want the test to FAIL on the mutant (kill it)
+      // So we need a different approach
+    } catch (error: any) {
+      // Original contract reverts - test passes (mutant would be killed if it doesn't revert)
+      // But we need to ensure this test fails on the mutant
+    }
+
+    // Better approach: use expect().to.be.reverted to explicitly check for revert
+    // This will pass on original (reverts) and fail on mutant (doesn't revert)
+    await expect(instance.seedMarket(secondDrugs)).to.be.reverted;
+  });
+});
+```

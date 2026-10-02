@@ -1,0 +1,51 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("ReentrancyDAO mutant kill test", function () {   it("should kill mutant mac3bc81d by verifying withdrawal is not skipped when user has credit", async function () {     const [owner, user] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("ReentrancyDAO");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // User deposits 1 ether     const depositAmount = ethers.parseEther("1");     await instance.connect(user).deposit({ value: depositAmount });      // Record user's initial balance     const initialUserBalance = await ethers.provider.getBalance(user.address);      // User calls withdrawAll     const tx = await instance.connect(user).withdrawAll();     const receipt = await tx.wait();      // After withdrawal, user should have received the deposited ether     const finalUserBalance = await ethers.provider.getBalance(user.address);     // The user's balance should have increased by approximately 1 ether (minus gas)     expect(finalUserBalance - initialUserBalance + receipt!.gasUsed * receipt!.gasPrice).to.equal(depositAmount);      // Additionally, the user's credit in the contract should be 0     const userCredit = await instance.credit(user.address);     expect(userCredit).to.equal(0);      // The contract balance should be 0     const contractBalance = await ethers.provider.getBalance(instance.target);     expect(contractBalance).to.equal(0);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract ReentrancyDAO { mapping (address => uint) credit; uint balance; function withdrawAll() public { uint oCredit = credit[msg.sender]; if (oCredit > 0) { balance -= oCredit; credit[msg.sender] = 0; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); } } function deposit() public payable { credit[msg.sender] += msg.value; balance += msg.value; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ReentrancyDAO mutant kill test", function () {
+  it("should kill mutant mac3bc81d by verifying withdrawal is not skipped when user has credit", async function () {
+    const [owner, user] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("ReentrancyDAO");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // User deposits 1 ether
+    const depositAmount = ethers.parseEther("1");
+    await instance.connect(user).deposit({ value: depositAmount });
+
+    // Record user's initial balance
+    const initialUserBalance = await ethers.provider.getBalance(user.address);
+
+    // User calls withdrawAll
+    const tx = await instance.connect(user).withdrawAll();
+    const receipt = await tx.wait();
+
+    // After withdrawal, user should have received the deposited ether
+    const finalUserBalance = await ethers.provider.getBalance(user.address);
+    // The user's balance should have increased by approximately 1 ether (minus gas)
+    expect(finalUserBalance - initialUserBalance + receipt!.gasUsed * receipt!.gasPrice).to.equal(depositAmount);
+
+    // Additionally, the user's credit in the contract should be 0
+    const userCredit = await instance.credit(user.address);
+    expect(userCredit).to.equal(0);
+
+    // The contract balance should be 0
+    const contractBalance = await ethers.provider.getBalance(instance.target);
+    expect(contractBalance).to.equal(0);
+  });
+});
+```

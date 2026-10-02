@@ -1,0 +1,56 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m630af445 of DCF.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test DCF.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for DCF:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("DCF reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy DCF by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("DCF"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DCF mutant m630af445 - setCaller hardcoded to USDT", function () {
+  it("should kill mutant by proving cfo is not set to the provided address", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy DCF with a liquidity receive address (any non-zero address)
+    const DCF = await ethers.getContractFactory("DCF");
+    const instance = await DCF.deploy(addr1.address);
+    await instance.waitForDeployment();
+
+    // Initially, cfo is not set (address(0)), so onlyOwner functions work
+    // Set caller to addr1 using setCaller
+    const setCallerTx = await instance.connect(owner).setCaller(addr1.address);
+    await setCallerTx.wait();
+
+    // Now try to call a onlyCaller function from addr1
+    // If the mutant is active, cfo is hardcoded to USDT address, so addr1 should NOT be able to call it
+    // We'll try distributeToken which is onlyCaller
+    // First we need some tokens in the contract to avoid "Insufficient token balance" revert
+    // Transfer some tokens to the contract
+    const transferAmount = ethers.parseEther("3000");
+    await instance.connect(owner).transfer(await instance.getAddress(), transferAmount);
+    
+    // Set distribute address so distributeToken doesn't revert
+    await instance.connect(addr1).setDistributeAddress(addr2.address);
+
+    // Attempt to call distributeToken from addr1
+    // On original: succeeds because cfo = addr1
+    // On mutant: reverts because cfo = USDT address, not addr1
+    await expect(
+      instance.connect(addr1).distributeToken()
+    ).to.be.revertedWith("onlyCaller");
+  });
+});
+```

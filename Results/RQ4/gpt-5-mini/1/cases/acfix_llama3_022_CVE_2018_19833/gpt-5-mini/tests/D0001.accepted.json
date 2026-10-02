@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "For all callers and amounts, only the contract owner can reduce totalSupply by calling burn(amount); the mutant allows a non-owner to reduce totalSupply, so there exist caller/amount inputs where totalSupply decreases for non-owners.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the burn function's onlyOwner modifier with no modifier, allowing any caller to burn their own tokens and reduce totalSupply when burn is called by non-owner.",
+ "mutated_unit_code": "function burn(uint256 _value)  public returns (bool success) {\n        require(balanceOf[msg.sender] >= _value);\n        balanceOf[msg.sender] -= _value;\n        totalSupply -= _value;\n        emit Burn(msg.sender, _value);\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ERCDDAToken} from \"../src/ERCDDAToken.sol\";\n\ncontract InvMutTest is Test {\n    ERCDDAToken c;\n    function setUp() public { c = new ERCDDAToken(0, \"\", \"\"); }\n\n    function testFuzz_property(address caller, uint256 amount) public {\n        vm.assume(caller != address(0));\n        vm.assume(caller != address(this));\n\n        uint256 mintAmt = bound(amount, 1, type(uint256).max / 2);\n        c.mintToken(caller, mintAmt);\n\n        uint256 before = c.totalSupply();\n\n        vm.prank(caller);\n        bool ok;\n        try c.burn(amount) returns (bool r) { ok = r; } catch { ok = false; }\n\n        if (caller != address(this)) {\n            assertTrue(c.totalSupply() >= before);\n        } else {\n            assertTrue(true);\n        }\n    }\n}\n"
+}

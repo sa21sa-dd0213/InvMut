@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0007",
+ "property_summary": "After any call to sendMoney, the contract's ETH balance must decrease by exactly the amount sent if the call succeeds (no revert), but the mutant silently ignores failures without reverting, so its balance can differ from the correct version when the target call fails.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replace the revert-on-failure with no action, so a failed call silently succeeds with no ether transfer.",
+ "mutated_unit_code": "function sendMoney(address _target, uint _value)  public onlyOwner {\n\t{ (bool _s, bytes memory _d) = _target.call{value: _value}(\"\"); _d; }\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n    function testFuzz_property(address target, uint256 amount) public {\n        vm.assume(amount > 0);\n        vm.assume(target != address(c));\n\n        Reverter reverter = new Reverter();\n        address payable adversarial = payable(address(reverter));\n\n        vm.deal(address(c), amount);\n\n        uint256 balanceBefore = address(c).balance;\n\n        bool ok = true;\n        try c.sendMoney(adversarial, amount) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        uint256 balanceAfter = address(c).balance;\n\n        assertTrue(\n            (ok && balanceAfter == balanceBefore - amount) || (!ok && balanceAfter == balanceBefore)\n        );\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"Reverter: forced failure\");\n    }\n}"
+}

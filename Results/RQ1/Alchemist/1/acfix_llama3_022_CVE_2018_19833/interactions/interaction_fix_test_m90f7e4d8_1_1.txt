@@ -1,0 +1,48 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("ERCDDAToken mutant kill test - overflow check removal", function () {   it("should revert when transferring tokens that would cause overflow on recipient balance", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy with initial supply that allows us to set up overflow scenario     const initialSupply = ethers.parseEther("1000"); // 1000 tokens (0 decimals)     const Factory = await ethers.getContractFactory("ERCDDAToken");     const instance = await Factory.deploy(initialSupply, "TestToken", "TT");     await instance.waitForDeployment();      // First, give addr1 a huge balance to test overflow on receiving end     // We need to mint enough tokens so that addr2's balance + value can overflow uint256     const maxUint256 = ethers.MaxUint256;          // Mint almost max uint256 to addr2 (the recipient)     // We'll mint maxUint256 - 1 to addr2, then try to transfer 2 more tokens to cause overflow     const amountToMint = maxUint256 - 1n;     await instance.connect(owner).mintToken(addr2.address, amountToMint);          // Now give addr1 some tokens to transfer     const transferAmount = 2n;     await instance.connect(owner).transfer(addr1.address, transferAmount);          // Attempt to transfer from addr1 to addr2 - should overflow and revert in original     await expect(       instance.connect(addr1).transfer(addr2.address, transferAmount)     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract ERCDDAToken { address public owner; string public name; string public symbol; uint8 public decimals = 0; uint256 public totalSupply; event Transfer(address indexed from, address indexed to, uint256 value); event FrozenFunds(address target, bool frozen); event Burn(address indexed from, uint256 value); mapping (address => uint256) public balanceOf; mapping (address => bool) public frozenAccount; function owned() public { require(msg.sender == owner, "Only the current owner can change ownership"); } modifier onlyOwner { require(msg.sender == owner); _; } constructor( uint256 initialSupply, string memory tokenName, string memory tokenSymbol) public { owner = payable(msg.sender); totalSupply = initialSupply * 10 ** uint256(decimals); balanceOf[msg.sender] = totalSupply; name = tokenName; symbol = tokenSymbol; } function _transfer(address _from, address _to, uint _value) internal { require (_to != address(0)); require (balanceOf[_from] >= _value); require (balanceOf[_to] + _value >= balanceOf[_to]); require(!frozenAccount[_from]); require(!frozenAccount[_to]); balanceOf[_from] -= _value; balanceOf[_to] += _value; emit Transfer(_from, _to, _value); } function transfer(address _to, uint256 _value) public returns (bool success) { _transfer(msg.sender, _to, _value); return true; } function freezeAccount(address target, bool freeze)  public onlyOwner { frozenAccount[target] = freeze; emit FrozenFunds(target, freeze); } function burn(uint256 _value)  public onlyOwner returns (bool success) { require(balanceOf[msg.sender] >= _value); balanceOf[msg.sender] -= _value; totalSupply -= _value; emit Burn(msg.sender, _value); return true; } function mintToken(address target, uint256 mintedAmount)  public onlyOwner { balanceOf[target] += mintedAmount; totalSupply += mintedAmount; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ERCDDAToken mutant kill test - overflow check removal", function () {
+  it("should revert when transferring tokens that would cause overflow on recipient balance", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy with initial supply that allows us to set up overflow scenario
+    const initialSupply = ethers.parseEther("1000"); // 1000 tokens (0 decimals)
+    const Factory = await ethers.getContractFactory("ERCDDAToken");
+    const instance = await Factory.deploy(initialSupply, "TestToken", "TT");
+    await instance.waitForDeployment();
+
+    // First, give addr1 a huge balance to test overflow on receiving end
+    // We need to mint enough tokens so that addr2's balance + value can overflow uint256
+    const maxUint256 = ethers.MaxUint256;
+    
+    // Mint almost max uint256 to addr2 (the recipient)
+    // We'll mint maxUint256 - 1 to addr2, then try to transfer 2 more tokens to cause overflow
+    const amountToMint = maxUint256 - 1n;
+    await instance.connect(owner).mintToken(addr2.address, amountToMint);
+    
+    // Now give addr1 some tokens to transfer
+    const transferAmount = 2n;
+    await instance.connect(owner).transfer(addr1.address, transferAmount);
+    
+    // Attempt to transfer from addr1 to addr2 - should overflow and revert in original
+    await expect(
+      instance.connect(addr1).transfer(addr2.address, transferAmount)
+    ).to.be.reverted;
+  });
+});
+```

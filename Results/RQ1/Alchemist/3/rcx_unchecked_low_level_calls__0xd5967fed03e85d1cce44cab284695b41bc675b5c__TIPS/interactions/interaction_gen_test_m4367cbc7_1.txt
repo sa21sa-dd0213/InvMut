@@ -1,0 +1,63 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m4367cbc7 of demo.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test demo.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for demo:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("demo reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy demo by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("demo"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("demo mutant kill test - m4367cbc7", function () {
+  it("should revert when a transferFrom call fails in the loop, but mutant would not revert", async function () {
+    const [owner, from, recipient1, recipient2] = await ethers.getSigners();
+    
+    // Deploy a simple token contract that the demo contract will call via transferFrom
+    const TokenFactory = await ethers.getContractFactory("contracts/ERC20Mock.sol:ERC20Mock");
+    const token = await TokenFactory.deploy("Test", "TST", 18);
+    await token.waitForDeployment();
+    
+    // Deploy the demo contract (no constructor arguments)
+    const DemoFactory = await ethers.getContractFactory("demo");
+    const demo = await DemoFactory.deploy();
+    await demo.waitForDeployment();
+    
+    // Mint tokens to the 'from' address
+    const mintAmount = ethers.parseEther("100");
+    await token.mint(from.address, mintAmount);
+    
+    // Have 'from' approve the demo contract to spend tokens
+    await token.connect(from).approve(await demo.getAddress(), mintAmount);
+    
+    // Setup: first recipient will succeed, second recipient will fail (no approval)
+    const recipients = [recipient1.address, recipient2.address];
+    const transferAmount = ethers.parseEther("10");
+    
+    // The demo.transfer function will call token.transferFrom(from, recipient, v)
+    // For recipient2, the transfer will fail because recipient2 hasn't approved anything
+    // Original contract reverts on failure; mutant continues and returns true
+    
+    // Test: this should revert in original contract (kill mutant)
+    await expect(
+      demo.connect(owner).transfer(
+        from.address,
+        await token.getAddress(),
+        recipients,
+        transferAmount
+      )
+    ).to.be.reverted;
+  });
+});
+```

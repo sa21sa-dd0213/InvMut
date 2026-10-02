@@ -1,0 +1,59 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m73866da7 of DCF.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test DCF.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for DCF:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("DCF reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy DCF by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("DCF"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("DCF mutant m73866da7 test", function () {
+  it("should detect when liquidityReceiveAddress is set to zero address instead of constructor argument", async function () {
+    const [owner, liquidityReceiver] = await ethers.getSigners();
+    
+    // Deploy DCF with a specific liquidity receive address
+    const DCF = await ethers.getContractFactory("DCF");
+    const dcf = await DCF.deploy(liquidityReceiver.address);
+    await dcf.waitForDeployment();
+    
+    // Get the helper contract address from DCF
+    const helperAddress = await dcf.helperAddress();
+    const LiquidityHelper = await ethers.getContractFactory("LiquidityHelper");
+    const helper = LiquidityHelper.attach(helperAddress);
+    
+    // The helper has a setLiquidityReceiveAddress function but we need to check
+    // the address that was set in the constructor. We can check this indirectly
+    // by calling addLiquidity and checking where liquidity goes, but a simpler
+    // approach is to check the initial setup:
+    // The DCF constructor sets whiteAddress[liquidityReceiveAddress] = true
+    // If the mutant set it to address(0), then address(0) will be whitelisted
+    // instead of the intended receiver
+    
+    // Check if liquidityReceiver is whitelisted (should be true in original)
+    const isReceiverWhitelisted = await dcf.whiteAddress(liquidityReceiver.address);
+    
+    // In the original, liquidityReceiver should be whitelisted
+    // In the mutant, it will NOT be whitelisted (address(0) gets whitelisted instead)
+    expect(isReceiverWhitelisted).to.equal(false, 
+      "Expected liquidity receiver to NOT be whitelisted because mutant sets address(0) instead");
+    
+    // Additionally, verify that address(0) IS whitelisted in the mutant
+    const isZeroWhitelisted = await dcf.whiteAddress(ethers.ZeroAddress);
+    expect(isZeroWhitelisted).to.equal(true,
+      "Expected zero address to be whitelisted because mutant set liquidityReceiveAddress to zero");
+  });
+});
+```

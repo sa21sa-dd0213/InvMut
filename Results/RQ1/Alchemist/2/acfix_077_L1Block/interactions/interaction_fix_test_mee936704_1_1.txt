@@ -1,0 +1,97 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("L1Block mutant detection - DEPOSITOR_ACCOUNT constant", function () {   it("should revert when calling setL1BlockValues from contract's own address in original, but pass in mutant", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("L1Block");     const instance = await Factory.deploy();     await instance.waitForDeployment();     const contractAddress = await instance.getAddress();      // The original contract has DEPOSITOR_ACCOUNT = 0xDeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001     // The mutant has DEPOSITOR_ACCOUNT = address(this) which equals contractAddress          // Try to call setL1BlockValues from the contract's own address (simulated via a contract call)     // We'll create a simple attacker contract to call from the L1Block address     const AttackerFactory = await ethers.getContractFactory("L1BlockAttacker");     const attacker = await AttackerFactory.deploy(contractAddress);     await attacker.waitForDeployment();          const testNumber = 1;     const testTimestamp = 1000;     const testBasefee = ethers.parseEther("1");     const testHash = ethers.hexlify(ethers.randomBytes(32));     const testSequenceNumber = 0;     const testBatcherHash = ethers.hexlify(ethers.randomBytes(32));     const testL1FeeOverhead = 100;     const testL1FeeScalar = 200;      // The attacker contract will call setL1BlockValues from the L1Block contract's own address     // This should revert in the original (mutant would pass)     await expect(       attacker.attack(         testNumber,         testTimestamp,         testBasefee,         testHash,         testSequenceNumber,         testBatcherHash,         testL1FeeOverhead,         testL1FeeScalar       )     ).to.be.revertedWith("L1Block: only the depositor account can set L1 block values");   }); });  // Helper contract to call from L1Block's address contract L1BlockAttacker {     address public target;          constructor(address _target) {         target = _target;     }          function attack(         uint64 _number,         uint64 _timestamp,         uint256 _basefee,         bytes32 _hash,         uint64 _sequenceNumber,         bytes32 _batcherHash,         uint256 _l1FeeOverhead,         uint256 _l1FeeScalar     ) external {         // Use delegatecall to make it appear as if L1Block is calling itself         (bool success, ) = target.call(             abi.encodeWithSignature(                 "setL1BlockValues(uint64,uint64,uint256,bytes32,uint64,bytes32,uint256,uint256)",                 _number,                 _timestamp,                 _basefee,                 _hash,                 _sequenceNumber,                 _batcherHash,                 _l1FeeOverhead,                 _l1FeeScalar             )         );         require(success, "call failed");     } }
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Semver { constructor(uint256, uint256, uint256) {} function version() external pure returns (string memory) { return "1.0.0"; } } contract L1Block is Semver { address public constant DEPOSITOR_ACCOUNT = 0xDeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001; uint64 public number; uint64 public timestamp; uint256 public basefee; bytes32 public hash; uint64 public sequenceNumber; bytes32 public batcherHash; uint256 public l1FeeOverhead; uint256 public l1FeeScalar; constructor() Semver(1, 0, 0) {} function setL1BlockValues( uint64 _number, uint64 _timestamp, uint256 _basefee, bytes32 _hash, uint64 _sequenceNumber, bytes32 _batcherHash, uint256 _l1FeeOverhead, uint256 _l1FeeScalar ) external { require( msg.sender == depositorAccount, "L1Block: only the depositor account can set L1 block values" ); } address public depositorAccount; }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("L1Block mutant detection - DEPOSITOR_ACCOUNT constant", function () {
+  it("should revert when calling setL1BlockValues from contract's own address in original, but pass in mutant", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("L1Block");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    const contractAddress = await instance.getAddress();
+
+    // The original contract has DEPOSITOR_ACCOUNT = 0xDeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001
+    // The mutant has DEPOSITOR_ACCOUNT = address(this) which equals contractAddress
+
+    // Try to call setL1BlockValues from the contract's own address (simulated via a contract call)
+    // We'll create a simple attacker contract to call from the L1Block address
+    const AttackerFactory = await ethers.getContractFactory("L1BlockAttacker");
+    const attacker = await AttackerFactory.deploy(contractAddress);
+    await attacker.waitForDeployment();
+
+    const testNumber = 1;
+    const testTimestamp = 1000;
+    const testBasefee = ethers.parseEther("1");
+    const testHash = ethers.hexlify(ethers.randomBytes(32));
+    const testSequenceNumber = 0;
+    const testBatcherHash = ethers.hexlify(ethers.randomBytes(32));
+    const testL1FeeOverhead = 100;
+    const testL1FeeScalar = 200;
+
+    // The attacker contract will call setL1BlockValues from the L1Block contract's own address
+    // This should revert in the original (mutant would pass)
+    await expect(
+      attacker.attack(
+        testNumber,
+        testTimestamp,
+        testBasefee,
+        testHash,
+        testSequenceNumber,
+        testBatcherHash,
+        testL1FeeOverhead,
+        testL1FeeScalar
+      )
+    ).to.be.revertedWith("L1Block: only the depositor account can set L1 block values");
+  });
+});
+
+// Helper contract to call from L1Block's address
+contract L1BlockAttacker {
+    address public target;
+
+    constructor(address _target) {
+        target = _target;
+    }
+
+    function attack(
+        uint64 _number,
+        uint64 _timestamp,
+        uint256 _basefee,
+        bytes32 _hash,
+        uint64 _sequenceNumber,
+        bytes32 _batcherHash,
+        uint256 _l1FeeOverhead,
+        uint256 _l1FeeScalar
+    ) external {
+        // Use delegatecall to make it appear as if L1Block is calling itself
+        (bool success, ) = target.call(
+            abi.encodeWithSignature(
+                "setL1BlockValues(uint64,uint64,uint256,bytes32,uint64,bytes32,uint256,uint256)",
+                _number,
+                _timestamp,
+                _basefee,
+                _hash,
+                _sequenceNumber,
+                _batcherHash,
+                _l1FeeOverhead,
+                _l1FeeScalar
+            )
+        );
+        require(success, "call failed");
+    }
+}
+```

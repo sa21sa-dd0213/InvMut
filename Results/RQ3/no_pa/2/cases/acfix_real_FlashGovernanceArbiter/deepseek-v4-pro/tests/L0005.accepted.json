@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0005",
+ "property_summary": "After a call to assertGovernanceApproved from an address not governed or DAO, the reference reverts because DAO is set to the test contract and configured is false, allowing setDAO to be called later; but the buggy version reverts as well, so the divergence is that after the transaction, the DAO value in the reference remains the same, while in the buggy version it could be set to a different address.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Remove the require statement to allow setting DAO regardless of conditions.",
+ "mutated_unit_code": "  function setDAO(address dao) public {\n    DAO = dao;\n    delete governer;\n  }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {FlashGovernanceArbiter} from \"../src/FlashGovernanceArbiter.sol\";\n\ncontract InvMutTest is Test {\n    FlashGovernanceArbiter c;\n    function setUp() public { c = new FlashGovernanceArbiter(address(this)); }\n    function testRegression_property() public {\n        c.endConfiguration();\n        vm.warp(1000);\n        c.endConfiguration();\n        address evil = address(0xDEAD);\n        vm.startPrank(evil);\n        (bool ok,) = address(c).call(abi.encodeWithSignature(\"setDAO(address)\", address(0xBEEF)));\n        vm.stopPrank();\n        vm.prank(address(this));\n        try c.assertGovernanceApproved(address(this), address(this), false) {} catch {}\n        assertTrue(c.DAO() == address(this));\n    }\n}\n"
+}

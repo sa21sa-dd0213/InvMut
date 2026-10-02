@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0002",
+ "property_summary": "For every caller address, only the deployer (owner) can successfully invoke sendTo; the mutant inverts the owner check and therefore there exists some caller (any non-owner) for which the mutant accepts the call while the reference rejects it.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replaced owner check with inverted check to allow only non-owner callers (msg.sender != owner), changing who can invoke sendTo.",
+ "mutated_unit_code": "function sendTo(address receiver, uint amount) public {\n        require(msg.sender != owner);\n        require(receiver != address(0));\n        require(amount > 0);\n        payable(receiver).transfer(amount);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MyContract} from \"../src/MyContract.sol\";\n\ncontract InvMutTest is Test {\n    MyContract c;\n\n    function setUp() public { c = new MyContract(); }\n\n    function testFuzz_property(address caller, uint256 amount) public {\n        vm.assume(caller != address(0));\n        vm.assume(caller != address(this));\n        vm.assume(amount > 0 && amount < type(uint128).max);\n\n        vm.deal(address(c), amount);\n\n        bool ok;\n        vm.startPrank(caller);\n        try c.sendTo(caller, amount) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        vm.stopPrank();\n\n        if (caller != address(this)) {\n            assertTrue(ok == false);\n        } else {\n            assertTrue(ok == true);\n        }\n    }\n}\n"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tf07fceab",
+ "property_summary": "For any caller and any deposited amount, after calling withdraw the reference C always sets balances(caller) to 0 (clearing the caller's balance); the mutant that sends 0 value may still set balances to 0 but if the external call fails (returns false) the require will revert — however the specific mutant described prevents sending funds and leaves actual ether with contract while still zeroing balances in code-path; to expose difference we assert that after depositing then calling withdraw, address(c).balance decreases by the withdrawn amount (reference: contract transfers funds out; mutant: transferring 0 leaves contract balance unchanged) — the reference always decreases contract balance by the amount withdrawn, the mutant can fail to do so for some inputs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the call that sends the full balance with a send of zero value (effectively preventing funds transfer and leaving balances unchanged), so balances remain nonzero after withdraw.",
+ "mutated_unit_code": "function withdraw () public __lock_modifier0  {\n    (bool __sent_result100, ) = msg.sender.call{value: 0}(\"\");\n    require(__sent_result100);\n    balances[msg.sender]=0;\n}\n",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {keepMyEther} from \"../src/keepMyEther.sol\";\n\ncontract InvMutTest is Test {\n    keepMyEther c;\n    function setUp() public { c = new keepMyEther(); }\n    function testFuzz_property(address depositor, uint256 amt) public {\n        vm.assume(depositor != address(0));\n        amt = bound(amt, 1, 1 ether);\n\n        vm.deal(depositor, amt);\n        uint256 before = address(c).balance;\n\n        vm.prank(depositor);\n        (bool sent,) = address(c).call{value: amt}(\"\");\n        require(sent);\n\n        uint256 afterDeposit = address(c).balance;\n        assertTrue(afterDeposit == before + amt);\n\n        vm.prank(depositor);\n        uint256 beforeWithdraw = address(c).balance;\n        bool ok;\n        try c.withdraw() { ok = true; } catch { ok = false; }\n\n        uint256 afterWithdraw = address(c).balance;\n\n        assertTrue(!ok || afterWithdraw + amt == beforeWithdraw);\n    }\n}\n"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T0e33f4b3",
+ "property_summary": "After any sequence starting with a deposit and a withdrawal, sum of all user balances equals the contract's ETH balance; the mutant breaks this because the withdrawn amount stays stuck in the contract.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace `msg.sender.call{value: tmp__1}(\"\")` with `address(this).call{value: tmp__1}(\"\")` so Ether is sent to the contract itself, not the caller, and balance is cleared.",
+ "mutated_unit_code": "function withdrawBalance() public{\n    uint256 tmp__1 = userBalance[msg.sender];\n    userBalance[msg.sender] = 0;\n    { (bool _s, bytes memory _d) = address(this).call{value: tmp__1}(\"\"); _d; if (! _s) {\n        revert();\n    } }\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n\n    function setUp() public {\n        c = new Reentrance();\n    }\n\n    function testFuzz_property(uint256 deposit1, uint256 deposit2) public {\n        vm.assume(deposit1 > 0 && deposit1 < type(uint128).max);\n        vm.assume(deposit2 > 0 && deposit2 < type(uint128).max);\n\n        address alice = address(0x1000);\n        address bob = address(0x2000);\n\n        vm.deal(alice, deposit1);\n        vm.prank(alice);\n        c.addToBalance{value: deposit1}();\n\n        vm.prank(alice);\n        c.withdrawBalance();\n\n        vm.deal(bob, deposit2);\n        vm.prank(bob);\n        c.addToBalance{value: deposit2}();\n\n        uint256 totalBalances = c.getBalance(alice) + c.getBalance(bob);\n        uint256 contractEth = address(c).balance;\n\n        assertTrue(totalBalances == contractEth);\n    }\n}"
+}

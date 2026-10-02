@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "When transfer is called on a contract that modifies its own state on a 'transferFrom' call, the reference version makes an external call (caddress.call) so the called contract's state changes persist, while the buggy version uses delegatecall, making the state changes happen in C's context and thus not visible when reading the called contract's state afterward.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "-{ (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); _d; if (! _s) {; +{ (bool _s, bytes memory _d) = caddress.delegatecall(abi.encodeWithSelector(id, from, _to",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v)  public returns (bool) {\n\trequire(_tos.length > 0);\n\tbytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n\tfor(uint i = 0;i < _tos.length;i++){\n\t{ (bool _s, bytes memory _d) = caddress.delegatecall(abi.encodeWithSelector(id, from, _tos[i], v)); _d; if (! _s) {\n\trevert();} }\n\t}\n\treturn true;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {demo} from \"../src/demo.sol\";\n\ncontract InvMutTest is Test {\n    demo c;\n    function setUp() public { c = new demo(); }\n    function testRegression_property() public {\n        Victim v = new Victim();\n        address from = address(0x1234);\n        address[] memory tos = new address[](1);\n        tos[0] = address(0x5678);\n        uint amount = 100;\n        c.transfer(from, address(v), tos, amount);\n        assertEq(v.balanceOf(from), amount);\n    }\n}\n\ncontract Victim {\n    mapping(address => uint) public balanceOf;\n    function transferFrom(address from, address to, uint amount) external returns (bool) {\n        balanceOf[from] += amount;\n        return true;\n    }\n}"
+}

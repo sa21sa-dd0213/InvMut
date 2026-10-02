@@ -1,0 +1,12 @@
+{
+ "difference_id": "T2ab7e93d",
+ "property_summary": "After a successful withdrawAll by any account that has positive credit, the contract's stored credit for that account is zero (reference) — the mutant that removed the clearing line leaves the stored credit nonzero for some inputs (accounts and deposit amounts).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Remove the line that clears credit[msg.sender] so the stored credit remains after withdraw, changing post-call observable state.",
+ "mutated_unit_code": "function withdrawAll () public __lock_modifier0  {\nuint     oCredit = credit[msg.sender];\nif (oCredit>0)\n{\nbalance-=oCredit;\n(bool callResult, ) = msg.sender.call{value: oCredit}(\"\");\nrequire(callResult);\n\n}\n\n}\n",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ReentrancyDAO} from \"../src/ReentrancyDAO.sol\";\n\ncontract InvMutTest is Test {\n    ReentrancyDAO c;\n    function setUp() public { c = new ReentrancyDAO(); }\n\n    function testFuzz_property(address depositor, uint256 amount) public {\n        vm.assume(depositor != address(0));\n        amount = bound(amount, 1, 1e18);\n\n        vm.deal(depositor, amount);\n        vm.prank(depositor);\n        c.deposit{value: amount}();\n\n        uint256 beforeDepositorBal = depositor.balance;\n        uint256 beforeContractBal = address(c).balance;\n\n        vm.prank(depositor);\n        bool ok1;\n        try c.withdrawAll() {\n            ok1 = true;\n        } catch {\n            ok1 = false;\n        }\n        assertTrue(ok1);\n\n        uint256 afterDepositorBal = depositor.balance;\n        uint256 afterContractBal = address(c).balance;\n\n        assertTrue(afterContractBal + amount == beforeContractBal);\n\n        vm.prank(depositor);\n        bool ok2;\n        try c.withdrawAll() {\n            ok2 = true;\n        } catch {\n            ok2 = false;\n        }\n        assertTrue(ok2);\n\n        uint256 finalContractBal = address(c).balance;\n\n        assertTrue(finalContractBal == afterContractBal);\n    }\n}\n"
+}

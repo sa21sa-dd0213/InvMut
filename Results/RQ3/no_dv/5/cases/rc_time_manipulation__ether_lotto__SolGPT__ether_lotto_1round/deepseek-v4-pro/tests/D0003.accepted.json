@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0003",
+ "property_summary": "After any successful call to play(), the pot value (before any win) should be a multiple of TICKET_AMOUNT; the bug increments it by 1, breaking the invariant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Insert `pot += 1;` right before the require statement so the pot is increased by 1 regardless of the transfer.",
+ "mutated_unit_code": "    function play()  public payable {\n        pot += 1;\n        require(msg.value == TICKET_AMOUNT);\n        pot += msg.value;\n\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n\n        if (random == 0) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    function setUp() public { c = new EtherLotto(); }\n    function testFuzz_property(uint256 fuzzTimestamp, uint256 fuzzDifficulty) public {\n        vm.assume(fuzzTimestamp <= type(uint64).max);\n        vm.assume(fuzzDifficulty <= type(uint256).max);\n        vm.warp(fuzzTimestamp);\n        vm.roll(fuzzDifficulty);\n\n        address player = makeAddr(\"player\");\n        vm.deal(player, 20 ether);\n        vm.prank(player);\n        try c.play{value: 10}() { } catch { }\n\n        uint256 currentPot = c.pot();\n        assertTrue(currentPot == 0 || currentPot == 10);\n    }\n}"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T528ae968",
+ "property_summary": "For any input where at least one external transferFrom call via caddress reverts, the reference C always reverts (returns no value), while the buggy M always returns true, violating the rule that the function should revert whenever any sub-call fails.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Delete the line `bytes4 id = ...` and hardcode the selector in place, but to stay single-edit, instead delete the `for` loop entirely so the function returns true without making any external calls, changing state and return behavior.",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){\n        require(_tos.length > 0);\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airPort} from \"../src/airPort.sol\";\n\ncontract InvMutTest is Test {\n    airPort c;\n    function setUp() public { c = new airPort(); }\n    function testFuzz_property(address from, address[] memory _tos, uint256 v) public {\n        vm.assume(_tos.length > 0);\n        vm.assume(_tos.length <= 50);\n        Reverter reverter = new Reverter();\n        bool ok;\n        try c.transfer(from, address(reverter), _tos, v) returns (bool ret) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        assertTrue(!ok, \"Reference C should revert when a sub-call reverts\");\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"always fails\");\n    }\n}"
+}

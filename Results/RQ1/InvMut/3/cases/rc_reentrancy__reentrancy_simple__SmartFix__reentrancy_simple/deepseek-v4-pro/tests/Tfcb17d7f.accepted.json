@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tfcb17d7f",
+ "property_summary": "After any call to addToBalance(), userBalance of the sender must equal the sum of previously recorded balance plus the msg.value sent; the bug violates this by never updating userBalance.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Comment out the balance increment so funds are accepted but balance never updated.",
+ "mutated_unit_code": "function addToBalance() public payable {\n    require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender]));\n    // userBalance[msg.sender] += msg.value;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n    function testFuzz_property(address sender, uint256 existingBalance, uint256 sendValue) public {\n        sendValue = bound(sendValue, 0, type(uint128).max);\n        existingBalance = bound(existingBalance, 0, type(uint128).max);\n        vm.assume(sender != address(0));\n        if (existingBalance > 0) {\n            vm.deal(sender, existingBalance);\n            vm.prank(sender);\n            c.addToBalance{value: existingBalance}();\n        }\n        uint256 balanceBefore = c.getBalance(sender);\n        vm.deal(sender, sendValue);\n        vm.prank(sender);\n        c.addToBalance{value: sendValue}();\n        uint256 balanceAfter = c.getBalance(sender);\n        assertTrue(balanceAfter == balanceBefore + sendValue);\n    }\n}"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0004",
+ "property_summary": "When an intermediate call in the loop reverts, the reference contract reverts the entire transaction, but the buggy version breaks out of the loop and returns true, allowing the function to succeed even though some transfers failed.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "-revert();} }; +break;} }",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v)  public returns (bool) {\n\trequire(_tos.length > 0);\n\tbytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n\tfor(uint i = 0;i < _tos.length;i++){\n\t{ (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); _d; if (! _s) {\n\tbreak;} }\n\t}\n\treturn true;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {demo} from \"../src/demo.sol\";\n\ncontract InvMutTest is Test {\n    demo c;\n    function setUp() public { c = new demo(); }\n    function testRegression_property() public {\n        address token = address(new RevertingToken());\n        address from = address(0x1);\n        address[] memory tos = new address[](2);\n        tos[0] = address(0x2);\n        tos[1] = address(0x3);\n        uint v = 100;\n\n        bool ok;\n        try c.transfer(from, token, tos, v) { ok = true; } catch { ok = false; }\n        assertTrue(!ok);\n    }\n}\n\ncontract RevertingToken {\n    function transferFrom(address, address, uint256) external pure returns (bool) {\n        revert(\"transfer failed\");\n    }\n}\n"
+}

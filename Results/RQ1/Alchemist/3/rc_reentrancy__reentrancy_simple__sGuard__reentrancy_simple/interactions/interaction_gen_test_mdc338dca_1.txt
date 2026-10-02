@@ -1,0 +1,67 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mdc338dca of Reentrance.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Reentrance.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Reentrance:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Reentrance reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Reentrance by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Reentrance"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Reentrance mutant mdc338dca - kill test", function () {
+  it("should revert withdrawal when recipient rejects Ether, preserving balance", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the Reentrance contract (no constructor arguments)
+    const ReentranceFactory = await ethers.getContractFactory("Reentrance");
+    const reentrance = await ReentranceFactory.deploy();
+    await reentrance.waitForDeployment();
+    
+    // Deploy a malicious receiver that reverts on receive
+    const MaliciousReceiverFactory = await ethers.getContractFactory("MaliciousReceiver");
+    const maliciousReceiver = await MaliciousReceiverFactory.deploy();
+    await maliciousReceiver.waitForDeployment();
+    
+    // Fund the Reentrance contract with some Ether
+    await owner.sendTransaction({
+      to: await reentrance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    
+    // Add balance for the malicious receiver address
+    await reentrance.connect(attacker).addToBalance({ value: ethers.parseEther("5") });
+    
+    // Verify initial balance
+    expect(await reentrance.getBalance(await maliciousReceiver.getAddress())).to.equal(ethers.parseEther("5"));
+    
+    // Attempt withdrawal - should revert because maliciousReceiver rejects Ether
+    // In the original contract, this reverts and keeps balance intact
+    // In the mutant, balance would be set to 0 despite failed call
+    await expect(
+      reentrance.connect(attacker).withdrawBalance()
+    ).to.be.reverted;
+    
+    // Verify balance is preserved (not zeroed out) - this will pass on original, fail on mutant
+    expect(await reentrance.getBalance(await maliciousReceiver.getAddress())).to.equal(ethers.parseEther("5"));
+  });
+});
+
+// Helper contract that reverts on receive
+contract MaliciousReceiver {
+  receive() external payable {
+    revert("I reject your Ether");
+  }
+}
+```

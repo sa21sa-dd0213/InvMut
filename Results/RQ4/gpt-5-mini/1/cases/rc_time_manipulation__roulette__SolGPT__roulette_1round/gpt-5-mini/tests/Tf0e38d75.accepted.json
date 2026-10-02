@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tf0e38d75",
+ "property_summary": "For any caller sending exactly 10 ether while advancing time past the contract's recorded pastBlockTime, the correct contract pays out its entire balance (address(c).balance == 0) whenever the block.number is divisible by 15 after the call, whereas the mutant that removed the conditional transfer can leave a non-zero balance in that case.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Remove the conditional transfer so the contract never sends its balance back in the divisible-by-15 block case, changing observable outcomes for callers expecting a payout.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        // removed transfer\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n\n    function testFuzz_property(address payable actor, uint256 targetBlock) public {\n        vm.assume(actor != address(0));\n        targetBlock = bound(targetBlock, 1, 1_000_000);\n\n        uint256 alignedBlock = targetBlock + ((15 - (targetBlock % 15)) % 15);\n        vm.roll(alignedBlock);\n\n        vm.warp(block.timestamp + 1);\n\n        uint256 sendAmt = 10 ether;\n        vm.deal(actor, sendAmt);\n\n        vm.prank(actor);\n        (bool ok, ) = address(c).call{value: sendAmt}('');\n        vm.assume(ok);\n\n        if (alignedBlock % 15 == 0) {\n            assertTrue(address(c).balance == 0);\n        } else {\n            assertTrue(address(c).balance >= 0);\n        }\n    }\n}\n"
+}

@@ -1,0 +1,12 @@
+{
+ "difference_id": "T41150e92",
+ "property_summary": "For any caller who is Owner and any target contract with a payable fallback/receive that records whether it was paid, calling Command with some msg.value causes the target to receive that exact ETH amount (so address(c).balance decreases accordingly and the target records a nonzero received amount); the mutant that drops the value forwarding will leave the target unpaid for some fuzzed inputs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the call by forwarding no value (value removed), so msg.value is not forwarded to the target.",
+ "mutated_unit_code": "function Command(address adr,bytes memory data)\n    payable\n    public\n    {\n        require(msg.sender == Owner);\n\n        adr.call(data);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MultiplicatorX4} from \"../src/MultiplicatorX4.sol\";\n\ncontract InvMutTest is Test {\n    MultiplicatorX4 c;\n    function setUp() public { c = new MultiplicatorX4(); }\n\n    function testFuzz_property(uint256 amt, bytes memory payload) public {\n        amt = bound(amt, 0, 1 ether);\n\n        Receiver r = new Receiver();\n\n        vm.deal(address(this), amt);\n\n        bool ok;\n        try c.Command(address(r), payload) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        Receiver r2 = new Receiver();\n\n        if (amt > 0) {\n            c.Command{value: amt}(address(r2), payload);\n        } else {\n            c.Command{value: 0}(address(r2), payload);\n        }\n\n        assertTrue(r2.received() == amt);\n    }\n}\n\ncontract Receiver {\n    uint256 public received;\n    receive() external payable { received += msg.value; }\n    fallback() external payable { received += msg.value; }\n}\n"
+}

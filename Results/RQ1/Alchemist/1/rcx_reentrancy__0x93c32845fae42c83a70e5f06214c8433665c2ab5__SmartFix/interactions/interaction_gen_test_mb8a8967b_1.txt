@@ -1,0 +1,71 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mb8a8967b of X_WALLET.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test X_WALLET.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for X_WALLET:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("X_WALLET reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy X_WALLET by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("X_WALLET"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("X_WALLET mutant kill test - mb8a8967b", function () {
+  it("should detect the mutant by checking balance decreases after Collect (mutant adds instead)", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy Log contract first (required by X_WALLET constructor)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy X_WALLET with Log address
+    const XWalletFactory = await ethers.getContractFactory("X_WALLET");
+    const wallet = await XWalletFactory.deploy(await log.getAddress());
+    await wallet.waitForDeployment();
+    
+    const depositAmount = ethers.parseEther("10");
+    const withdrawAmount = ethers.parseEther("3");
+    
+    // Deposit funds
+    await wallet.connect(addr1).Put(0, { value: depositAmount });
+    
+    // Verify initial balance
+    let holder = await wallet.Acc(addr1.address);
+    const initialBalance = holder.balance;
+    expect(initialBalance).to.equal(depositAmount);
+    
+    // Wait for unlock time (Put with timestamp 0 sets unlockTime = block.timestamp)
+    // The unlockTime will be the current block timestamp, so we need to advance time
+    await ethers.provider.send("evm_increaseTime", [2]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // Set MinSum to 1 wei so the balance check passes
+    // MinSum is already 1 ether, but we can call Collect with _am >= MinSum
+    // Actually MinSum = 1 ether, so we need withdrawAmount >= 1 ether (it is 3 ether)
+    
+    // Call Collect - in original this subtracts, in mutant this adds
+    const tx = await wallet.connect(addr1).Collect(withdrawAmount);
+    await tx.wait();
+    
+    // Check balance after Collect
+    holder = await wallet.Acc(addr1.address);
+    const finalBalance = holder.balance;
+    
+    // In the original: finalBalance = initialBalance - withdrawAmount
+    // In the mutant: finalBalance = initialBalance + withdrawAmount
+    // The mutant will fail this assertion because it adds instead of subtracts
+    expect(finalBalance).to.equal(initialBalance - withdrawAmount);
+  });
+});
+```

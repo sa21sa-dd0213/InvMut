@@ -1,0 +1,12 @@
+{
+ "difference_id": "T4a47d6f6",
+ "property_summary": "After any interaction, pastBlockTime must equal the block.timestamp of the most recent previous interaction that updated it, so that the next call's require(block.timestamp > pastBlockTime) enforces strictly increasing timestamps; the buggy version updates pastBlockTime before the check, allowing the same block timestamp to pass the require.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Move pastBlockTime = block.timestamp before require(block.timestamp > pastBlockTime), causing the require to always pass on the same block timestamp.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        pastBlockTime = block.timestamp;\n        require(block.timestamp > pastBlockTime);\n\n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n\n    function testFuzz_property(uint256 value1, uint256 value2, uint256 blockNumberBase) public {\n        uint256 v1 = bound(value1, 10 ether, 10 ether);\n        uint256 v2 = bound(value2, 10 ether, 10 ether);\n        uint256 bnum = bound(blockNumberBase, 0, type(uint256).max - 2);\n\n        vm.roll(bnum);\n        vm.warp(1000);\n\n        address sender = address(0x1234);\n        vm.deal(sender, 100 ether);\n\n        vm.prank(sender);\n        (bool ok1, ) = address(c).call{value: v1}(\"\");\n        assertTrue(ok1);\n\n        vm.prank(sender);\n        (bool ok2, ) = address(c).call{value: v2}(\"\");\n\n        assertTrue(!ok2);\n    }\n}\n"
+}

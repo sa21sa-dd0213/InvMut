@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Roulette:
+        Contract Code: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp + 1; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+
+    Consider the following mutant of Roulette:
+        Mutant m85f07a8e of function fallback replaces + with -
+        Mutant Diff: ---|         pastBlockTime = block.timestamp + 1; +++|         pastBlockTime = block.timestamp - 1;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract sets `pastBlockTime = block.timestamp + 1`, which enforces a one-second delay between calls. The mutant changes this to `pastBlockTime = block.timestamp - 1`, effectively setting the timestamp to one second in the past.
+
+**Hypothesis**: "The mutant changes the arithmetic operation from addition to subtraction, which causes the next call's `require(block.timestamp > pastBlockTime)` check to always pass (since the current time will always be greater than one second ago). Therefore, a test case that sends two valid 10-ether transactions in the same block (or within less than one second of each other) should succeed on the mutant (allowing rapid repeated calls) but revert on the original contract due to the time lock. The test should expect the second transaction to revert on the original but succeed on the mutant."

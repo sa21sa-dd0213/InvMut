@@ -1,0 +1,12 @@
+{
+ "difference_id": "T64a1a0dd",
+ "property_summary": "For any payer and any recipient address, when Owner calls withdraw() the correct contract always transfers out the contract's entire balance (leaving address(c).balance == 0); the mutant that replaces transfer with an unchecked call can fail to forward funds to a malicious recipient that reverts, leaving address(c).balance > 0.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace transfer with a low-level call that forwards all gas and ignores failure, changing behavior on transfer failure.",
+ "mutated_unit_code": "function withdraw()\n    payable\n    public\n    {\n        require(msg.sender == Owner);\n        (bool success, ) = Owner.call{value: address(this).balance}(\"\");\n        // ignore success\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MultiplicatorX3} from \"../src/MultiplicatorX3.sol\";\n\ncontract InvMutTest is Test {\n    MultiplicatorX3 c;\n\n    function setUp() public { c = new MultiplicatorX3(); }\n\n    function testFuzz_property(uint256 value, bool makeRecipientRevert) public {\n        value = bound(value, 1, 1 ether);\n\n        AttackerPayable attacker = new AttackerPayable(makeRecipientRevert);\n\n        vm.deal(address(this), value);\n        payable(address(c)).transfer(value);\n\n        uint256 before = address(c).balance;\n        assert(before == value);\n\n        _shouldRevertOnReceive = makeRecipientRevert;\n\n        bool ok;\n        try c.withdraw{value:0}() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        if (ok) {\n            assertTrue(address(c).balance == 0);\n        } else {\n            assertTrue(address(c).balance == before);\n        }\n    }\n\n    bool _shouldRevertOnReceive;\n\n    receive() external payable {\n        if (_shouldRevertOnReceive) revert(\"receive revert\");\n    }\n}\n\ncontract AttackerPayable {\n    bool public willRevert;\n    constructor(bool _r) payable { willRevert = _r; }\n    receive() external payable {\n        if (willRevert) revert(\"bad\");\n    }\n}\n"
+}

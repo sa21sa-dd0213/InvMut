@@ -1,0 +1,12 @@
+{
+ "difference_id": "T4a47d6f6",
+ "property_summary": "After any fallback call, pastBlockTime must equal block.timestamp; the buggy mutation sets pastBlockTime before the time check, making the require fail when timestamps are equal, thus leaving pastBlockTime unchanged from a previous call, which violates equality.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Move pastBlockTime = block.timestamp assignment before the second require statement",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        pastBlockTime = block.timestamp;\n        require(block.timestamp > pastBlockTime);\n\n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 warpTime, uint256 msgValue) public {\n        vm.assume(msgValue == 10 ether);\n        vm.assume(warpTime > 0);\n        vm.deal(address(this), 100 ether);\n        vm.warp(warpTime);\n        (bool ok1, ) = address(c).call{value: msgValue}(\"\");\n        require(ok1, \"call1 failed\");\n        uint256 pastAfterFirst = c.pastBlockTime();\n        (bool ok2, ) = address(c).call{value: msgValue}(\"\");\n        assertTrue(!ok2);\n    }\n}"
+}

@@ -1,0 +1,31 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract W_WALLET:
+        Contract Code: pragma solidity ^0.8.0; contract W_WALLET { function Put(uint _unlockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+
+    Consider the following mutant of W_WALLET:
+        Mutant m6e1d1714 of function Put replaces msg.value with msg.value-1
+        Mutant Diff: ---|         LogFile.AddMessage(msg.sender,msg.value,"Put"); +++|         LogFile.AddMessage(msg.sender,msg.value-1,"Put");
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+**Step-by-step reasoning:**
+
+The original `Put` function logs the exact `msg.value` sent with the call via `LogFile.AddMessage(msg.sender, msg.value, "Put")`.  
+The mutant changes this to `msg.value - 1`, so the logged value is one wei less than the actual amount deposited.  
+
+This means:  
+- The contract’s internal balance (`acc.balance`) is correctly increased by the full `msg.value`.  
+- But the event/logged data incorrectly reports a value that is one wei lower.  
+
+A test that can detect this must verify that the logged value matches the actual transferred value, not just check the balance.
+
+**Hypothesis:**  
+A test case that sends a specific amount of ether (e.g., 1 wei) to `Put` and then reads the logged `Val` field from the `Log` contract’s `History` array, asserting that it equals the exact amount sent, should detect the mutant. On the original, the log would match; on the mutant, the log would show one wei less, causing the assertion to fail.

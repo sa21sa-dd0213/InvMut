@@ -1,0 +1,32 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Owned:
+        Contract Code: pragma solidity ^0.8.0; contract Owned { address private admin = payable(msg.sender); address public owner; constructor() { owner = payable(msg.sender); } function setOwner(address _owner)  public onlyAdmin returns (bool success) { owner = _owner; return true; } modifier onlyAdmin() { require(msg.sender == admin, "Only admin can call address(this) function"); _; } modifier onlyOwner { require(msg.sender == owner); _; } }
+
+    Consider the following mutant of Owned:
+        Mutant mb380d662 of function setOwner replaces _owner with address(this)
+        Mutant Diff: ---|     owner = _owner; +++|     owner = address(this);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's break this down.
+
+In the original contract, `setOwner` sets the `owner` state variable to the `_owner` argument passed by the caller.  
+In the mutant, the assignment is changed to `owner = address(this);`, meaning the contract itself becomes the owner, ignoring the argument entirely.
+
+The `onlyAdmin` modifier is still present, so only the admin can call the function. However, after the mutation, calling `setOwner` with any address will set the owner to the contract’s own address instead.
+
+A test that would detect this mutation should:
+1. Call `setOwner` with a specific address that is **not** the contract’s own address.
+2. After the call, check that the `owner` variable equals the address that was passed in the argument.
+3. On the original contract, this check passes. On the mutant, it fails because `owner` will be `address(this)` instead.
+
+**Hypothesis:**  
+The mutant replaces the assignment of the `_owner` parameter with the contract’s own address. Therefore, a test case that calls `setOwner` with a specific address and then asserts that the contract’s `owner` variable is equal to that provided address should kill the mutant.

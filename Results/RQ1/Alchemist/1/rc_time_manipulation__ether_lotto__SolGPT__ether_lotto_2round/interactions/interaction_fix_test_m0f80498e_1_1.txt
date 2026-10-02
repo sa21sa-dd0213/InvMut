@@ -1,0 +1,86 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EtherLotto mutant m0f80498e test", function () {   it("should detect the mutant where pot += msg.value-1 instead of pot += msg.value", async function () {     const [owner, player] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("EtherLotto");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const TICKET_AMOUNT = 10n; // 10 wei      // Player sends exactly 10 wei and loses (random == 1)     // We can't control randomness, but we can play multiple times until we get a losing round     // For deterministic testing, we'll play and check pot after each round          // Play until we get a losing round (random == 1)     let potAfterPlay: bigint;     let round = 0;     const maxRounds = 10;          do {       const tx = await player.sendTransaction({         to: await instance.getAddress(),         value: TICKET_AMOUNT       });       await tx.wait();              potAfterPlay = await instance.pot();       round++;              if (round > maxRounds) {         // If all rounds were winning (unlikely but possible), just check the last pot         break;       }     } while (potAfterPlay !== 0n); // pot = 0 means a winning round (payout happened)      // After a losing round, pot should be exactly 10 wei (the full ticket amount)     // In the mutant, pot would be 9 wei (msg.value - 1)     // If we got a winning round, pot will be 0, so we need to check after a losing round     if (potAfterPlay !== 0n) {       // We had a losing round - pot should equal TICKET_AMOUNT       expect(potAfterPlay).to.equal(TICKET_AMOUNT);     }          // Additional check: play a second time to verify cumulative effect     const secondTx = await player.sendTransaction({       to: await instance.getAddress(),       value: TICKET_AMOUNT     });     await secondTx.wait();          const potAfterSecondPlay = await instance.pot();          // If first round was winning (pot reset to 0), second losing round should show pot = 10     // If first round was losing (pot = 10), second losing round should show pot = 20     if (potAfterPlay === 0n) {       // First was winning, second was losing       if (potAfterSecondPlay !== 0n) {         expect(potAfterSecondPlay).to.equal(TICKET_AMOUNT);       }     } else {       // First was losing, second might be losing or winning       if (potAfterSecondPlay !== 0n) {         // Both losing - pot should be 2 * TICKET_AMOUNT = 20         expect(potAfterSecondPlay).to.equal(TICKET_AMOUNT * 2n);       }     }   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant m0f80498e test", function () {
+  it("should detect the mutant where pot += msg.value-1 instead of pot += msg.value", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = 10n; // 10 wei
+
+    // Player sends exactly 10 wei and loses (random == 1)
+    // We can't control randomness, but we can play multiple times until we get a losing round
+    // For deterministic testing, we'll play and check pot after each round
+
+    // Play until we get a losing round (random == 1)
+    let potAfterPlay: bigint;
+    let round = 0;
+    const maxRounds = 10;
+
+    do {
+      const tx = await player.sendTransaction({
+        to: await instance.getAddress(),
+        value: TICKET_AMOUNT
+      });
+      await tx.wait();
+
+      potAfterPlay = await instance.pot();
+      round++;
+
+      if (round > maxRounds) {
+        // If all rounds were winning (unlikely but possible), just check the last pot
+        break;
+      }
+    } while (potAfterPlay !== 0n); // pot = 0 means a winning round (payout happened)
+
+    // After a losing round, pot should be exactly 10 wei (the full ticket amount)
+    // In the mutant, pot would be 9 wei (msg.value - 1)
+    // If we got a winning round, pot will be 0, so we need to check after a losing round
+    if (potAfterPlay !== 0n) {
+      // We had a losing round - pot should equal TICKET_AMOUNT
+      expect(potAfterPlay).to.equal(TICKET_AMOUNT);
+    }
+
+    // Additional check: play a second time to verify cumulative effect
+    const secondTx = await player.sendTransaction({
+      to: await instance.getAddress(),
+      value: TICKET_AMOUNT
+    });
+    await secondTx.wait();
+
+    const potAfterSecondPlay = await instance.pot();
+
+    // If first round was winning (pot reset to 0), second losing round should show pot = 10
+    // If first round was losing (pot = 10), second losing round should show pot = 20
+    if (potAfterPlay === 0n) {
+      // First was winning, second was losing
+      if (potAfterSecondPlay !== 0n) {
+        expect(potAfterSecondPlay).to.equal(TICKET_AMOUNT);
+      }
+    } else {
+      // First was losing, second might be losing or winning
+      if (potAfterSecondPlay !== 0n) {
+        // Both losing - pot should be 2 * TICKET_AMOUNT = 20
+        expect(potAfterSecondPlay).to.equal(TICKET_AMOUNT * 2n);
+      }
+    }
+  });
+});
+```

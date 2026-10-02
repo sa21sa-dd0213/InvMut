@@ -1,0 +1,12 @@
+{
+ "difference_id": "T8775d3e4",
+ "property_summary": "For any caller with a positive balance, a call to withdraw with amount <= balance must succeed; the mutant always reverts, so the call fails.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replace the require condition with false, making withdrawal always revert.",
+ "mutated_unit_code": "function withdraw(uint256 amount) public {\n        require(false);\n        payable(msg.sender).transfer(amount);\n        balances[msg.sender] -= amount;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Wallet} from \"../src/Wallet.sol\";\n\ncontract InvMutTest is Test {\n    Wallet c;\n    address constant VICTIM = address(0xA11CE);\n    uint256 constant D = 1 ether;\n    uint256 constant V = 3 ether;\n\n    function setUp() public {\n        c = new Wallet();\n        vm.deal(VICTIM, V);\n        vm.prank(VICTIM);\n        c.deposit{value: V}();\n    }\n\n    function _attack(address caller) internal {\n        vm.assume(caller != address(0));\n        vm.assume(caller != address(this));\n        vm.assume(caller != address(c));\n        vm.assume(caller != VICTIM);\n        vm.assume(uint160(caller) > 0xffff);\n        vm.assume(caller.code.length == 0);\n\n        vm.deal(caller, D);\n        vm.prank(caller);\n        c.deposit{value: D}();\n\n        vm.prank(caller);\n        c.refund();\n        vm.prank(caller);\n        c.refund();\n\n        assertLe(caller.balance, D);\n    }\n\n    function testFuzz_property(address caller) public {\n        _attack(caller);\n    }\n}\n"
+}

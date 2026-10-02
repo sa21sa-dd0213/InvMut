@@ -1,0 +1,47 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("demo mutant kill test - m814e6338", function () {   it("should revert when calling transfer with multiple recipients due to loop condition change", async function () {     const [owner, addr1, addr2, addr3] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("demo");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const caddress = addr1.address;     const tos = [addr2.address, addr3.address];     const v = 100;      // On original: loop runs for both addresses, no revert     // On mutant: loop condition i > _tos.length is false initially (0 > 2 = false), so loop never executes, but function returns true     // To kill the mutant, we need to verify that the intended transfers did NOT happen     // Since we cannot observe internal state of demo, we check that the function returns true (which it does on both)     // However, we can kill the mutant by verifying that the loop body never executed, meaning the call to caddress never happened     // We can use a simple contract that records calls to detect the difference      // Deploy a simple receiver contract to record transferFrom calls     const ReceiverFactory = await ethers.getContractFactory("contract Receiver { event TransferCalled(address from, address to, uint value); function transferFrom(address from, address to, uint value) external { emit TransferCalled(from, to, value); } }");     const receiver = await ReceiverFactory.deploy();     await receiver.waitForDeployment();      // Call the mutated transfer with receiver as caddress     const tx = await instance.transfer(owner.address, await receiver.getAddress(), tos, v);     await tx.wait();      // On original: two TransferCalled events should be emitted     // On mutant: zero events because loop never executes     const events = await receiver.queryFilter(receiver.filters.TransferCalled());     expect(events.length).to.equal(0, "Mutant should cause loop to never execute, resulting in zero transfer calls");   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract demo { function transfer(address from, address caddress, address[] memory _tos, uint v)  public returns (bool) { require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); _d; if (! _s) { revert();} } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("demo mutant kill test - m814e6338", function () {
+  it("should revert when calling transfer with multiple recipients due to loop condition change", async function () {
+    const [owner, addr1, addr2, addr3] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("demo");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const caddress = addr1.address;
+    const tos = [addr2.address, addr3.address];
+    const v = 100;
+
+    // Deploy a simple receiver contract to record transferFrom calls
+    const ReceiverFactory = await ethers.getContractFactory(
+      "contract Receiver { event TransferCalled(address from, address to, uint value); function transferFrom(address from, address to, uint value) external { emit TransferCalled(from, to, value); } }"
+    );
+    const receiver = await ReceiverFactory.deploy();
+    await receiver.waitForDeployment();
+
+    // Call the mutated transfer with receiver as caddress
+    const tx = await instance.transfer(owner.address, await receiver.getAddress(), tos, v);
+    await tx.wait();
+
+    // On original: two TransferCalled events should be emitted
+    // On mutant: zero events because loop never executes
+    const events = await receiver.queryFilter(receiver.filters.TransferCalled());
+    expect(events.length).to.equal(0, "Mutant should cause loop to never execute, resulting in zero transfer calls");
+  });
+});
+```

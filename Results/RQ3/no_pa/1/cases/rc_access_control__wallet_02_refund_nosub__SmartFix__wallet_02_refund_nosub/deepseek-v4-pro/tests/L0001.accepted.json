@@ -1,0 +1,11 @@
+{
+ "difference_id": "L0001",
+ "property_summary": "After Alice deposits 0 wei (empty call) as a non-owner, the reference contract's balance becomes 0 (msg.value=0, no-op deposit) while the buggy contract also receives 0 wei but the balance stays 0; both are same. However, if Alice deposits 1 wei, reference balance becomes 1, buggy balance stays 0. To avoid already-tried patterns, we use a different approach: Alice deposits 1 wei then refunds. In the reference, deposit adds balance, refund zeroes it and sends Ether; in the buggy, deposit does nothing, so refund sends 0 and balance stays 0. After the sequence (deposit(1 wei) then refund), Alice's Ether balance differs: reference sends 1 wei to Alice, buggy sends 0. We check Alice's balance after refund.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "change_summary": "Remove the deposit function body entirely, making it a no-op.",
+ "mutated_unit_code": "function deposit() public payable {\n    \n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Wallet} from \"../src/Wallet.sol\";\n\ncontract InvMutTest is Test {\n    Wallet c;\n    function setUp() public { c = new Wallet(); }\n    function testRegression_property() public {\n        address alice = address(0x1234);\n        vm.deal(alice, 1 wei);\n        vm.prank(alice);\n        c.deposit{value: 1 wei}();\n        uint256 aliceBalanceBeforeRefund = alice.balance;\n        vm.prank(alice);\n        c.refund();\n        uint256 aliceBalanceAfterRefund = alice.balance;\n        assertTrue(aliceBalanceAfterRefund == aliceBalanceBeforeRefund + 1 wei);\n    }\n}"
+}

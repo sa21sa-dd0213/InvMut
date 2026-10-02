@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract ReentrancyDAO:
+        Contract Code: pragma solidity ^0.8.0; contract sGuardPlus { constructor() { __lock_modifier0_lock = false; } bool private __lock_modifier0_lock; modifier __lock_modifier0() { require(!__lock_modifier0_lock); __lock_modifier0_lock = true; _; __lock_modifier0_lock = false; } } contract ReentrancyDAO is sGuardPlus { mapping (address  => uint )    credit; uint     balance; function withdrawAll () public __lock_modifier0  { uint     oCredit = credit[msg.sender]; if (oCredit>0) { balance-=oCredit; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); credit[msg.sender]=0; } } function deposit () public payable { credit[msg.sender]+=msg.value; balance+=msg.value; } }
+
+    Consider the following mutant of ReentrancyDAO:
+        Mutant mc5cbb662 of function withdrawAll replaces > with >=
+        Mutant Diff: ---| if (oCredit>0) +++| if (oCredit>= 0)
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract checks `if (oCredit > 0)` before processing a withdrawal, meaning only addresses with a positive credit balance can withdraw. The mutant changes the condition to `if (oCredit >= 0)`, which is always true because `oCredit` is an unsigned integer (uint) and can never be negative. This means any address, even those with zero credit, can trigger the withdrawal logic.
+
+**Hypothesis:** The mutant allows a user with zero credit balance to execute the withdrawal function, which will attempt to send zero value via `call` and then set their credit to zero. A test case that calls `withdrawAll()` from an address that has never deposited (credit = 0) and checks that the function should revert or that the balance and credit mapping remain unchanged will detect the mutant, because on the original contract it would revert or do nothing (due to `oCredit > 0` being false), but on the mutant it will execute the `call` with zero value and reset credit, potentially causing unexpected state changes.

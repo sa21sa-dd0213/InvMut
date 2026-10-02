@@ -1,0 +1,33 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract PENNY_BY_PENNY:
+        Contract Code: pragma solidity ^0.8.0; contract PENNY_BY_PENNY { struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; uint public MinSum; LogFile Log; bool intitalized; function SetMinSum(uint _val) public { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log) public { if(intitalized)revert(); Log = LogFile(_log); } function Initialized() public { intitalized = true; } function Put(uint _lockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; require(((block.timestamp + _lockTime) >= block.timestamp)); if(block.timestamp+_lockTime>acc.unlockTime)acc.unlockTime=block.timestamp+_lockTime; Log.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { Log.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } } contract LogFile { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+
+    Consider the following mutant of PENNY_BY_PENNY:
+        Mutant m9087a223 of function Put replaces + with -
+        Mutant Diff: ---|         require(((acc.balance + msg.value) >= acc.balance)); +++|         require(((acc.balance - msg.value) >= acc.balance));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let’s break this down step-by-step.
+
+**Original code:**  
+`require(((acc.balance + msg.value) >= acc.balance));`  
+This check ensures that adding `msg.value` to the current balance does not overflow (i.e., the sum is at least as large as the original balance). It is a standard overflow guard.
+
+**Mutant code:**  
+`require(((acc.balance - msg.value) >= acc.balance));`  
+This changes the addition to subtraction. Now the require checks that the balance minus the sent value is still greater than or equal to the original balance. That can only be true if `msg.value == 0` (since subtracting a positive number would make the left side smaller). For any positive `msg.value`, this condition will always be false, causing the transaction to revert.
+
+**Hypothesis:**  
+A test case that sends a non-zero amount of ether to the `Put` function (or via fallback) and expects a successful deposit (i.e., no revert, balance increases) should pass on the original but fail (revert) on the mutant, thereby killing it.  
+
+**Final answer:**  
+"Hypothesis": A test case that calls `Put` with a non-zero `msg.value` and expects the transaction to succeed (balance increased, no revert) should kill the mutant, because the mutant incorrectly uses subtraction, causing a revert for any positive value sent.

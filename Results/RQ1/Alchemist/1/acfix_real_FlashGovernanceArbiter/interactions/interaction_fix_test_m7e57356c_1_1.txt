@@ -1,0 +1,89 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("FlashGovernanceArbiter mutant detection - enforceTolerance", function () {   it("should kill mutant m7e57356c by detecting inverted tolerance check when v1 > v2 and v2 != 0", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy with a DAO address (can be any address for testing)     const Factory = await ethers.getContractFactory("FlashGovernanceArbiter");     const instance = await Factory.deploy(addr1.address);     await instance.waitForDeployment();      // Configure security parameters with changeTolerance = 10 (10%)     // Need to call configureSecurityParameters through a successful proposal     // For testing purposes, we can directly set the security parameters by calling the function     // but we need to bypass the onlySuccessfulProposal modifier by calling via a proposal     // Since we're testing the enforceTolerance function directly, we can set security params     // by calling the internal function or using a test helper          // First, let's set up the security parameters directly     // We'll use owner as the sender and set the DAO to allow direct calls     // Actually, we need to set DAO to owner so we can call configureSecurityParameters     // But configureSecurityParameters has onlySuccessfulProposal modifier          // For testing enforceTolerance, we need to:     // 1. Set security.changeTolerance to a known value     // 2. Set enforceLimitsActive for the caller     // 3. Make the caller "configured" by deploying a configurable contract          // Deploy a simple configurable contract that returns configured() = true     const ConfigurableFactory = await ethers.getContractFactory("SimpleConfigurable");     const configurable = await ConfigurableFactory.deploy();     await configurable.waitForDeployment();          // Set enforceLimitsActive for the configurable contract     await instance.setEnforcement(true);          // Now we need to set security parameters     // Since configureSecurityParameters has onlySuccessfulProposal modifier,     // we need to bypass it by setting the storage directly or using a proposal     // For this test, we'll use a workaround: set the DAO to owner and then     // make a successful proposal call          // Actually, let's use a different approach - we can set the security params     // by calling setDAO first to make owner the DAO, then call configureSecurityParameters     await instance.setDAO(owner.address);          // Now owner can call configureSecurityParameters since it's the DAO     // Wait - configureSecurityParameters has onlySuccessfulProposal modifier     // which requires assertSuccessfulProposal to pass     // Since configured is false initially, assertSuccessfulProposal will pass     await instance.configureSecurityParameters(       10,    // maxGovernanceChangePerEpoch       100,   // epochSize       10     // changeTolerance = 10%     );          // Now test the enforceTolerance function     // Case: v1 = 200, v2 = 190 (v1 > v2, v2 != 0)     // Difference = 10, (v1 - v2) * 100 = 1000     // changeTolerance * v1 = 10 * 200 = 2000     // Original: 1000 < 2000 -> true (should pass)     // Mutant: 1000 > 2000 -> false (should revert with "FE1")          // Call enforceTolerance from the configurable contract     // Since enforceTolerance is a view function, we need to call it as a transaction     // to catch reverts, or use staticCall          // The configurable contract needs to call enforceTolerance     // We'll create a helper contract that calls enforceTolerance     const HelperFactory = await ethers.getContractFactory("EnforceToleranceHelper");     const helper = await HelperFactory.deploy();     await helper.waitForDeployment();          // Call enforceTolerance through the helper     // This should pass on original but fail on mutant     await expect(       helper.callEnforceTolerance(instance.target, 200, 190)     ).to.not.be.reverted;          // Also test the opposite case to ensure the mutant is killed     // Case where difference is greater than tolerance     // v1 = 200, v2 = 150 (difference = 50)     // (v1 - v2) * 100 = 5000     // changeTolerance * v1 = 2000     // Original: 5000 < 2000 -> false (should revert with "FE1")     // Mutant: 5000 > 2000 -> true (should pass)          await expect(       helper.callEnforceTolerance(instance.target, 200, 150)     ).to.be.revertedWith("FE1");   }); });  // Helper contracts to enable testing contract SimpleConfigurable {     function configured() public view returns (bool) {         return true;     } }  contract EnforceToleranceHelper {     function callEnforceTolerance(address arbiter, uint256 v1, uint256 v2) external view {         FlashGovernanceArbiter(arbiter).enforceTolerance(v1, v2);     } }  interface FlashGovernanceArbiter {     function enforceTolerance(uint256 v1, uint256 v2) external view; }
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; abstract contract Burnable { function burn (uint amount) public virtual; } abstract contract FlashGovernanceArbiterLike { function assertGovernanceApproved(address sender, address target, bool emergency) public virtual; function enforceToleranceInt(int256 v1, int256 v2) public view virtual; function enforceTolerance(uint256 v1, uint256 v2) public view virtual; function burnFlashGovernanceAsset( address targetContract, address user, address asset, uint256 amount ) public virtual; function setEnforcement(bool enforce) public virtual; } interface IERC20 { event Transfer(address indexed from, address indexed to, uint256 value); event Approval(address indexed owner, address indexed spender, uint256 value); function totalSupply() external view returns (uint256); function balanceOf(address account) external view returns (uint256); function transfer(address to, uint256 amount) external returns (bool); function allowance(address owner, address spender) external view returns (uint256); function approve(address spender, uint256 amount) external returns (bool); function transferFrom(address from, address to, uint256 amount) external returns (bool); } abstract contract LimboDAOLike { function approveFlanMintingPower(address minter, bool enabled) public virtual; function makeProposal(address proposal, address proposer) public virtual; function currentProposalState() public view virtual returns ( uint256, uint256, address, uint256, address ); function setProposalConfig( uint256 votingDuration, uint256 requiredFateStake, address proposalFactory ) public virtual; function setApprovedAsset( address asset, bool approved, bool isUniswap, uint256 period ) public virtual; function successfulProposal(address proposal) public view virtual returns (bool); function domainConfig() public virtual returns ( address, address, address, address, bool, address, address ); function getFlashGoverner() external view virtual returns (address); function proposalConfig() public view virtual returns ( uint256, uint256, address ); function setFateToFlan(uint256 rate) public virtual; } abstract contract ProposalFactoryLike { function toggleWhitelistProposal(address proposal) public virtual; function soulUpdateProposal () public  virtual view returns (address); } abstract contract Governable { FlashGovernanceArbiterLike public governer; bool public configured; address public DAO; function endConfiguration() public { configured = true; } modifier onlySuccessfulProposal() { assertSuccessfulProposal(msg.sender); _; } modifier onlySoulUpdateProposal() { assertSoulUpdateProposal(msg.sender); _; } function assertSoulUpdateProposal(address sender) internal view { (, , address proposalFactory) = LimboDAOLike(DAO).proposalConfig(); require(!configured || sender == ProposalFactoryLike(proposalFactory).soulUpdateProposal(), "EJ"); assertSuccessfulProposal(sender); } function _governanceApproved(bool emergency) internal { bool successfulProposal = LimboDAOLike(DAO).successfulProposal(msg.sender); if (successfulProposal) { governer.setEnforcement(false); } else if (configured) { governer.setEnforcement(true); governer.assertGovernanceApproved(msg.sender, address(this), emergency); } } modifier governanceApproved(bool emergency) { _governanceApproved(emergency); _; } function assertSuccessfulProposal(address sender) internal view { require(!configured || LimboDAOLike(DAO).successfulProposal(sender), "EJ"); } constructor(address dao) { setDAO(dao); } function flashGoverner() internal returns (FlashGovernanceArbiterLike) { if (address(governer) == address(0)) governer = FlashGovernanceArbiterLike(LimboDAOLike(DAO).getFlashGoverner()); return governer; } function setDAO(address dao) public { require(DAO == address(0) || msg.sender == DAO || !configured, "EK"); DAO = dao; delete governer; } } abstract contract Configurable { function configured() public view virtual returns (bool); } contract FlashGovernanceArbiter is Governable { event flashDecision(address actor, address deposit_asset, uint256 amount, address target); mapping(address => bool) enforceLimitsActive; constructor(address dao) Governable(dao) {} struct FlashGovernanceConfig { uint256 amount; uint256 unlockTime; address asset; bool assetBurnable; } struct SecurityParameters { uint256 epochSize; uint256 lastFlashGovernanceAct; uint8 maxGovernanceChangePerEpoch; uint8 changeTolerance; } FlashGovernanceConfig public flashGovernanceConfig; SecurityParameters public security; mapping(address => bool) public governed; function setGoverned(address[] calldata governables, bool[] calldata isGoverned) external onlySuccessfulProposal { require(governables.length == isGoverned.length, "LIMBO: length mismatch"); for (uint256 i = 0; i < governables.length; i++) { governed[governables[i]] = isGoverned[i]; } } modifier flashEnabled(){ require(msg.sender == DAO || governed[msg.sender], "LIMBO: EP"); _; } mapping(address => mapping(address => FlashGovernanceConfig)) public pendingFlashDecision; function assertGovernanceApproved( address sender, address target, bool emergency ) public flashEnabled{ if ( IERC20(flashGovernanceConfig.asset).transferFrom(sender, address(this), flashGovernanceConfig.amount) && pendingFlashDecision[target][sender].unlockTime < block.timestamp ) { require( emergency || (block.timestamp - security.lastFlashGovernanceAct > security.epochSize), "LIMBO: flash governance disabled for rest of epoch" ); pendingFlashDecision[target][sender] = flashGovernanceConfig; pendingFlashDecision[target][sender].unlockTime += block.timestamp; security.lastFlashGovernanceAct = block.timestamp; emit flashDecision(sender, flashGovernanceConfig.asset, flashGovernanceConfig.amount, target); } else { revert("LIMBO: governance decision rejected."); } } function configureFlashGovernance( address asset, uint256 amount, uint256 unlockTime, bool assetBurnable ) public virtual onlySuccessfulProposal { flashGovernanceConfig.asset = asset; flashGovernanceConfig.amount = amount; flashGovernanceConfig.unlockTime = unlockTime; flashGovernanceConfig.assetBurnable = assetBurnable; } function configureSecurityParameters( uint8 maxGovernanceChangePerEpoch, uint256 epochSize, uint8 changeTolerance ) public virtual onlySuccessfulProposal { security.maxGovernanceChangePerEpoch = maxGovernanceChangePerEpoch; security.epochSize = epochSize; require(security.changeTolerance < 100, "Limbo: % between 0 and 100"); security.changeTolerance = changeTolerance; } function burnFlashGovernanceAsset( address targetContract, address user, address asset, uint256 amount ) public virtual onlySuccessfulProposal { if (pendingFlashDecision[targetContract][user].assetBurnable) { Burnable(asset).burn(amount); } delete pendingFlashDecision[targetContract][user]; } function withdrawGovernanceAsset(address targetContract, address asset) public virtual { require( pendingFlashDecision[targetContract][msg.sender].asset == asset && pendingFlashDecision[targetContract][msg.sender].amount > 0 && pendingFlashDecision[targetContract][msg.sender].unlockTime < block.timestamp, "Limbo: Flashgovernance decision pending." ); IERC20(pendingFlashDecision[targetContract][msg.sender].asset).transfer( msg.sender, pendingFlashDecision[targetContract][msg.sender].amount ); delete pendingFlashDecision[targetContract][msg.sender]; } function setEnforcement(bool enforce) public { enforceLimitsActive[msg.sender] = enforce; } function enforceToleranceInt(int256 v1, int256 v2) public view { if (!configured) return; uint256 uv1 = uint256(v1 > 0 ? v1 : -1 * v1); uint256 uv2 = uint256(v2 > 0 ? v2 : -1 * v2); enforceTolerance(uv1, uv2); } function enforceTolerance(uint256 v1, uint256 v2) public view { if (!enforceLimitsActive[msg.sender] || !Configurable(msg.sender).configured()) return; if (v1 > v2) { if (v2 == 0) require(v1 <= 1, "FE1"); else require(((v1 - v2) * 100) < security.changeTolerance * v1, "FE1"); } else { if (v1 == 0) require(v2 <= 1, "FE1"); else require(((v2 - v1) * 100) < security.changeTolerance * v1, "FE1"); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("FlashGovernanceArbiter mutant detection - enforceTolerance", function () {
+  it("should kill mutant m7e57356c by detecting inverted tolerance check when v1 > v2 and v2 != 0", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy with a DAO address (can be any address for testing)
+    const Factory = await ethers.getContractFactory("FlashGovernanceArbiter");
+    const instance = await Factory.deploy(addr1.address);
+    await instance.waitForDeployment();
+
+    // Deploy a simple configurable contract that returns configured() = true
+    const ConfigurableFactory = await ethers.getContractFactory("SimpleConfigurable");
+    const configurable = await ConfigurableFactory.deploy();
+    await configurable.waitForDeployment();
+
+    // Set enforceLimitsActive for the configurable contract
+    await instance.setEnforcement(true);
+
+    // Set the DAO to owner so we can call configureSecurityParameters
+    await instance.setDAO(owner.address);
+
+    // Now owner can call configureSecurityParameters since it's the DAO
+    // and assertSuccessfulProposal will pass because configured is false
+    await instance.configureSecurityParameters(
+      10,    // maxGovernanceChangePerEpoch
+      100,   // epochSize
+      10     // changeTolerance = 10%
+    );
+
+    // Deploy the helper contract
+    const HelperFactory = await ethers.getContractFactory("EnforceToleranceHelper");
+    const helper = await HelperFactory.deploy();
+    await helper.waitForDeployment();
+
+    // Test case: v1 = 200, v2 = 190 (v1 > v2, v2 != 0)
+    // Difference = 10, (v1 - v2) * 100 = 1000
+    // changeTolerance * v1 = 10 * 200 = 2000
+    // Original: 1000 < 2000 -> true (should pass)
+    // Mutant: 1000 > 2000 -> false (should revert with "FE1")
+    await expect(
+      helper.callEnforceTolerance(instance.target, 200, 190)
+    ).to.not.be.reverted;
+
+    // Test case where difference is greater than tolerance
+    // v1 = 200, v2 = 150 (difference = 50)
+    // (v1 - v2) * 100 = 5000
+    // changeTolerance * v1 = 2000
+    // Original: 5000 < 2000 -> false (should revert with "FE1")
+    // Mutant: 5000 > 2000 -> true (should pass)
+    await expect(
+      helper.callEnforceTolerance(instance.target, 200, 150)
+    ).to.be.revertedWith("FE1");
+  });
+});
+
+// Helper contracts to enable testing
+contract SimpleConfigurable {
+  function configured() public view returns (bool) {
+    return true;
+  }
+}
+
+contract EnforceToleranceHelper {
+  function callEnforceTolerance(address arbiter, uint256 v1, uint256 v2) external view {
+    FlashGovernanceArbiter(arbiter).enforceTolerance(v1, v2);
+  }
+}
+
+interface FlashGovernanceArbiter {
+  function enforceTolerance(uint256 v1, uint256 v2) external view;
+}
+```

@@ -1,0 +1,70 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m084efa6c of airPort.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test airPort.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for airPort:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("airPort reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy airPort by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("airPort"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("airPort mutant test - m084efa6c", function () {
+  it("should revert when external call fails in original but succeed silently in mutant", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy the airPort contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("airPort");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Deploy a simple ERC20 token that will reject transferFrom
+    const TokenFactory = await ethers.getContractFactory("ERC20FailMock");
+    const token = await TokenFactory.deploy();
+    await token.waitForDeployment();
+    
+    // The token address that will fail on transferFrom
+    const failingTokenAddress = await token.getAddress();
+    
+    // Create recipients array
+    const recipients = [addr2.address];
+    
+    // This call should revert in original (require(_s) catches failure)
+    // but in the mutant it will return true silently
+    const tx = instance.connect(owner).transfer(
+      owner.address,
+      failingTokenAddress,
+      recipients,
+      ethers.parseEther("1")
+    );
+    
+    // In the mutant, this will NOT revert (mutant removes require(_s))
+    // In the original, it WOULD revert
+    // We expect it to NOT revert (mutant behavior)
+    await expect(tx).to.not.be.reverted;
+    
+    // Additionally verify the transaction returns true (mutant always returns true)
+    const result = await (await tx).wait();
+    // The function returns bool true, we can check the receipt
+    expect(result.status).to.equal(1); // Transaction succeeded
+  });
+});
+
+// Simple mock token that always fails on transferFrom
+contract ERC20FailMock {
+    function transferFrom(address, address, uint256) public pure returns (bool) {
+        return false; // Always fails
+    }
+}
+```

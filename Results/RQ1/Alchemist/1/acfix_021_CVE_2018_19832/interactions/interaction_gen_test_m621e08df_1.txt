@@ -1,0 +1,54 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m621e08df of NewIntelTechMedia.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test NewIntelTechMedia.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for NewIntelTechMedia:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("NewIntelTechMedia reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy NewIntelTechMedia by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("NewIntelTechMedia"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("NewIntelTechMedia - kill mutant m621e08df (totalDistributed subtraction bug)", function () {
+  it("should detect mutant that uses subtraction instead of addition in distr", async function () {
+    const [owner, investor] = await ethers.getSigners();
+    
+    // Deploy contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("NewIntelTechMedia");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Initial state: totalDistributed should be 250000000e18 (set in contract)
+    const initialTotalDistributed = await instance.totalDistributed();
+    
+    // Fund contract with some ETH so getTokens() can succeed (value = 2500e18)
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("1.0") // small amount to trigger distribution
+    });
+
+    // Call getTokens() from investor address (not blacklisted, distribution not finished)
+    // This will internally call distr which should increase totalDistributed
+    await instance.connect(investor).getTokens();
+    
+    // Get new totalDistributed after the distribution
+    const newTotalDistributed = await instance.totalDistributed();
+    
+    // In the original contract: totalDistributed should increase
+    // In the mutant: totalDistributed will decrease (subtraction instead of addition)
+    // We expect the original behavior: newTotalDistributed > initialTotalDistributed
+    expect(newTotalDistributed).to.be.gt(initialTotalDistributed);
+  });
+});
+```

@@ -1,0 +1,41 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant mc4c6acff detection", function () {
+  it("should detect mutant that changes block.number to block.number-1 in payout condition", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy({ value: ethers.parseEther("10") });
+    await instance.waitForDeployment();
+
+    // Get current block number and calculate the next block that is divisible by 15
+    const currentBlock = await ethers.provider.getBlock("latest");
+    const currentBlockNumber = currentBlock!.number;
+
+    // Find the next block number that is divisible by 15
+    const blocksUntilNext = (15 - (currentBlockNumber % 15)) % 15;
+    const targetBlockNumber = currentBlockNumber + blocksUntilNext;
+
+    // Mine blocks until we reach the target block
+    if (blocksUntilNext > 0) {
+      await ethers.provider.send("hardhat_mine", [ethers.toQuantity(blocksUntilNext)]);
+    }
+
+    // Get contract balance before the transaction
+    const balanceBefore = await ethers.provider.getBalance(instance.target);
+
+    // Send exactly 10 ether to trigger fallback on a block where block.number % 15 == 0
+    const tx = await owner.sendTransaction({
+      to: instance.target,
+      value: ethers.parseEther("10")
+    });
+    await tx.wait();
+
+    // Get contract balance after the transaction
+    const balanceAfter = await ethers.provider.getBalance(instance.target);
+
+    // In the original contract, the payout should have occurred (balance reduced)
+    // In the mutant, the payout does NOT occur at this block number, so balance stays
+    expect(balanceAfter).to.be.lessThan(balanceBefore);
+  });
+});

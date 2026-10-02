@@ -1,0 +1,72 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MY_BANK mutant m055fca3c detection test", function () {   it("should detect missing overflow protection in Put function", async function () {     const [owner, user] = await ethers.getSigners();          // Deploy Log contract first (needed as constructor argument)     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();          // Deploy MY_BANK with Log address     const BankFactory = await ethers.getContractFactory("MY_BANK");     const bank = await BankFactory.deploy(await log.getAddress());     await bank.waitForDeployment();          const bankAddress = await bank.getAddress();          // Step 1: Make an initial deposit to user's account     const initialDeposit = ethers.parseEther("1");     await user.sendTransaction({       to: bankAddress,       value: initialDeposit     });          // Step 2: Get current balance to verify state     const holderBefore = await bank.Acc(user.address);     const balanceBefore = holderBefore.balance;          // Step 3: Attempt to deposit an amount that would cause overflow     // Send max uint256 minus current balance (plus some small amount to ensure overflow)     const maxUint = ethers.MaxUint256;     const overflowAmount = maxUint - balanceBefore + 1n;          // In the original contract, this should revert due to overflow check     // In the mutant, it will succeed and wrap around to a small number     const tx = user.sendTransaction({       to: bankAddress,       value: overflowAmount     });          // The original would revert, but mutant allows the overflow     // We expect the transaction to succeed in the mutant     await expect(tx).to.not.be.reverted;          // Verify the balance has wrapped around (overflow behavior)     const holderAfter = await bank.Acc(user.address);     const balanceAfter = holderAfter.balance;          // After overflow: balance should be (balanceBefore + overflowAmount) mod 2^256     // Which equals (balanceBefore + maxUint - balanceBefore + 1) = 0     // But due to overflow wrapping, it should be less than initial balance     expect(balanceAfter).to.be.lessThan(balanceBefore);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract MY_BANK { function Put(uint _unlockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant m055fca3c detection test", function () {
+  it("should detect missing overflow protection in Put function", async function () {
+    const [owner, user] = await ethers.getSigners();
+
+    // Deploy Log contract first (needed as constructor argument)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Deploy MY_BANK with Log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+
+    const bankAddress = await bank.getAddress();
+
+    // Step 1: Make an initial deposit to user's account
+    const initialDeposit = ethers.parseEther("1");
+    await user.sendTransaction({
+      to: bankAddress,
+      value: initialDeposit
+    });
+
+    // Step 2: Get current balance to verify state
+    const holderBefore = await bank.Acc(user.address);
+    const balanceBefore = holderBefore.balance;
+
+    // Step 3: Attempt to deposit an amount that would cause overflow
+    // Send max uint256 minus current balance (plus some small amount to ensure overflow)
+    const maxUint = ethers.MaxUint256;
+    const overflowAmount = maxUint - balanceBefore + 1n;
+
+    // In the original contract, this should revert due to overflow check
+    // In the mutant, it will succeed and wrap around to a small number
+    const tx = user.sendTransaction({
+      to: bankAddress,
+      value: overflowAmount
+    });
+
+    // The original would revert, but mutant allows the overflow
+    // We expect the transaction to succeed in the mutant
+    await expect(tx).to.not.be.reverted;
+
+    // Verify the balance has wrapped around (overflow behavior)
+    const holderAfter = await bank.Acc(user.address);
+    const balanceAfter = holderAfter.balance;
+
+    // After overflow: balance should be (balanceBefore + overflowAmount) mod 2^256
+    // Which equals (balanceBefore + maxUint - balanceBefore + 1) = 0
+    // But due to overflow wrapping, it should be less than initial balance
+    expect(balanceAfter).to.be.lessThan(balanceBefore);
+  });
+});
+```

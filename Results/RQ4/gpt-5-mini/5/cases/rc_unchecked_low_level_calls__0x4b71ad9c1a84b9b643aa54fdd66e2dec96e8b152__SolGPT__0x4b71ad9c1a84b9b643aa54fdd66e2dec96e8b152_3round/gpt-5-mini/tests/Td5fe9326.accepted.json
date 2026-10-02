@@ -1,0 +1,12 @@
+{
+ "difference_id": "Td5fe9326",
+ "property_summary": "For any non-empty _tos array and any callee that always returns success on the encoded call, C.transfer(...) always returns true; the mutant returns false when _tos.length > 1, violating this rule for some fuzzed _tos inputs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Insert a conditional that returns false immediately if the loop has more than one recipient, otherwise keep original behavior.",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        if(_tos.length > 1) { return false; }\n        for(uint i=0; i<_tos.length; i++){\n            { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); require(_s); }\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airPort} from \"../src/airPort.sol\";\n\ncontract InvMutTest is Test {\n    airPort c;\n    function setUp() public { c = new airPort(); }\n\n    function testFuzz_property(address from, address dummy, address[] memory tos, uint256 v) public {\n        vm.assume(tos.length > 0);\n\n        Responder ok = new Responder();\n\n        bool okret;\n        try c.transfer(from, address(ok), tos, v) returns (bool r) {\n            okret = r;\n        } catch {\n            okret = false;\n        }\n\n        assertTrue(okret);\n    }\n}\n\ncontract Responder {\n    fallback() external payable {\n    }\n}\n"
+}

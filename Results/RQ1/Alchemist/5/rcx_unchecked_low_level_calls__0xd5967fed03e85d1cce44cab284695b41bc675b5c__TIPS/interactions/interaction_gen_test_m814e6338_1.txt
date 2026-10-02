@@ -1,0 +1,56 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m814e6338 of demo.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test demo.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for demo:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("demo reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy demo by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("demo"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("demo mutant kill test - m814e6338", function () {
+  it("should revert when calling transfer with multiple recipients due to loop condition change", async function () {
+    const [owner, addr1, addr2, addr3] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("demo");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const caddress = addr1.address;
+    const tos = [addr2.address, addr3.address];
+    const v = 100;
+
+    // On original: loop runs for both addresses, no revert
+    // On mutant: loop condition i > _tos.length is false initially (0 > 2 = false), so loop never executes, but function returns true
+    // To kill the mutant, we need to verify that the intended transfers did NOT happen
+    // Since we cannot observe internal state of demo, we check that the function returns true (which it does on both)
+    // However, we can kill the mutant by verifying that the loop body never executed, meaning the call to caddress never happened
+    // We can use a simple contract that records calls to detect the difference
+
+    // Deploy a simple receiver contract to record transferFrom calls
+    const ReceiverFactory = await ethers.getContractFactory("contract Receiver { event TransferCalled(address from, address to, uint value); function transferFrom(address from, address to, uint value) external { emit TransferCalled(from, to, value); } }");
+    const receiver = await ReceiverFactory.deploy();
+    await receiver.waitForDeployment();
+
+    // Call the mutated transfer with receiver as caddress
+    const tx = await instance.transfer(owner.address, await receiver.getAddress(), tos, v);
+    await tx.wait();
+
+    // On original: two TransferCalled events should be emitted
+    // On mutant: zero events because loop never executes
+    const events = await receiver.queryFilter(receiver.filters.TransferCalled());
+    expect(events.length).to.equal(0, "Mutant should cause loop to never execute, resulting in zero transfer calls");
+  });
+});
+```

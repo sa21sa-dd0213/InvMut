@@ -1,0 +1,72 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m58a63c87 of EtherLotto.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EtherLotto.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EtherLotto:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EtherLotto reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EtherLotto by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EtherLotto"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant m58a63c87 detection", function () {
+  it("should detect the mutant by verifying different outcomes across blocks", async function () {
+    const [owner, player1, player2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = ethers.parseEther("10");
+    const FEE_AMOUNT = ethers.parseEther("1");
+
+    // Play multiple times in different blocks and collect results
+    const results: string[] = [];
+    
+    // Play 5 times, each in a different block
+    for (let i = 0; i < 5; i++) {
+      // Get current pot before playing
+      const potBefore = await instance.pot();
+      
+      // Play as player1
+      const tx = await instance.connect(player1).play({ value: TICKET_AMOUNT });
+      const receipt = await tx.wait();
+      
+      // Determine who won by checking pot after transaction
+      const potAfter = await instance.pot();
+      
+      if (potAfter === 0n) {
+        // Pot was reset - someone won
+        // Check if bank received fee
+        const bankBalance = await ethers.provider.getBalance(instance.target);
+        // If bank balance increased by exactly FEE_AMOUNT, bank didn't win (player won)
+        // If bank balance increased by more, bank won
+        results.push("winner_determined");
+      } else {
+        results.push("no_winner");
+      }
+      
+      // Mine a new block to change block.prevrandao
+      await ethers.provider.send("evm_mine", []);
+    }
+
+    // The mutant should produce varying results across blocks
+    // The original with constant block.difficulty would always produce the same result
+    const uniqueResults = new Set(results);
+    
+    // With 5 trials and random outcomes, we expect at least 2 different results
+    // (if mutant is present) or all same (if original behavior)
+    expect(uniqueResults.size).to.be.greaterThan(1);
+  });
+});
+```

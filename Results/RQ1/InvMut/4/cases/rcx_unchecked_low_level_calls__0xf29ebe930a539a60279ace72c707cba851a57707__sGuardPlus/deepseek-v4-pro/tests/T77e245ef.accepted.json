@@ -1,0 +1,12 @@
+{
+ "difference_id": "T77e245ef",
+ "property_summary": "After any successful call to go(), the owner's Ether balance increases by at least the value sent and the contract's balance is zero, but the mutant pays msg.sender instead causing the owner to never receive the Ether (and contract balance may stay non-zero if msg.sender is the contract itself).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change the final transfer of balance from owner to msg.sender.",
+ "mutated_unit_code": "function go () public payable {\naddress     target = 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C;\n(bool __sent_result100, ) = target.call{value: msg.value}(\"\");\nrequire(__sent_result100);\npayable(msg.sender).transfer(address(this).balance);\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {B} from \"../src/B.sol\";\n\ncontract InvMutTest is Test {\n    B c;\n    function setUp() public { c = new B(); }\n    function testFuzz_property(uint256 amount, address caller) public {\n        amount = bound(amount, 1, address(this).balance / 2);\n        vm.assume(caller != c.owner());\n        vm.assume(caller != address(c));\n        vm.assume(caller != address(this));\n\n        uint256 ownerBefore = c.owner().balance;\n        vm.deal(caller, amount);\n        vm.prank(caller);\n        try c.go{value: amount}() {\n            uint256 ownerAfter = c.owner().balance;\n            assertTrue(ownerAfter >= ownerBefore + amount);\n        } catch {\n        }\n    }\n}\n"
+}

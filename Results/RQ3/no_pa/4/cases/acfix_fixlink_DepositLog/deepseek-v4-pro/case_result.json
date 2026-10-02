@@ -1,0 +1,207 @@
+{
+ "case_id": "acfix_fixlink_DepositLog",
+ "config_label": "deepseek-v4-pro",
+ "target_contract": "DepositLog",
+ "modification_kind": "control_flow",
+ "feasible": true,
+ "reason": null,
+ "n_accepted": 13,
+ "n_validated": 13,
+ "n_killing": 11,
+ "success": true,
+ "kills": [
+  {
+   "difference_id": "L0002",
+   "property": "For an unapproved caller (e.g., address(0x01)), the reference contract returns false from approvedToLog(address(0x01)), ",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Replace the mapping lookup with a constant true",
+   "mutated_unit_code": "    function approvedToLog(address _caller) public view returns (bool) {\n    return true;\n}",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  },
+  {
+   "difference_id": "L0003",
+   "property": "When an address has not been approved as a logger, calling `approvedToLog` returns `true` in the mutated contract (due t",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Negate the mapping lookup with logical not",
+   "mutated_unit_code": "    function approvedToLog(address _caller) public view returns (bool) {\n    return !approvedLoggers[_caller];\n}",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  },
+  {
+   "difference_id": "L0005",
+   "property": "After owner calls setApprovedLogger(alice, true), approvedToLog(alice) returns true on the reference (sets true) and fal",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Replace assignment of approvedLoggers mapping with the negation of _status.",
+   "mutated_unit_code": "function setApprovedLogger(address _logger, bool _status) public onlyOwner {\n    approvedLoggers[_logger] = !_status;\n}",
+   "kill": "bug_fail",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "L0006",
+   "property": "When a non-approved caller invokes logCreated, the reference contract returns false, but the buggy contract returns true",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Replace `if (!approvedToLog(msg.sender)) return false;` with `if (!approvedToLog(msg.sender)) return true;` so that the function returns true even when the caller is not approved.",
+   "mutated_unit_code": "                    function logCreated(address _keepAddress) public returns (bool) {\n        if (!approvedToLog(msg.sender)) return true;\n        emit Created(msg.sender, _keepAddress, block.timestamp);\n        return true;\n    }",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  },
+  {
+   "difference_id": "L0007",
+   "property": "When a non-approved logger calls logCreated, the reference returns false but the mutant emits the event and returns true",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Remove the entire require-like guard by deleting the `if` statement, so that the function always emits and returns true regardless of approval status.",
+   "mutated_unit_code": "                    function logCreated(address _keepAddress) public returns (bool) {\n        emit Created(msg.sender, _keepAddress, block.timestamp);\n        return true;\n    }",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  },
+  {
+   "difference_id": "L0010",
+   "property": "When msg.sender is not an approved logger, logRedemptionRequested returns false in the reference but true in the mutant,",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Change the early return value to true instead of false when not approved.",
+   "mutated_unit_code": "function logRedemptionRequested(\n        address _requester,\n        bytes32 _digest,\n        uint256 _utxoSize,\n        bytes memory _redeemerOutputScript,\n        uint256 _requestedFee,\n        bytes memory _outpoint\n    ) public returns (bool) {\n        if (!approvedToLog(msg.sender)) return true;\n        emit RedemptionRequested(\n            msg.sender,\n            _requester,\n            _digest,\n            _utxoSize,\n            _redeemerOutputScript,\n            _requestedFee,\n            _outpoint\n        );\n        return true;\n    }",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  },
+  {
+   "difference_id": "L0012",
+   "property": "When a non-approved caller invokes logGotRedemptionSignature, the reference returns false while the buggy version return",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Remove the approval check so that the function always emits and returns true.",
+   "mutated_unit_code": "function logGotRedemptionSignature(bytes32 _digest, bytes32 _r, bytes32 _s)\n     public returns (bool) {\n    emit GotRedemptionSignature(\n        msg.sender,\n        _digest,\n        _r,\n        _s,\n        block.timestamp\n    );\n    return true;\n}",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  },
+  {
+   "difference_id": "L0013",
+   "property": "When an unauthorized caller (not the owner and not an approved logger) calls logRegisteredPubkey, the reference returns ",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Replace the condition `if (!approvedToLog(msg.sender)) return false;` with `if (!approvedToLog(msg.sender)) return true;` so that an unauthorized caller still returns true.",
+   "mutated_unit_code": "    function logRegisteredPubkey(\n        bytes32 _signingGroupPubkeyX,\n        bytes32 _signingGroupPubkeyY\n    ) public returns (bool) {\n        if (!approvedToLog(msg.sender)) return true;\n        emit RegisteredPubkey(\n            msg.sender,\n            _signingGroupPubkeyX,\n            _signingGroupPubkeyY,\n            block.timestamp\n        );\n        return true;\n    }",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  },
+  {
+   "difference_id": "L0015",
+   "property": "When an unapproved caller invokes logSetupFailed, the reference returns false but the mutant returns true.",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Return true instead of returning the result of the approval check when the caller is not approved, so that the function always returns true.",
+   "mutated_unit_code": "    function logSetupFailed() public returns (bool) {\n        if (!approvedToLog(msg.sender)) return true;\n        emit SetupFailed(msg.sender, block.timestamp);\n        return true;\n    }",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  },
+  {
+   "difference_id": "L0016",
+   "property": "When a caller not in approvedLoggers calls logSetupFailed(), the reference returns false, but the buggy version returns ",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Remove the approval check entirely, so that the function always emits and returns true regardless of caller approval.",
+   "mutated_unit_code": "    function logSetupFailed() public returns (bool) {\n        emit SetupFailed(msg.sender, block.timestamp);\n        return true;\n    }",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  },
+  {
+   "difference_id": "L0017",
+   "property": "When an unapproved caller invokes logFraudDuringSetup(), the reference returns false while the buggy version returns tru",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Replace 'if (!approvedToLog(msg.sender)) return false;' with 'if (!approvedToLog(msg.sender)) return true;'",
+   "mutated_unit_code": "function logFraudDuringSetup() public returns (bool) {\n        if (!approvedToLog(msg.sender)) return true;\n        emit SetupFailed(msg.sender, block.timestamp);\n        return true;\n    }",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  },
+  {
+   "difference_id": "L0019",
+   "property": "When logCourtesyCalled is called by an approved logger, the reference returns true but the buggy version returns false.",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Replace the return value from true to false",
+   "mutated_unit_code": "    function logCourtesyCalled() public returns (bool) {\n        if (!approvedToLog(msg.sender)) return false;\n        emit CourtesyCalled(msg.sender, block.timestamp);\n        return false;\n    }",
+   "kill": "bug_fail",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "L0020",
+   "property": "When an unapproved logger calls logStartedLiquidation, the reference returns false (because approvedToLog returns false ",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "concrete",
+   "change_summary": "Change the condition for returning true to return false when approved, and true when not approved.",
+   "mutated_unit_code": "    function logStartedLiquidation(bool _wasFraud) public returns (bool) {\n        if (approvedToLog(msg.sender)) return false;\n        emit StartedLiquidation(msg.sender, _wasFraud, block.timestamp);\n        return true;\n    }",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  }
+ ],
+ "tokens": {
+  "prompt": 201331,
+  "completion": 22658,
+  "reasoning": 0
+ },
+ "wallclock_s": 306.2157793045044,
+ "infra_error": null,
+ "rescore": {
+  "rule": "assertion_violation_only",
+  "orig_success": true,
+  "disqualified": [
+   {
+    "diff": "L0005",
+    "verdict": "compile",
+    "reason": "compile_fail_not_real_kill"
+   },
+   {
+    "diff": "L0019",
+    "verdict": "compile",
+    "reason": "compile_fail_not_real_kill"
+   }
+  ],
+  "remaining_counting_kills": 11
+ }
+}

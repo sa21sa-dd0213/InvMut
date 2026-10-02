@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract B:
+        Contract Code: pragma solidity ^0.8.0; contract B { address public owner = payable(msg.sender); function go() public payable { address target = 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C; target.call{value: msg.value}(""); payable(owner).transfer(address(this).balance); } fallback() external payable { } }
+
+    Consider the following mutant of B:
+        Mutant md54e41be of function go replaces msg.value with msg.value+1
+        Mutant Diff: ---|         target.call{value: msg.value}(""); +++|         target.call{value: msg.value+1}("");
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the amount of Ether sent in the `call` to the target address from `msg.value` to `msg.value + 1`. This means the contract attempts to forward one wei more than it actually received from the caller. In the original contract, the entire `msg.value` is forwarded to the target, and then the contract’s remaining balance is transferred to the owner. In the mutant, because it tries to send one extra wei that doesn’t exist in the contract’s balance at that moment (assuming no prior balance), the `call` will fail (return false) but the transaction will not revert, leaving the Ether in the contract. The subsequent `transfer` to the owner will then send only the balance that was not consumed (if any).  
+
+**Hypothesis**: A test case that sends a specific amount of Ether (e.g., 1 ether) to the `go` function and then checks that the target address received exactly that amount, and that the owner received exactly zero (since all funds were forwarded), should pass on the original contract. On the mutant, this test will fail because the target will receive 1 wei more than sent (or the call will fail and the owner will receive the full amount instead).

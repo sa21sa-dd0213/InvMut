@@ -1,0 +1,12 @@
+{
+ "difference_id": "T2e25520c",
+ "property_summary": "For any admissible fallback call that does not revert, if block.number % 15 == 0 then the caller's balance must increase by address(c).balance + msg.value; the bug never sends the balance so the caller's balance only decreases by msg.value.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Delete the ether transfer inside the if block, so the balance is never sent to the caller.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        if(block.number % 15 == 0) {\n            \n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 amount, uint256 warpTime, uint256 blockNum) public {\n        vm.assume(amount == 10 ether);\n        address caller = address(0xdead);\n        vm.deal(caller, amount);\n        vm.assume(warpTime > 0);\n        vm.warp(warpTime);\n        vm.roll(blockNum);\n        uint256 balanceBefore = caller.balance;\n        vm.prank(caller);\n        (bool ok,) = address(c).call{value: amount}(\"\");\n        if (ok) {\n            if (blockNum % 15 == 0) {\n                assertTrue(caller.balance == balanceBefore - amount + address(c).balance + amount);\n            }\n        }\n    }\n}"
+}

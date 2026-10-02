@@ -1,0 +1,51 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Roulette mutant kill test - m916b9143", function () {   it("should revert second call when block.timestamp hasn't increased (original), but mutant allows it with block.prevrandao", async function () {     const [owner] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Roulette");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Send first transaction with 10 ether     const tx1 = await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10")     });     await tx1.wait();      // Mine a block with the same timestamp as the previous block to ensure block.timestamp doesn't increase     await ethers.provider.send("evm_setNextBlockTimestamp", [       (await ethers.provider.getBlock("latest"))!.timestamp     ]);     await ethers.provider.send("evm_mine", []);      // Send second transaction in the same timestamp - should revert on original (block.timestamp check)     // but pass on mutant (block.prevrandao > pastBlockTime may succeed since prevrandao is unrelated)     const tx2 = owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10")     });      // On original contract this would revert; on mutant it might not revert     // We expect the mutant to NOT revert (i.e., the tx succeeds) thus killing the mutant     await expect(tx2).to.not.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp + 1; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant kill test - m916b9143", function () {
+  it("should revert second call when block.timestamp hasn't increased (original), but mutant allows it with block.prevrandao", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Send first transaction with 10 ether
+    const tx1 = await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    await tx1.wait();
+
+    // Mine a block with the same timestamp as the previous block to ensure block.timestamp doesn't increase
+    await ethers.provider.send("evm_setNextBlockTimestamp", [
+      (await ethers.provider.getBlock("latest"))!.timestamp
+    ]);
+    await ethers.provider.send("evm_mine", []);
+
+    // Send second transaction in the same timestamp - should revert on original (block.timestamp check)
+    // but pass on mutant (block.prevrandao > pastBlockTime may succeed since prevrandao is unrelated)
+    const tx2 = owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+
+    // On original contract this would revert; on mutant it might not revert
+    // We expect the mutant to NOT revert (i.e., the tx succeeds) thus killing the mutant
+    await expect(tx2).to.not.be.reverted;
+  });
+});
+```

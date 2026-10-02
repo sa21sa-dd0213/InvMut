@@ -1,0 +1,12 @@
+{
+ "difference_id": "T792f1b77",
+ "property_summary": "For any non-empty _tos array, C.transfer must revert if any individual low-level call to the provided caddress fails (i.e., the reference propagates call failures), whereas the mutant that ignores failed calls will not revert for some inputs where a callee reverts.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Remove the revert on failed calls so the function ignores individual call failures and continues, changing the final observable state when some calls fail.",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v)  public returns (bool) {\n\trequire(_tos.length > 0);\n\tbytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n\tfor(uint i = 0;i < _tos.length;i++){\n\t{ (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); _d; /* ignore failures */ }\n\t}\n\treturn true;\n\t}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {demo} from \"../src/demo.sol\";\n\ncontract InvMutTest is Test {\n    demo c;\n    function setUp() public { c = new demo(); }\n\n    function testFuzz_property(address from, uint256 v, bool useRevertingCallee) public {\n        vm.assume(from != address(0));\n\n        address[] memory tos = new address[](1);\n        if (useRevertingCallee) {\n            Reverter r = new Reverter();\n            tos[0] = address(r);\n        } else {\n            Good g = new Good();\n            tos[0] = address(g);\n        }\n\n        bool ok;\n        try c.transfer(from, tos[0], tos, v) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        if (useRevertingCallee) {\n            assertTrue(!ok);\n        } else {\n            assertTrue(ok);\n        }\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"revert\");\n    }\n}\n\ncontract Good {\n    function transferFrom(address, address, uint256) external pure returns (bool) {\n        return true;\n    }\n}\n"
+}

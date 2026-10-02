@@ -1,0 +1,115 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PoCGame mutant detection - payout calculation", function () {   it("should detect mutant that changes payout from balance/2 to balance+2", async function () {     const [owner, whale, player] = await ethers.getSigners();          // Deploy with whale address and bet limit     const betLimit = ethers.parseEther("1");     const Factory = await ethers.getContractFactory("PoCGame");     const instance = await Factory.deploy(whale.address, betLimit);     await instance.waitForDeployment();          // Open to public     await instance.connect(owner).OpenToThePublic();          // Set difficulty to ensure win condition (winningNumber == difficulty / 2)     // We need winningNumber = uint256(keccak256(...)) % difficulty + 1 == difficulty / 2     // Let's set difficulty to 3 so difficulty/2 = 1 (integer division)     await instance.connect(owner).AdjustDifficulty(3);          // Player makes a wager     await instance.connect(player).wager({ value: betLimit });          // Mine a block to ensure block.number > blockNumber (timestamps[player])     await ethers.provider.send("evm_mine", []);          // Play the game - if winningNumber == 1 (difficulty/2), player wins     // We need to calculate what the winning number will be     const blockNumber = await ethers.provider.getBlockNumber();     const block = await ethers.provider.getBlock(blockNumber - 1);     const randomSeed = 0; // Default value since not set in constructor     const winningNumber = BigInt(       ethers.keccak256(         ethers.AbiCoder.defaultAbiCoder().encode(           ["bytes32", "address", "uint256"],           [block.hash, player.address, randomSeed]         )       )     ) % 3n + 1n;          if (winningNumber === 1n) {       // Player wins - original contract sends balance/2, mutant sends balance+2       const balanceBefore = await ethers.provider.getBalance(instance.target);       const playerBalanceBefore = await ethers.provider.getBalance(player.address);              await instance.connect(player).play();              const playerBalanceAfter = await ethers.provider.getBalance(player.address);       const actualPayout = playerBalanceAfter - playerBalanceBefore;              // Original would transfer balance/2       const expectedPayout = balanceBefore / 2n;              // Mutant would try to transfer balance+2 which would revert or transfer wrong amount       // If transaction succeeded, the payout should be exactly half       expect(actualPayout).to.equal(expectedPayout);     } else {       // If player didn't win, we need to try again with different difficulty       // Adjust difficulty to make win condition work       // For simplicity, we can try with difficulty = 2 (difficulty/2 = 1)       await instance.connect(owner).AdjustDifficulty(2);              // Need to wager again (previous wager was consumed)       // But player already wagered and played, so we need a new player       const [player2] = await ethers.getSigners();       // Actually let's use a different approach - just test with difficulty that guarantees win       // With difficulty = 1, difficulty/2 = 0, winningNumber = hash % 1 + 1 = 1, never 0       // With difficulty = 2, difficulty/2 = 1, winningNumber = hash % 2 + 1 = 1 or 2       // We need winningNumber == 1, so 50% chance - let's retry until we get a win       // For test purposes, let's just check that payout doesn't revert with wrong amount       // Actually let's simplify: test with a specific block hash we can predict              // Better approach: let's just test the payout function indirectly       // by checking that winnersPot() returns half the balance       await instance.connect(player).wager({ value: betLimit });       await ethers.provider.send("evm_mine", []);              const contractBalance = await ethers.provider.getBalance(instance.target);       const halfBalance = contractBalance / 2n;       const winnersPot = await instance.winnersPot();       expect(winnersPot).to.equal(halfBalance);              // Play and expect either win or loss       const tx = instance.connect(player).play();       // If player wins, mutant would try to transfer balance+2 which is > balance       // This would cause the transfer to fail and revert       // Original would succeed with balance/2       // So we expect the transaction to either succeed (original) or revert (mutant)       // We can't directly assert which, but we can check the player's balance change     }   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PoCGame { modifier onlyOwner() { require(msg.sender == owner); _; } modifier isOpenToPublic() { require(openToPublic); _; } modifier onlyRealPeople() { require(msg.sender == tx.origin); _; } modifier onlyPlayers() { require(wagers[msg.sender] > 0); _; } event Wager(uint256 amount, address depositer); event Win(uint256 amount, address paidTo); event Lose(uint256 amount, address loser); event Donate(uint256 amount, address paidTo, address donator); event DifficultyChanged(uint256 currentDifficulty); event BetLimitChanged(uint256 currentBetLimit); address private whale; uint256 betLimit; uint difficulty; uint private randomSeed; address owner; mapping(address => uint256) timestamps; mapping(address => uint256) wagers; bool openToPublic; uint256 totalDonated; constructor(address whaleAddress, uint256 wagerLimit) public { openToPublic = false; owner = payable(msg.sender); whale = whaleAddress; totalDonated = 0; betLimit = wagerLimit; } function OpenToThePublic()  public onlyOwner() { openToPublic = true; } function AdjustBetAmounts(uint256 amount)  public onlyOwner() { betLimit = amount; emit BetLimitChanged(betLimit); } function AdjustDifficulty(uint256 amount)  public onlyOwner() { difficulty = amount; emit DifficultyChanged(difficulty); } fallback() external payable {} function wager()  public isOpenToPublic() onlyRealPeople() payable { require(msg.value == betLimit); require(wagers[msg.sender] == 0); timestamps[msg.sender] = block.number; wagers[msg.sender] = msg.value; emit Wager(msg.value, msg.sender); } function play()  public isOpenToPublic() onlyRealPeople() onlyPlayers() { uint256 blockNumber = timestamps[msg.sender]; if (blockNumber < block.number) { timestamps[msg.sender] = 0; wagers[msg.sender] = 0; uint256 winningNumber = uint256(keccak256(abi.encodePacked(blockhash(blockNumber), msg.sender, randomSeed))) % difficulty + 1; if (winningNumber == difficulty / 2) { payout(msg.sender); } else { loseWager(betLimit / 2); } } else { revert(); } } function donate()  public isOpenToPublic() payable { donateToWhale(msg.value); } function payout(address winner) internal { uint256 ethToTransfer = address(this).balance / 2; payable(winner).transfer(ethToTransfer); emit Win(ethToTransfer, winner); } function donateToWhale(uint256 amount) internal { { (bool _s,) = whale.call{value: amount}(""); require(_s); } totalDonated += amount; emit Donate(amount, whale, msg.sender); } function loseWager(uint256 amount) internal { { (bool _s,) = whale.call{value: amount}(""); require(_s); } totalDonated += amount; emit Lose(amount, msg.sender); } function ethBalance() public view returns (uint256) { return address(this).balance; } function currentDifficulty() public view returns (uint256) { return difficulty; } function currentBetLimit() public view returns (uint256) { return betLimit; } function hasPlayerWagered(address player) public view returns (bool) { return wagers[player] > 0; } function winnersPot() public view returns (uint256) { return address(this).balance / 2; } function transferAnyERC20Token(address tokenAddress, address tokenOwner, uint tokens) public onlyOwner() returns (bool success) { return ERC20Interface(tokenAddress).transfer(tokenOwner, tokens); } } abstract contract ERC20Interface { function transfer(address to, uint256 tokens) virtual public returns (bool success); }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PoCGame mutant detection - payout calculation", function () {
+  it("should detect mutant that changes payout from balance/2 to balance+2", async function () {
+    const [owner, whale, player] = await ethers.getSigners();
+
+    // Deploy with whale address and bet limit
+    const betLimit = ethers.parseEther("1");
+    const Factory = await ethers.getContractFactory("PoCGame");
+    const instance = await Factory.deploy(whale.address, betLimit);
+    await instance.waitForDeployment();
+
+    // Open to public
+    await instance.connect(owner).OpenToThePublic();
+
+    // Set difficulty to ensure win condition (winningNumber == difficulty / 2)
+    // With difficulty = 2, difficulty/2 = 1, winningNumber = hash % 2 + 1 = 1 or 2
+    // We need winningNumber == 1, so 50% chance - let's retry until we get a win
+    await instance.connect(owner).AdjustDifficulty(2);
+
+    // Player makes a wager
+    await instance.connect(player).wager({ value: betLimit });
+
+    // Mine a block to ensure block.number > blockNumber (timestamps[player])
+    await ethers.provider.send("evm_mine", []);
+
+    // Play the game - if winningNumber == 1 (difficulty/2), player wins
+    const blockNumber = await ethers.provider.getBlockNumber();
+    const block = await ethers.provider.getBlock(blockNumber - 1);
+    const randomSeed = 0n; // Default value since not set in constructor
+    const winningNumber = BigInt(
+      ethers.keccak256(
+        ethers.AbiCoder.defaultAbiCoder().encode(
+          ["bytes32", "address", "uint256"],
+          [block!.hash, player.address, randomSeed]
+        )
+      )
+    ) % 2n + 1n;
+
+    if (winningNumber === 1n) {
+      // Player wins - original contract sends balance/2, mutant sends balance+2
+      const balanceBefore = await ethers.provider.getBalance(instance.target);
+      const playerBalanceBefore = await ethers.provider.getBalance(player.address);
+
+      await instance.connect(player).play();
+
+      const playerBalanceAfter = await ethers.provider.getBalance(player.address);
+      const actualPayout = playerBalanceAfter - playerBalanceBefore;
+
+      // Original would transfer balance/2
+      const expectedPayout = balanceBefore / 2n;
+
+      // Mutant would try to transfer balance+2 which would revert or transfer wrong amount
+      // If transaction succeeded, the payout should be exactly half
+      expect(actualPayout).to.equal(expectedPayout);
+    } else {
+      // Player didn't win, need to test with a new wager
+      // Create a new player for a fresh wager
+      const [player2] = await ethers.getSigners();
+      
+      // Player2 makes a wager
+      await instance.connect(player2).wager({ value: betLimit });
+      await ethers.provider.send("evm_mine", []);
+
+      // Calculate winning number for player2
+      const blockNumber2 = await ethers.provider.getBlockNumber();
+      const block2 = await ethers.provider.getBlock(blockNumber2 - 1);
+      const winningNumber2 = BigInt(
+        ethers.keccak256(
+          ethers.AbiCoder.defaultAbiCoder().encode(
+            ["bytes32", "address", "uint256"],
+            [block2!.hash, player2.address, randomSeed]
+          )
+        )
+      ) % 2n + 1n;
+
+      if (winningNumber2 === 1n) {
+        const balanceBefore = await ethers.provider.getBalance(instance.target);
+        const playerBalanceBefore = await ethers.provider.getBalance(player2.address);
+
+        await instance.connect(player2).play();
+
+        const playerBalanceAfter = await ethers.provider.getBalance(player2.address);
+        const actualPayout = playerBalanceAfter - playerBalanceBefore;
+        const expectedPayout = balanceBefore / 2n;
+
+        expect(actualPayout).to.equal(expectedPayout);
+      } else {
+        // If still no win, test winnersPot function indirectly
+        // Just verify that winnersPot returns half the balance
+        const contractBalance = await ethers.provider.getBalance(instance.target);
+        const halfBalance = contractBalance / 2n;
+        const winnersPot = await instance.winnersPot();
+        expect(winnersPot).to.equal(halfBalance);
+      }
+    }
+  });
+});
+```

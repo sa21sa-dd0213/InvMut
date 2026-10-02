@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tf3b2c412",
+ "property_summary": "For any call to fallback with exactly 10 ether and block.timestamp > pastBlockTime, if block.number % 15 == 0, the contract's balance must be 0 after the call; the bug uses % 16, so for some block where the reference transfers and the mutant doesn't, causing a non-zero balance.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Change the divisor in the block number condition from 15 to 16, altering when the transfer occurs.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        if(block.number % 16 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 blockNumber, uint256 timestamp) public {\n        vm.assume(timestamp > 0);\n        vm.assume(blockNumber < 2**256 - 1);\n        vm.warp(1);\n        vm.deal(address(this), 10 ether);\n        (bool ok0, ) = address(c).call{value: 10 ether}(\"\");\n        require(ok0, \"initial call failed\");\n        vm.roll(blockNumber);\n        vm.warp(timestamp);\n        vm.assume(timestamp > c.pastBlockTime());\n        uint256 balanceBefore = address(c).balance;\n        address caller = address(0x1234);\n        vm.deal(caller, 10 ether);\n        vm.prank(caller);\n        (bool success, ) = address(c).call{value: 10 ether}(\"\");\n        require(success, \"call failed\");\n        if (blockNumber % 15 == 0) {\n            assertEq(address(c).balance, 0);\n        }\n    }\n}"
+}

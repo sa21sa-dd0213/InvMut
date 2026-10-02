@@ -1,0 +1,11 @@
+{
+ "difference_id": "L0004",
+ "property_summary": "With v=1 and _decimals=0, the correct contract sets _value = 1 * 1 = 1, while the buggy contract sets _value = 1 / 1 = 1, so they do not diverge; to trigger divergence, use v=10 and _decimals=1: correct _value = 10 * 10 = 100, buggy _value = 10 / 10 = 1, leading to different transfer amounts.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "change_summary": "Replace multiplication with division in the _value assignment.",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v, uint _decimals)  public returns (bool) {\n\trequire(_tos.length > 0);\n\tbytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n\tuint _value = v / 10 ** _decimals;\n\tfor(uint i = 0;i < _tos.length;i++){\n\t{ (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], _value)); _d; if (! _s) {\n\trevert();} }\n\t}\n\treturn true;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airDrop} from \"../src/airDrop.sol\";\n\ncontract InvMutTest is Test {\n    airDrop c;\n    function setUp() public { c = new airDrop(); }\n    function testRegression_property() public {\n        Token token = new Token();\n        address tokenAddr = address(token);\n        address from = address(0x123);\n        address to = address(0x456);\n\n        vm.deal(from, 1 ether);\n\n        c.transfer(from, tokenAddr, _toSingleton(to), 10, 1);\n\n        uint256 bal = token.balanceOf(to);\n        assertTrue(bal == 100, \"Balance should be 100\");\n    }\n\n    function _toSingleton(address a) private pure returns (address[] memory) {\n        address[] memory arr = new address[](1);\n        arr[0] = a;\n        return arr;\n    }\n}\n\ncontract Token {\n    mapping(address => uint256) public balanceOf;\n\n    function transferFrom(address from, address to, uint256 value) external returns (bool) {\n        balanceOf[to] += value;\n        return true;\n    }\n}\n"
+}

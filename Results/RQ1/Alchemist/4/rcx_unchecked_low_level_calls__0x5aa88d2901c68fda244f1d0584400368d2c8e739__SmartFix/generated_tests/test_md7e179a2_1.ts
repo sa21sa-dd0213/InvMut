@@ -1,0 +1,37 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MultiplicatorX3 mutant detection", function () {
+  it("should detect the > vs >= mutant in multiplicate when msg.value equals contract balance", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("MultiplicatorX3");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Send initial balance to the contract (e.g., 2 ETH)
+    const initialBalance = ethers.parseEther("2");
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: initialBalance
+    });
+    
+    // Get contract balance before calling multiplicate
+    const contractBalanceBefore = await ethers.provider.getBalance(await instance.getAddress());
+    
+    // Call multiplicate with msg.value exactly equal to contract balance (2 ETH)
+    // In original: msg.value >= balance → true, transfer happens
+    // In mutant: msg.value > balance → false, no transfer
+    const tx = await instance.connect(addr1).multiplicate(addr1.address, { value: contractBalanceBefore });
+    await tx.wait();
+    
+    // After the call, the contract balance should be different between original and mutant
+    // In original: all balance (2 ETH) + msg.value (2 ETH) = 4 ETH sent to addr1, contract becomes 0
+    // In mutant: condition fails, nothing happens, balance stays 2 ETH
+    const contractBalanceAfter = await ethers.provider.getBalance(await instance.getAddress());
+    
+    // If the mutant is alive (uses >), the balance will remain unchanged (2 ETH)
+    // If the original logic (>=) was used, the balance would be 0
+    // We expect the mutant to keep the balance, so we assert the balance is NOT zero
+    expect(contractBalanceAfter).to.equal(initialBalance);
+  });
+});

@@ -1,0 +1,61 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m15ae8ccd of PENNY_BY_PENNY.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PENNY_BY_PENNY.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PENNY_BY_PENNY:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PENNY_BY_PENNY reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PENNY_BY_PENNY by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PENNY_BY_PENNY"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PENNY_BY_PENNY mutant m15ae8ccd test", function () {
+  it("should detect mutant that changes >= to == in Collect condition", async function () {
+    const [owner, user] = await ethers.getSigners();
+    
+    // Deploy LogFile first (required by PENNY_BY_PENNY)
+    const LogFileFactory = await ethers.getContractFactory("LogFile");
+    const logFile = await LogFileFactory.deploy();
+    await logFile.waitForDeployment();
+    
+    // Deploy PENNY_BY_PENNY (no constructor arguments)
+    const Factory = await ethers.getContractFactory("PENNY_BY_PENNY");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Setup: Set MinSum and LogFile, then initialize
+    await instance.connect(owner).SetMinSum(100);
+    await instance.connect(owner).SetLogFile(await logFile.getAddress());
+    await instance.connect(owner).Initialized();
+    
+    // User deposits 200 wei (more than MinSum of 100)
+    await instance.connect(user).Put(0, { value: 200 });
+    
+    // Verify balance is 200
+    const userAcc = await instance.Acc(user.address);
+    expect(userAcc.balance).to.equal(200);
+    
+    // Try to collect 50 wei (should succeed on original, fail on mutant)
+    // On original: 200 >= 100 && 200 >= 50 is true
+    // On mutant: 200 == 100 && 200 >= 50 is false
+    await expect(
+      instance.connect(user).Collect(50)
+    ).to.be.reverted;
+    
+    // Additional check: balance should remain unchanged (200 wei)
+    const userAccAfter = await instance.Acc(user.address);
+    expect(userAccAfter.balance).to.equal(200);
+  });
+});
+```

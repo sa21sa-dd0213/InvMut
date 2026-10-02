@@ -1,0 +1,67 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MY_BANK - kill mutant m23e7a17d", function () {   it("should allow withdrawal after unlock time (mutant uses < instead of >)", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy Log contract first (required constructor argument for MY_BANK)     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();          // Deploy MY_BANK with log address     const BankFactory = await ethers.getContractFactory("MY_BANK");     const bank = await BankFactory.deploy(await log.getAddress());     await bank.waitForDeployment();          const bankAddr = await bank.getAddress();          // Fund addr1 with some ether     await owner.sendTransaction({       to: addr1.address,       value: ethers.parseEther("10")     });          // Set unlock time to current block timestamp + 10 seconds     const currentBlock = await ethers.provider.getBlock("latest");     const unlockTime = currentBlock!.timestamp + 10;          // addr1 deposits 2 ether with unlock time     await bank.connect(addr1).Put(unlockTime, {       value: ethers.parseEther("2")     });          // Wait for unlock time to pass     await ethers.provider.send("evm_setNextBlockTimestamp", [unlockTime + 1]);     await ethers.provider.send("evm_mine");          // Now attempt to collect 1 ether - should succeed in original, fail in mutant     // because mutant requires block.timestamp < unlockTime     const tx = bank.connect(addr1).Collect(ethers.parseEther("1"));          // In the original, this succeeds. The mutant would revert because      // block.timestamp (unlockTime+1) is NOT less than unlockTime     await expect(tx).to.not.be.reverted;          // Verify balance was reduced     const holder = await bank.Acc(addr1.address);     expect(holder.balance).to.equal(ethers.parseEther("1"));   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } } contract MY_BANK is sGuard { function Put(uint _unlockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); LogFile.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK - kill mutant m23e7a17d", function () {
+  it("should allow withdrawal after unlock time (mutant uses < instead of >)", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy Log contract first (required constructor argument for MY_BANK)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Deploy MY_BANK with log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+
+    const bankAddr = await bank.getAddress();
+
+    // Fund addr1 with some ether
+    await owner.sendTransaction({
+      to: addr1.address,
+      value: ethers.parseEther("10")
+    });
+
+    // Set unlock time to current block timestamp + 10 seconds
+    const currentBlock = await ethers.provider.getBlock("latest");
+    const unlockTime = currentBlock!.timestamp + 10;
+
+    // addr1 deposits 2 ether with unlock time
+    await bank.connect(addr1).Put(unlockTime, {
+      value: ethers.parseEther("2")
+    });
+
+    // Wait for unlock time to pass
+    await ethers.provider.send("evm_setNextBlockTimestamp", [unlockTime + 1]);
+    await ethers.provider.send("evm_mine", []);
+
+    // Now attempt to collect 1 ether - should succeed in original, fail in mutant
+    // because mutant requires block.timestamp < unlockTime
+    const tx = bank.connect(addr1).Collect(ethers.parseEther("1"));
+
+    // In the original, this succeeds. The mutant would revert because 
+    // block.timestamp (unlockTime+1) is NOT less than unlockTime
+    await expect(tx).to.not.be.reverted;
+
+    // Verify balance was reduced
+    const holder = await bank.Acc(addr1.address);
+    expect(holder.balance).to.equal(ethers.parseEther("1"));
+  });
+});
+```

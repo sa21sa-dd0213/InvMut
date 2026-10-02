@@ -1,0 +1,67 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EBU mutant m4056f5f9 - keccak256 replaced with sha256", function () {   it("should detect mutant by verifying correct function selector is used for transferFrom", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy EBU contract (no constructor arguments needed)     const Factory = await ethers.getContractFactory("EBU");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Deploy a simple token contract that logs the function selector called     const TokenFactory = await ethers.getContractFactory("SimpleToken");     const token = await TokenFactory.deploy();     await token.waitForDeployment();          // Set the caddress to the token contract     // Note: EBU has a public variable caddress that we need to set     // Since the contract doesn't have a setter, we'll deploy with the correct address     // or we can interact directly with storage for testing purposes          // For this test, we'll deploy a new EBU with the token address as caddress     // But since EBU's caddress is hardcoded, we'll use a different approach:     // We'll check that the call with sha256 selector fails silently          const tos = [addr1.address];     const amounts = [1]; // 1 token          // Call transfer     const tx = await instance.connect(owner).transfer(tos, amounts);     const receipt = await tx.wait();          // The original would call transferFrom with correct selector     // The mutant calls with wrong selector (sha256 instead of keccak256)     // Since the token contract doesn't respond to the wrong selector,     // the call succeeds but does nothing          // Verify that no transfer actually occurred (mutant behavior)     // In original, transferFrom would be called correctly     // In mutant, the wrong selector is used so no transfer happens          // Check that the balance of addr1 didn't change (mutant fails silently)     const balanceAfter = await ethers.provider.getBalance(token.target);          // The key insight: mutant uses sha256 which produces different selector     // So the call doesn't match transferFrom function signature     // We can detect this by checking that no tokens were transferred          // Since we can't easily check token balances without a known token,     // we'll check that the call was made with wrong selector by examining logs     // But for simplicity, we can verify that the function doesn't revert     // and that the return value is true (both pass in mutant)          // The real detection: in original, transferFrom would execute     // In mutant, it calls a non-existent function (sha256 selector)     // We can deploy a contract that logs the selector received          // Alternative simpler test: just verify the function returns true     // but doesn't actually perform the intended action     expect(await instance.connect(owner).transfer(tos, amounts)).to.not.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function mul_uint256(uint256 a, uint256 b) internal pure returns (uint256) { if (a == 0) { return 0; } uint256 c = a * b; assert(c / a == b); return c; } } contract EBU is sGuard { address public from = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9; address public caddress = 0x1f844685f7Bf86eFcc0e74D8642c54A257111923; function transfer( address[] memory _tos, uint[] memory v)public returns (bool){ require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9); require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ caddress.call(abi.encodeWithSelector(id,from,_tos[i],mul_uint256(v[i], 1000000000000000000))); } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant m4056f5f9 - keccak256 replaced with sha256", function () {
+  it("should detect mutant by verifying correct function selector is used for transferFrom", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy EBU contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy a simple token contract that logs the function selector called
+    const TokenFactory = await ethers.getContractFactory("SimpleToken");
+    const token = await TokenFactory.deploy();
+    await token.waitForDeployment();
+
+    // For this test, we'll use the token contract address as the caddress
+    // We'll interact directly with storage to set caddress (since EBU doesn't have a setter)
+    // Get the storage slot for caddress (slot 1, since from is slot 0)
+    const slot1 = await ethers.provider.getStorage(instance.target, 1);
+    // Override the storage to point to our token contract
+    await ethers.provider.send("hardhat_setStorageAt", [
+      instance.target,
+      "0x0000000000000000000000000000000000000000000000000000000000000001",
+      ethers.zeroPadValue(token.target, 32)
+    ]);
+
+    const tos = [addr1.address];
+    const amounts = [1]; // 1 token
+
+    // Call transfer
+    const tx = await instance.connect(owner).transfer(tos, amounts);
+    const receipt = await tx.wait();
+
+    // The mutant uses sha256 instead of keccak256, so the function selector will be different
+    // This means the call to caddress will not match transferFrom, so no tokens will be transferred
+    // We can verify this by checking that the token contract's balance didn't change
+    // For a simple token, we can check the balance of the token contract itself
+    const balanceAfter = await ethers.provider.getBalance(token.target);
+    
+    // The original would have transferred tokens, but the mutant doesn't
+    // Since we can't easily verify internal token state without proper interface,
+    // we check that the function returns true (which it does in both cases)
+    // and that the transaction succeeded
+    expect(receipt.status).to.equal(1);
+    
+    // Verify the function returns true
+    expect(await instance.connect(owner).transfer(tos, amounts)).to.not.be.reverted;
+  });
+});
+```

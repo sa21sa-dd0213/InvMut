@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tcb7d0db1",
+ "property_summary": "For any caller and target owner address, only calls whose msg.sender equals the current owner may successfully change owner; the mutant that checks tx.origin instead can be bypassed by a contract caller so a call from a contract (msg.sender != owner) with tx.origin == owner will wrongly allow changing owner.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Change onlyOwner require to compare against tx.origin instead of owner, altering who is authorized to call setOwner.",
+ "mutated_unit_code": "modifier onlyOwner {\n    require(tx.origin == owner);\n    _;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Owned} from \"../src/Owned.sol\";\n\ncontract InvMutTest is Test {\n    Owned c;\n    function setUp() public { c = new Owned(); }\n\n    function testFuzz_property(address ownerCandidate, address attackerEOA) public {\n        vm.assume(ownerCandidate != address(0));\n        vm.assume(attackerEOA != address(0));\n        vm.assume(attackerEOA != ownerCandidate);\n\n        vm.prank(address(this));\n        c.setOwner(ownerCandidate);\n        Caller caller = new Caller(c);\n\n        vm.prank(attackerEOA);\n        bool ok = caller.attemptSetOwner(ownerCandidate);\n\n        assertTrue(ok == false);\n    }\n}\n\ncontract Caller {\n    Owned immutable c;\n    constructor(Owned _c) { c = _c; }\n    function attemptSetOwner(address newOwner) external returns (bool) {\n        try c.setOwner(newOwner) {\n            return true;\n        } catch {\n            return false;\n        }\n    }\n}\n"
+}

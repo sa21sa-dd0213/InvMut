@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tdf5ffad6",
+ "property_summary": "A call to cmd() that does not revert must succeed, i.e. the low-level call inside Command must return true; the correct version only reverts when sender is not Owner, while the buggy version always reverts, making cmd() never succeed.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete `require(msg.sender == Owner)` and replace it with `require(false)`, bricking the call so it always reverts.",
+ "mutated_unit_code": "function Command(address adr,bytes memory data)\n    payable\n    public\n    {\n        require(false);\n\n        adr.call{value: msg.value}(data);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MultiplicatorX4} from \"../src/MultiplicatorX4.sol\";\n\ncontract InvMutTest is Test {\n    MultiplicatorX4 c;\n    function setUp() public { c = new MultiplicatorX4(); }\n    function testFuzz_property(address adr, bytes memory data, uint256 amount) public {\n        amount = bound(amount, 0, address(this).balance / 2);\n        vm.assume(adr != address(0));\n        address helper = address(new Helper());\n        vm.deal(address(c), 1 ether);\n        vm.prank(c.Owner());\n        c.Command{value: amount}(helper, data);\n        bool ok = true;\n        address helper2 = address(new Helper());\n        vm.deal(address(c), 1 ether);\n        vm.prank(c.Owner());\n        try c.Command{value: amount}(helper2, data) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        assertTrue(ok);\n    }\n}\n\ncontract Helper {\n    fallback() external payable {}\n}"
+}

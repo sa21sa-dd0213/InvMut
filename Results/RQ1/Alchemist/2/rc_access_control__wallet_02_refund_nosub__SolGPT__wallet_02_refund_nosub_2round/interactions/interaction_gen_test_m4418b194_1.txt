@@ -1,0 +1,52 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m4418b194 of Wallet.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Wallet.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Wallet:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Wallet reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Wallet by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Wallet"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Wallet reference (ethers v6; deploy may require constructor arguments)", function () {
+  it("should detect mutant m4418b194 by verifying that deposit correctly records the exact amount sent", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Wallet");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deposit exactly 1 wei from addr1
+    const depositAmount = ethers.parseEther("0");
+    const oneWei = 1n;
+    const tx = await instance.connect(addr1).deposit({ value: oneWei });
+    await tx.wait();
+
+    // Withdraw the full balance
+    const withdrawTx = await instance.connect(addr1).withdraw(oneWei);
+    await withdrawTx.wait();
+
+    // Check that addr1's balance after withdrawal is zero
+    const balanceAfterWithdraw = await ethers.provider.getBalance(addr1.address);
+    const expectedBalance = (await ethers.provider.getBalance(addr1.address)) + 0n; // just to have a reference
+
+    // The mutant would have added 2 wei to balance, so withdraw of 1 wei would leave 1 wei stuck.
+    // Try withdrawing the remaining 1 wei (if mutant is present) - this should succeed if mutant present
+    // But if original, second withdraw should fail because balance is 0
+    await expect(
+      instance.connect(addr1).withdraw(1n)
+    ).to.be.reverted;
+  });
+});
+```

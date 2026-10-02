@@ -1,0 +1,73 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m95f4bdd6 of EBU.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EBU.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EBU:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EBU reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EBU by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EBU"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant detection - caddress set to address(0)", function () {
+  it("should revert when calling transfer with valid recipients if caddress is address(0) because no transferFrom logic executes", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy the contract - no constructor arguments needed for EBU
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Verify the caddress is address(0) in the mutant
+    const caddress = await instance.caddress();
+    expect(caddress).to.equal(ethers.ZeroAddress);
+    
+    // Prepare test data: send 1 token to addr1
+    const recipients = [addr1.address];
+    const amounts = [1]; // 1 token (will be multiplied by 10^18 internally)
+    
+    // Call transfer as the authorized sender (from address)
+    const fromAddress = "0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9";
+    await network.provider.request({
+      method: "hardhat_impersonateAccount",
+      params: [fromAddress],
+    });
+    const impersonatedSigner = await ethers.getSigner(fromAddress);
+    
+    // Fund the impersonated account for gas
+    await owner.sendTransaction({
+      to: fromAddress,
+      value: ethers.parseEther("1.0"),
+    });
+    
+    // This call should succeed (return true) but no actual transfer occurs
+    // because calling address(0) returns success without executing anything
+    const tx = await instance.connect(impersonatedSigner).transfer(recipients, amounts);
+    await tx.wait();
+    
+    // The mutant should NOT have transferred tokens - verify by checking
+    // that addr1's balance is still 0 (no transfer occurred)
+    // In the original, this would have transferred tokens to addr1
+    // This test will fail on the original but pass on the mutant, detecting it
+    const balance = await ethers.provider.getBalance(addr1.address);
+    expect(balance).to.equal(0);
+    
+    // Clean up impersonation
+    await network.provider.request({
+      method: "hardhat_stopImpersonatingAccount",
+      params: [fromAddress],
+    });
+  });
+});
+```

@@ -1,0 +1,69 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m61dcc4f5 of airdrop.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test airdrop.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for airdrop:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("airdrop reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy airdrop by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("airdrop"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("airdrop mutant test - keccak256 vs sha256", function () {
+  it("should detect mutant by verifying correct function selector is used in low-level call", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy a simple ERC20 token for testing
+    const TokenFactory = await ethers.getContractFactory("TestToken");
+    const token = await TokenFactory.deploy("Test", "TST", ethers.parseEther("1000"));
+    await token.waitForDeployment();
+    
+    // Fund addr1 with tokens
+    await token.transfer(addr1.address, ethers.parseEther("100"));
+    await token.connect(addr1).approve(owner.address, ethers.parseEther("50"));
+    
+    // Deploy the airdrop contract (no constructor args needed)
+    const AirdropFactory = await ethers.getContractFactory("airdrop");
+    const airdrop = await AirdropFactory.deploy();
+    await airdrop.waitForDeployment();
+    
+    // Get initial balances
+    const initialBalance1 = await token.balanceOf(addr1.address);
+    const initialBalance2 = await token.balanceOf(addr2.address);
+    
+    // Execute airdrop transfer
+    const recipients = [addr2.address];
+    const tx = await airdrop.transfer(addr1.address, token.target, recipients, ethers.parseEther("10"));
+    await tx.wait();
+    
+    // Verify balances - if sha256 was used, the call would revert or not execute
+    const finalBalance1 = await token.balanceOf(addr1.address);
+    const finalBalance2 = await token.balanceOf(addr2.address);
+    
+    // Original uses correct keccak256 selector, so transfer should succeed
+    expect(finalBalance1).to.equal(initialBalance1 - ethers.parseEther("10"));
+    expect(finalBalance2).to.equal(initialBalance2 + ethers.parseEther("10"));
+    
+    // The test will fail on mutant because sha256 produces wrong selector,
+    // causing the low-level call to either revert or do nothing
+  });
+});
+
+// Helper contract for testing - deploy alongside in real test
+// contract TestToken is ERC20 {
+//   constructor(string memory name, string memory symbol, uint256 initialSupply) ERC20(name, symbol) {
+//     _mint(msg.sender, initialSupply);
+//   }
+// }
+```

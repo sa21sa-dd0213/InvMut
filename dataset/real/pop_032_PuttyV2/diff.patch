@@ -1,0 +1,92 @@
+--- bug.flat.sol
++++ fix.flat.sol
+@@ -960,10 +960,14 @@
+ 
+     mapping(uint256 => uint256[]) public positionFloorAssetTokenIds;
+ 
++    mapping(address => uint256) public unclaimedFees;
++
+     event NewBaseURI(string baseURI);
+ 
+     event NewFee(uint256 fee);
+ 
++    event WithdrewFees(address indexed asset, uint256 fees, address recipient);
++
+     event FilledOrder(bytes32 indexed orderHash, uint256[] floorAssetTokenIds, Order order);
+ 
+     event ExercisedOrder(bytes32 indexed orderHash, uint256[] floorAssetTokenIds, Order order);
+@@ -998,6 +1002,16 @@
+         emit NewFee(_fee);
+     }
+ 
++    function withdrawFees(address asset, address recipient) public payable onlyOwner {
++        uint256 fees = unclaimedFees[asset];
++
++        unclaimedFees[asset] = 0;
++
++        emit WithdrewFees(asset, fees, recipient);
++
++        ERC20(asset).transfer(recipient, fees);
++    }
++
+     function fillOrder(
+         Order memory order,
+         bytes calldata signature,
+@@ -1036,19 +1050,35 @@
+ 
+         emit FilledOrder(orderHash, floorAssetTokenIds, order);
+ 
++        uint256 feeAmount = 0;
++        if (fee > 0) {
++            feeAmount = (order.premium * fee) / 1000;
++            unclaimedFees[order.baseAsset] += feeAmount;
++        }
++
+         if (order.isLong) {
+-            ERC20(order.baseAsset).safeTransferFrom(order.maker, msg.sender, order.premium);
++
++            ERC20(order.baseAsset).safeTransferFrom(order.maker, msg.sender, order.premium - feeAmount);
++
++            if (feeAmount > 0) {
++                ERC20(order.baseAsset).safeTransferFrom(order.maker, address(this), feeAmount);
++            }
+         } else {
+ 
+             if (weth == order.baseAsset && msg.value > 0) {
+ 
+                 require(msg.value == order.premium, "Incorrect ETH amount sent");
+ 
+-                IWETH(weth).deposit{value: msg.value}();
+-                IWETH(weth).transfer(order.maker, msg.value);
++                IWETH(weth).deposit{value: order.premium}();
++
++                IWETH(weth).transfer(order.maker, order.premium - feeAmount);
+             } else {
+-                ERC20(order.baseAsset).safeTransferFrom(msg.sender, order.maker, order.premium);
+-            }
++
++                ERC20(order.baseAsset).safeTransferFrom(msg.sender, order.maker, order.premium - feeAmount);
++
++                if (feeAmount > 0) {
++                    ERC20(order.baseAsset).safeTransferFrom(msg.sender, address(this), feeAmount);
++                }            }
+         }
+ 
+         if (!order.isLong && !order.isCall) {
+@@ -1149,15 +1179,7 @@
+         emit WithdrawOrder(orderHash, order);
+ 
+         if ((order.isCall && isExercised) || (!order.isCall && !isExercised)) {
+-
+-            uint256 feeAmount = 0;
+-            if (fee > 0) {
+-                feeAmount = (order.strike * fee) / 1000;
+-                ERC20(order.baseAsset).safeTransfer(owner(), feeAmount);
+-            }
+-
+-            ERC20(order.baseAsset).safeTransfer(msg.sender, order.strike - feeAmount);
+-
++            ERC20(order.baseAsset).safeTransfer(msg.sender, order.strike);
+             return;
+         }
+ 

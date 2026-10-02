@@ -1,0 +1,52 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Private_Bank mutant kill test - ma4278853", function () {   it("should reject deposit when msg.value is exactly equal to MinDeposit (not greater than)", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy Log contract first (required by Private_Bank constructor)     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();          // Deploy Private_Bank with Log contract address     const BankFactory = await ethers.getContractFactory("Private_Bank");     const bank = await BankFactory.deploy(await log.getAddress());     await bank.waitForDeployment();          const minDeposit = await bank.MinDeposit();          // Attempt to deposit exactly the minimum deposit amount (should not be greater than)     await expect(       addr1.sendTransaction({         to: await bank.getAddress(),         value: minDeposit       })     ).to.not.be.reverted;          // Verify that the balance was NOT updated (deposit should not have gone through)     const balance = await bank.balances(addr1.address);     expect(balance).to.equal(0);          // Also verify that no deposit message was logged in the Log contract     const historyLength = await log.History.length;     expect(historyLength).to.equal(0);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Private_Bank { mapping (address => uint) public balances; uint public MinDeposit = 1 ether; Log TransferLog; constructor(address _log) { TransferLog = Log(_log); } function Deposit() public payable { if(msg.value > MinDeposit) { require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); balances[msg.sender]+=msg.value; TransferLog.AddMessage(msg.sender,msg.value,"Deposit"); } } function CashOut(uint _am) public payable { if(_am<=balances[msg.sender]) { balances[msg.sender] = (balances[msg.sender] - _am); (bool _veri_ok,) = msg.sender.call{value: _am}(""); if(_veri_ok) { TransferLog.AddMessage(msg.sender,_am,"CashOut"); } else {revert (); } } } receive() external payable {} } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val,string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Private_Bank mutant kill test - ma4278853", function () {
+  it("should reject deposit when msg.value is exactly equal to MinDeposit (not greater than)", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy Log contract first (required by Private_Bank constructor)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Deploy Private_Bank with Log contract address
+    const BankFactory = await ethers.getContractFactory("Private_Bank");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+
+    const minDeposit = await bank.MinDeposit();
+
+    // Attempt to deposit exactly the minimum deposit amount (should not be greater than)
+    await expect(
+      addr1.sendTransaction({
+        to: await bank.getAddress(),
+        value: minDeposit
+      })
+    ).to.not.be.reverted;
+
+    // Verify that the balance was NOT updated (deposit should not have gone through)
+    const balance = await bank.balances(addr1.address);
+    expect(balance).to.equal(0);
+
+    // Also verify that no deposit message was logged in the Log contract
+    const historyLength = await log.History.length;
+    expect(historyLength).to.equal(0);
+  });
+});
+```

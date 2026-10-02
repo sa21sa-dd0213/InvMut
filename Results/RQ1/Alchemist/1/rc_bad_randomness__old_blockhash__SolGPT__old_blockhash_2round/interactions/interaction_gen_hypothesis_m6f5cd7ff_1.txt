@@ -1,0 +1,27 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract PredictTheBlockHashChallenge:
+        Contract Code: pragma solidity ^0.8.0; contract PredictTheBlockHashChallenge { struct Guess { uint block; bytes32 guess; } mapping(address => Guess) guesses; constructor() public payable { require(msg.value == 1 ether); } function lockInGuess(bytes32 hash) public payable { require(guesses[msg.sender].block == 0); require(msg.value == 1 ether); guesses[msg.sender].guess = hash; guesses[msg.sender].block = block.number + 1; } function settle() public { require(guesses[msg.sender].block != 0); require(block.number > guesses[msg.sender].block); bytes32 answer = keccak256(abi.encodePacked(blockhash(guesses[msg.sender].block))); guesses[msg.sender].block = 0; if (guesses[msg.sender].guess == answer) { require(address(this).balance >= 2 ether); payable(msg.sender).transfer(2 ether); } } }
+
+    Consider the following mutant of PredictTheBlockHashChallenge:
+        Mutant m6f5cd7ff of function settle replaces == with <=
+        Mutant Diff: ---|         if (guesses[msg.sender].guess == answer) { +++|         if (guesses[msg.sender].guess <= answer) {
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's analyze the difference:
+
+- **Original**: `if (guesses[msg.sender].guess == answer)` — the player wins only if their guess exactly matches the block hash.
+- **Mutant**: `if (guesses[msg.sender].guess <= answer)` — the player wins if their guess is less than or equal to the block hash.
+
+This is a significant weakening of the condition. In the original, the player must guess the exact 32-byte hash, which is practically impossible. In the mutant, any guess that is numerically ≤ the block hash would succeed — and since block hashes are 256-bit numbers, many guesses (including zero) would satisfy `guess <= answer` for many possible hashes.
+
+**Hypothesis**:  
+The mutant changes the equality check to a less-than-or-equal check. Therefore, a test case where a player locks in a guess of `0x0...0` (all zeros) and then settles should pass in the mutant (since zero is ≤ any positive block hash) but should fail in the original (since zero will almost never equal the actual block hash). This test would kill the mutant.

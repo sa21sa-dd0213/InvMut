@@ -1,0 +1,33 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract PredictTheBlockHashChallenge:
+        Contract Code: pragma solidity ^0.8.0; contract PredictTheBlockHashChallenge { struct guess { uint block; bytes32 guess; } mapping(address => guess) guesses; constructor() public payable { require(msg.value == 1 ether); } function lockInGuess(bytes32 hash) public payable { require(guesses[msg.sender].block == 0); require(msg.value == 1 ether); guesses[msg.sender].guess = hash; guesses[msg.sender].block = block.number + 1; } function settle() public { require(guesses[msg.sender].block != 0); require(block.number > guesses[msg.sender].block); bytes32 answer = blockhash(guesses[msg.sender].block); guesses[msg.sender].block = 0; if (answer != 0 && guesses[msg.sender].guess == answer) { payable(msg.sender).transfer(2 ether); } } }
+
+    Consider the following mutant of PredictTheBlockHashChallenge:
+        Mutant m8d485f63 of function settle replaces > with >=
+        Mutant Diff: ---|         require(block.number > guesses[msg.sender].block); +++|         require(block.number >=  guesses[msg.sender].block);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's reason through this.
+
+The original `settle()` function has `require(block.number > guesses[msg.sender].block);` — this ensures settlement can only happen **after** the target block has already passed. The mutant changes this to `>=`, which means settlement would be allowed when the current block number is **equal to** the target block.
+
+The key insight: `blockhash(guesses[msg.sender].block)` returns the hash of a block. However, `blockhash(block.number)` inside the **same block** always returns `0` in Solidity (you cannot get the hash of the current block). So if someone settles in the exact same block as the target block, `answer` will be `0`, and the condition `answer != 0` will fail — meaning no payout. That alone might not kill the mutant.
+
+But consider this: if a user could somehow lock in a guess for a block in the past (which is prevented by the `lockInGuess` logic), or if they could settle on a block number that hasn't happened yet, the mutant could be exploited. However, the more direct detection is about **off-by-one timing**:
+
+A test that calls `settle()` **in the same block** as the target block (`block.number == guesses[msg.sender].block`) should:
+- **Pass on original** (revert because `block.number > target` is false)
+- **Fail on mutant** (mutant allows execution, but `answer` will be `0`, so no transfer — but the function doesn't revert, which changes behavior)
+
+The mutant introduces a logical error where settlement is allowed one block too early, altering contract behavior.
+
+**Hypothesis:** "The mutant changes the strict greater-than condition to greater-than-or-equal. Therefore, a test case that locks in a guess, waits exactly until the current block number equals the target block number, and then calls settle — expecting a revert because the target block hasn't passed yet — should pass on the original but fail on the mutant, because the mutant allows the call to proceed without revert."

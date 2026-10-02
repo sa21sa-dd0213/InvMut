@@ -1,0 +1,71 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m021ff445 of PENNY_BY_PENNY.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PENNY_BY_PENNY.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PENNY_BY_PENNY:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PENNY_BY_PENNY reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PENNY_BY_PENNY by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PENNY_BY_PENNY"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PENNY_BY_PENNY mutant kill test - m021ff445", function () {
+  it("should fail on mutant when Collect is called but external call to receiver reverts", async function () {
+    const [owner, user] = await ethers.getSigners();
+
+    // Deploy the PENNY_BY_PENNY contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("PENNY_BY_PENNY");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy a contract that reverts on receive to simulate a failed call
+    const RevertReceiverFactory = await ethers.getContractFactory("RevertReceiver");
+    const revertReceiver = await RevertReceiverFactory.deploy();
+    await revertReceiver.waitForDeployment();
+
+    // Initialize the contract
+    await (await instance.Initialized()).wait();
+
+    // Set MinSum to 0 so any balance qualifies
+    await (await instance.SetMinSum(0)).wait();
+
+    // User puts some Ether into the contract
+    const putAmount = ethers.parseEther("1.0");
+    await (await instance.connect(user).Put(0, { value: putAmount })).wait();
+
+    // Check initial balance of user in the contract
+    const userAcc = await instance.Acc(user.address);
+    expect(userAcc.balance).to.equal(putAmount);
+
+    // Now user calls Collect through the revertReceiver contract address
+    // The call will fail because RevertReceiver reverts on receive
+    const collectAmount = ethers.parseEther("0.5");
+    const tx = instance.connect(user).Collect(collectAmount);
+    
+    // In the original contract, the balance should NOT be deducted because the call fails
+    // In the mutant, the balance WILL be deducted because it always proceeds
+    await expect(tx).to.not.be.reverted;
+    
+    // Check if balance was incorrectly deducted (mutant behavior)
+    const accAfter = await instance.Acc(user.address);
+    const logCountBefore = await instance.Log.History.length;
+    
+    // If mutant: balance will be reduced, log will be added
+    // If original: balance unchanged, no log added
+    // We assert the original behavior to detect the mutant
+    expect(accAfter.balance).to.equal(putAmount);
+    expect(logCountBefore).to.equal(0);
+  });
+});
+```

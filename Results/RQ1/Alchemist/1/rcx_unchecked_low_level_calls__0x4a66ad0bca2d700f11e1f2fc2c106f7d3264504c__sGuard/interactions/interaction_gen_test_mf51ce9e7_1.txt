@@ -1,0 +1,104 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mf51ce9e7 of EBU.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EBU.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EBU:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EBU reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EBU by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EBU"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("EBU mutant test - mf51ce9e7", function () {
+  it("should kill mutant by verifying transfers execute when _tos array is non-empty", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Get the from address from the contract
+    const fromAddress = await instance.from();
+    
+    // Prepare recipients and values
+    const recipients = [addr1.address, addr2.address];
+    const values = [1, 2]; // 1 and 2 tokens
+    
+    // Call transfer function
+    const tx = await instance.connect(owner).transfer(recipients, values);
+    await tx.wait();
+    
+    // Verify the transfer was executed by checking that the call happened
+    // Since we can't directly check token balances, we verify the loop ran
+    // by checking that the contract's state was modified
+    // The key insight: if loop runs (original), transfers happen; if loop doesn't run (mutant), no transfers
+    // We can detect this by checking that the transaction emitted at least one internal call
+    // For simplicity, we check that the transaction succeeded and didn't revert
+    // The mutant's loop condition i>_tos.length will cause 0 iterations, so no reverts but no transfers either
+    // We need to verify the transfers actually happened by checking the from address still has control
+    // Since we can't directly observe internal calls, we rely on the fact that the original contract's loop
+    // would execute transfers while the mutant's would not
+    
+    // Re-call with same parameters to check if state is as expected
+    // In original, each transfer decreases from's balance (if it were a token contract)
+    // Since this is a test of the transfer function itself, we verify the loop logic
+    // by checking that the function returns true in both cases but differs in execution
+    
+    // Actually, the best way to kill the mutant is to check that transfers were made
+    // Since we can't check token balances (no token contract), we verify by checking
+    // that the contract made external calls - we can check this via a callback or event
+    // But the contract doesn't emit events, so we check by ensuring the function
+    // behaves differently: original processes all elements, mutant processes none
+    
+    // For a definitive kill: deploy a spy contract that records calls
+    // But per instructions, we must only use existing contract elements
+    // So we test that calling transfer with a non-empty array doesn't revert
+    // The mutant won't revert either (just does nothing), so we need another approach
+    
+    // Kill strategy: verify that the function actually processed all elements
+    // by checking that the from address made transfers - we can do this by
+    // checking the internal call count or using a modified contract
+    // Since we can't, we use a simple but effective test:
+    // Call transfer, then check that the contract's from address is still correct
+    // (if loop ran, from wasn't changed; if loop didn't run, from also wasn't changed)
+    // This doesn't kill the mutant
+    
+    // Rethinking: The only way to kill the mutant with given constraints is to
+    // verify that transfers were actually executed. Since the contract uses
+    // caddress.call which is an external call to a hardcoded address, we can
+    // check that the call was made by deploying a contract at that address
+    // But we can't deploy to that address
+    
+    // Final approach: Test that the function processes all elements by checking
+    // that calling transfer with a non-empty array and then checking that
+    // the function's loop actually iterated - we can detect this by the gas used
+    // Original uses more gas (multiple calls) vs mutant (no calls)
+    const tx1 = await instance.connect(owner).transfer(recipients, values);
+    const receipt1 = await tx1.wait();
+    const gasUsedOriginal = receipt1.gasUsed;
+    
+    // Call with empty array (should revert in both due to require(_tos.length > 0))
+    // Actually empty array reverts, so we can't use that
+    
+    // Call with one recipient to compare gas
+    const tx2 = await instance.connect(owner).transfer([addr1.address], [1]);
+    const receipt2 = await tx2.wait();
+    const gasUsedSingle = receipt2.gasUsed;
+    
+    // If mutant is live, gas for 2 recipients equals gas for 1 recipient (no calls)
+    // If original, gas for 2 recipients > gas for 1 recipient (more calls)
+    // This kills the mutant because gas used should be different
+    expect(gasUsedOriginal).to.be.gt(gasUsedSingle);
+  });
+});
+```

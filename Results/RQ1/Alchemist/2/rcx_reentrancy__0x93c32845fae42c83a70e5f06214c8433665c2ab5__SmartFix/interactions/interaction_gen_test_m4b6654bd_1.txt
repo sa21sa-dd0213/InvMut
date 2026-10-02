@@ -1,0 +1,76 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m4b6654bd of X_WALLET.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test X_WALLET.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for X_WALLET:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("X_WALLET reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy X_WALLET by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("X_WALLET"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("X_WALLET mutant m4b6654bd - overflow protection removed", function () {
+  it("should detect missing overflow check by causing uint256 overflow", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the Log contract first (required constructor argument for X_WALLET)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy X_WALLET with the Log contract address
+    const WalletFactory = await ethers.getContractFactory("X_WALLET");
+    const wallet = await WalletFactory.deploy(await log.getAddress());
+    await wallet.waitForDeployment();
+    
+    // Step 1: First deposit to set a non-zero balance
+    // We'll deposit 1 ether to attacker's account
+    const initialDeposit = ethers.parseEther("1");
+    await wallet.connect(attacker).Put(0, { value: initialDeposit });
+    
+    // Step 2: Get current balance and calculate amount needed for overflow
+    const currentBalance = (await wallet.Acc(attacker.address)).balance;
+    
+    // Calculate the amount needed to cause overflow:
+    // We want: currentBalance + msg.value to overflow (wrap to a small number)
+    // The max uint256 is 2^256 - 1
+    const maxUint256 = ethers.MaxUint256;
+    
+    // We need to send enough to make balance exceed maxUint256
+    // So msg.value should be: maxUint256 - currentBalance + 1n
+    const overflowAmount = maxUint256 - currentBalance + 1n;
+    
+    // Step 3: Attempt to cause overflow - on original contract this should revert
+    // On mutant (without require check) this should succeed and corrupt the balance
+    const tx = wallet.connect(attacker).Put(0, { value: overflowAmount });
+    
+    // On the mutant, this transaction should NOT revert
+    // We expect it to succeed (killing the mutant by detecting the missing check)
+    await expect(tx).to.not.be.reverted;
+    
+    // After the overflow, the balance should be unexpectedly low
+    // (due to wraparound: currentBalance + overflowAmount = 0 or small number)
+    const newBalance = (await wallet.Acc(attacker.address)).balance;
+    
+    // The balance should NOT be greater than currentBalance + overflowAmount
+    // Because that would overflow, so the actual stored balance is much smaller
+    expect(newBalance).to.be.lessThan(currentBalance);
+    
+    // Additionally, we can verify the balance is the overflow result:
+    // (currentBalance + overflowAmount) mod 2^256 = (maxUint256 + 1) mod 2^256 = 0
+    // So the balance should be 0 (or close to 0 if there were fees)
+    expect(newBalance).to.equal(0n);
+  });
+});
+```

@@ -1,0 +1,33 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Roulette:
+        Contract Code: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+
+    Consider the following mutant of Roulette:
+        Mutant mc4c6acff of function fallback replaces block.number with block.number-1
+        Mutant Diff: ---|         if(block.number % 15 == 0) { +++|         if(block.number-1 % 15 == 0) {
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let’s break it down step-by-step.
+
+The original condition is:
+`if (block.number % 15 == 0)`
+This means the payout only happens when the current block number is exactly divisible by 15.
+
+The mutant changes it to:
+`if (block.number - 1 % 15 == 0)`
+Due to operator precedence, this is actually parsed as:
+`if (block.number - (1 % 15) == 0)`, which simplifies to `if (block.number - 1 == 0)`, i.e., `if (block.number == 1)`.
+
+So the mutant will only pay out when the block number is exactly 1, instead of every 15th block. This drastically changes the behavior.
+
+**Hypothesis:**  
+"The mutant changes the condition from checking if the current block number is a multiple of 15 to checking if the current block number is 1. Therefore, a test case that calls the fallback function when `block.number` is a multiple of 15 (but not 1) and expects the contract balance to be transferred to the caller should pass on the original but fail on the mutant, because the mutant will not execute the transfer under that condition."

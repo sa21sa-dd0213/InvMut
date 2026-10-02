@@ -1,0 +1,61 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("EBU mutant m72961402 test", function () {   it("should detect when caddress is zero address by verifying no actual token transfer occurs", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy the EBU contract (no constructor arguments)     const Factory = await ethers.getContractFactory("EBU");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Get the current caddress from the contract     const caddress = await instance.caddress();          // Deploy a simple ERC20-like contract to act as the token target     const TokenFactory = await ethers.getContractFactory("MockToken");     const token = await TokenFactory.deploy();     await token.waitForDeployment();          // Only proceed if the caddress is zero address (mutant) or the real address     if (caddress === ethers.ZeroAddress) {       // Mutant case: caddress is zero - transfers should do nothing       // First, fund the owner with tokens       await token.transfer(owner.address, ethers.parseEther("1000"));              // Approve EBU contract to spend tokens (if needed, but not required for this test)       // Call transfer with one recipient       const tos = [addr1.address];       const values = [ethers.parseEther("10")];              await instance.connect(owner).transfer(tos, values);              // Check that addr1's balance did NOT change (since call went to zero address)       const balanceAfter = await token.balanceOf(addr1.address);       expect(balanceAfter).to.equal(0);     } else {       // Original case: caddress is real - transfer should work       // Setup tokens at the real caddress       // (In a real test we would need the actual token contract at that address)       // This branch exists to show the test is conditional       console.log("Contract has non-zero caddress, test not applicable");     }   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function mul_uint256(uint256 a, uint256 b) internal pure returns (uint256) { if (a == 0) { return 0; } uint256 c = a * b; assert(c / a == b); return c; } } contract EBU is sGuard { address public from = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9; address public caddress = 0x1f844685f7Bf86eFcc0e74D8642c54A257111923; function transfer( address[] memory _tos, uint[] memory v)public returns (bool){ require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9); require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ caddress.call(abi.encodeWithSelector(id,from,_tos[i],mul_uint256(v[i], 1000000000000000000))); } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant m72961402 test", function () {
+  it("should detect when caddress is zero address by verifying no actual token transfer occurs", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy the EBU contract (no constructor arguments)
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Get the current caddress from the contract
+    const caddress = await instance.caddress();
+    
+    // Deploy a simple ERC20-like contract to act as the token target
+    const TokenFactory = await ethers.getContractFactory("MockToken");
+    const token = await TokenFactory.deploy();
+    await token.waitForDeployment();
+    
+    // Only proceed if the caddress is zero address (mutant) or the real address
+    if (caddress === ethers.ZeroAddress) {
+      // Mutant case: caddress is zero - transfers should do nothing
+      // First, fund the owner with tokens
+      await token.transfer(owner.address, ethers.parseEther("1000"));
+      
+      // Approve EBU contract to spend tokens (if needed, but not required for this test)
+      // Call transfer with one recipient
+      const tos = [addr1.address];
+      const values = [ethers.parseEther("10")];
+      
+      await instance.connect(owner).transfer(tos, values);
+      
+      // Check that addr1's balance did NOT change (since call went to zero address)
+      const balanceAfter = await token.balanceOf(addr1.address);
+      expect(balanceAfter).to.equal(0);
+    } else {
+      // Original case: caddress is real - transfer should work
+      // Setup tokens at the real caddress
+      // (In a real test we would need the actual token contract at that address)
+      // This branch exists to show the test is conditional
+      console.log("Contract has non-zero caddress, test not applicable");
+    }
+  });
+});
+```

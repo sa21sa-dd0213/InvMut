@@ -1,0 +1,11 @@
+{
+ "difference_id": "L0002",
+ "property_summary": "After depositing 1 wei from an EOA, the reference contract's withdrawAll succeeds and returns normally, while the buggy contract reverts because it requires the call to fail.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "change_summary": "Replace 'required(callResult)' with 'require(!callResult)' so the transaction reverts if the call succeeds.",
+ "mutated_unit_code": "    function withdrawAll() public {\n        uint oCredit = credit[msg.sender];\n        if (oCredit > 0) {\n            balance -= oCredit;\n            credit[msg.sender] = 0;\n            (bool callResult, ) = msg.sender.call{value: oCredit}(\"\");\n            require(!callResult);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport \"forge-std/Test.sol\";\nimport {ReentrancyDAO} from \"../src/ReentrancyDAO.sol\";\n\ncontract Attacker {\n    ReentrancyDAO c;\n    uint256 public got;\n    bool attacking;\n\n    constructor(ReentrancyDAO _c) {\n        c = _c;\n    }\n\n    function deposit() external payable {\n        c.deposit{value: msg.value}();\n    }\n\n    function attack() external {\n        attacking = true;\n        c.withdrawAll();\n    }\n\n    receive() external payable {\n        got += msg.value;\n        if (attacking && got < 2 && address(c).balance >= 1) {\n            c.withdrawAll();\n        }\n    }\n}\n\ncontract InvMutTest is Test {\n    ReentrancyDAO c;\n    Attacker att;\n\n    function setUp() public {\n        c = new ReentrancyDAO();\n        att = new Attacker(c);\n    }\n\n    function testFuzz_run() public {\n        vm.deal(address(this), 100);\n        c.deposit{value: 5}();\n\n        vm.deal(address(att), 10);\n        att.deposit{value: 1}();\n\n        att.attack();\n\n        assertTrue(att.got() <= 1);\n    }\n\n    receive() external payable {}\n}"
+}

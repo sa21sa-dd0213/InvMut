@@ -1,0 +1,12 @@
+{
+ "difference_id": "T9d414485",
+ "property_summary": "For any non-empty _tos array and any callee address, the reference contract's transfer(...) call never returns true when any low-level call to the callee fails (it will revert), whereas the mutant can complete and return true even if a callee call fails; the test fuzzes inputs and uses a helper that makes the callee revert to expose this difference.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Change the require that the caddress.call succeeded to instead ignore the success flag, so transfer always returns true if loop completes even when individual calls failed silently.",
+ "mutated_unit_code": "function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){\n    require(_tos.length > 0);\n    bytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n    for(uint i=0;i<_tos.length;i++){\n\n    { (bool _s,) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v)); }\n    }\n    return true;\n}\n",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airdrop} from \"../src/airdrop.sol\";\n\ncontract InvMutTest is Test {\n    airdrop c;\n    function setUp() public { c = new airdrop(); }\n\n    function testFuzz_property(address from, uint256 v, uint256 n) public {\n        uint256 len = bound(n, 0, 8);\n\n        address[] memory tos = new address[](len);\n        for (uint i = 0; i < len; i++) {\n            tos[i] = address(new Reverter());\n        }\n\n        address caddress = address(0);\n        if (len > 0) {\n            caddress = tos[0];\n        } else {\n            caddress = address(new Reverter());\n        }\n\n        bool ok;\n        try c.transfer(from, caddress, tos, uint256(v)) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        if (len > 0) {\n            assertTrue(ok == false);\n        } else {\n            assertTrue(ok == false);\n        }\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"revert\");\n    }\n    receive() external payable {\n        revert(\"revert\");\n    }\n}\n"
+}

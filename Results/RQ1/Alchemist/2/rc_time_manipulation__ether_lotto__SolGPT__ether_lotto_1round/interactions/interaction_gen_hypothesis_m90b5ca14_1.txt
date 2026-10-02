@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EtherLotto:
+        Contract Code: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+
+    Consider the following mutant of EtherLotto:
+        Mutant m90b5ca14 of function play replaces msg.value with msg.value+1
+        Mutant Diff: ---|         pot += msg.value; +++|         pot += msg.value+1;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the pot calculation from adding the exact `msg.value` (which is required to be 10 wei) to adding `msg.value + 1` (which would be 11 wei). This means the pot will be artificially inflated by 1 wei each time the function is called.  
+
+**Hypothesis:** A test case that plays the game and then checks the final pot balance should detect the mutant. In the original contract, after a winning round, the pot is reset to 0. In the mutant, after a winning round, the pot becomes 1 wei (because 11 wei was added but only 10 wei was sent to the player and 1 wei to the bank, leaving 0 wei from the pot logic, but the pot variable was increased by 11 instead of 10, so after the transfer of `pot - FEE_AMOUNT`, the pot becomes 1 wei). Therefore, a test that plays one round, checks the pot after the round, and expects it to be 0 in the original but will find it to be 1 in the mutant, should kill the mutant.

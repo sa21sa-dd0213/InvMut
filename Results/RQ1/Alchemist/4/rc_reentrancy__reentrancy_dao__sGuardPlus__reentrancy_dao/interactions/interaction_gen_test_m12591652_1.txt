@@ -1,0 +1,92 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m12591652 of ReentrancyDAO.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test ReentrancyDAO.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for ReentrancyDAO:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("ReentrancyDAO reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy ReentrancyDAO by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("ReentrancyDAO"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ReentrancyDAO mutant test - reentrancy guard removal", function () {
+  it("should prevent reentrancy attack on withdrawAll with lock modifier", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the ReentrancyDAO contract (no constructor arguments needed)
+    const ReentrancyDAO = await ethers.getContractFactory("ReentrancyDAO");
+    const dao = await ReentrancyDAO.deploy();
+    await dao.waitForDeployment();
+    
+    // Deploy a malicious attacker contract that will attempt reentrancy
+    const AttackerContract = await ethers.getContractFactory("ReentrancyAttacker");
+    const attackerContract = await AttackerContract.deploy(await dao.getAddress());
+    await attackerContract.waitForDeployment();
+    
+    // Fund the DAO with some ETH
+    await owner.sendTransaction({
+      to: await dao.getAddress(),
+      value: ethers.parseEther("1.0")
+    });
+    
+    // Attacker deposits to get credit in the DAO
+    await attackerContract.connect(attacker).deposit({ value: ethers.parseEther("0.5") });
+    
+    // Verify initial state
+    const initialBalance = await ethers.provider.getBalance(await dao.getAddress());
+    expect(initialBalance).to.equal(ethers.parseEther("1.5"));
+    
+    // Attacker calls withdrawAll - if reentrancy guard is missing, 
+    // the attacker can drain more than their credit
+    const tx = attackerContract.connect(attacker).attack();
+    
+    // If the lock modifier is present (original), the attack should fail
+    // If the lock modifier is removed (mutant), the attack might succeed
+    await expect(tx).to.be.reverted;
+    
+    // Verify that the attacker could not drain more than their credit
+    const finalBalance = await ethers.provider.getBalance(await dao.getAddress());
+    expect(finalBalance).to.equal(ethers.parseEther("1.0")); // Only owner's 1 ETH remains
+  });
+});
+
+// Helper contract to execute reentrancy attack
+// Note: This must be compiled and deployed alongside the test
+contract ReentrancyAttacker {
+    ReentrancyDAO public dao;
+    bool public attackInProgress;
+    
+    constructor(address _dao) {
+        dao = ReentrancyDAO(_dao);
+        attackInProgress = false;
+    }
+    
+    function deposit() external payable {
+        dao.deposit{value: msg.value}();
+    }
+    
+    function attack() external {
+        attackInProgress = true;
+        dao.withdrawAll();
+        attackInProgress = false;
+    }
+    
+    receive() external payable {
+        if (attackInProgress) {
+            // Try to re-enter and drain more funds
+            dao.withdrawAll();
+        }
+    }
+}
+```

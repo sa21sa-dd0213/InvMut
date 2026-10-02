@@ -1,0 +1,100 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant me69d8946 of GSPFunding.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test GSPFunding.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for GSPFunding:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("GSPFunding reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy GSPFunding by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("GSPFunding"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("GSPFunding mutant kill test - sellShares arithmetic", function () {
+  it("should revert when selling shares because mutant calculates quoteAmount incorrectly (uses + instead of /)", async function () {
+    const [owner, user] = await ethers.getSigners();
+    
+    // Deploy GSPFunding
+    const Factory = await ethers.getContractFactory("GSPFunding");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    const instanceAddress = await instance.getAddress();
+
+    // Deploy mock tokens
+    const TokenFactory = await ethers.getContractFactory("MockERC20");
+    const baseToken = await TokenFactory.deploy("Base", "BASE", 18);
+    await baseToken.waitForDeployment();
+    const quoteToken = await TokenFactory.deploy("Quote", "QUOTE", 18);
+    await quoteToken.waitForDeployment();
+
+    // Initialize the GSPFunding contract with tokens
+    // First set the tokens and initial parameters
+    await instance.connect(owner).setBaseToken(await baseToken.getAddress());
+    await instance.connect(owner).setQuoteToken(await quoteToken.getAddress());
+    await instance.connect(owner).setI(ethers.parseEther("1"));
+    await instance.connect(owner).setK(ethers.parseEther("0.5"));
+    
+    // Fund the contract with initial reserves
+    const initialBase = ethers.parseEther("10000");
+    const initialQuote = ethers.parseEther("10000");
+    await baseToken.transfer(instanceAddress, initialBase);
+    await quoteToken.transfer(instanceAddress, initialQuote);
+    
+    // Set initial reserves
+    await instance.connect(owner).setReserve(initialBase, initialQuote);
+    await instance.connect(owner).setTarget(initialBase, initialQuote);
+    await instance.connect(owner).setRState(0); // ONE state
+
+    // User buys shares to get some LP tokens
+    const buyAmount = ethers.parseEther("1000");
+    await baseToken.transfer(user.address, buyAmount);
+    await quoteToken.transfer(user.address, buyAmount);
+    await baseToken.connect(user).approve(instanceAddress, buyAmount);
+    await quoteToken.connect(user).approve(instanceAddress, buyAmount);
+    
+    // Transfer tokens to contract for buyShares
+    await baseToken.connect(user).transfer(instanceAddress, buyAmount);
+    await quoteToken.connect(user).transfer(instanceAddress, buyAmount);
+    
+    await instance.connect(user).buyShares(user.address);
+    
+    // Get user's share balance
+    const userShares = await instance.balanceOf(user.address);
+    expect(userShares).to.be.gt(0);
+
+    // Now test sellShares - the mutant will cause quoteAmount to be enormous
+    // Original: quoteAmount = quoteBalance * shareAmount / totalShares
+    // Mutant: quoteAmount = quoteBalance * shareAmount + totalShares
+    // The mutant result will be huge and likely cause overflow or exceed balances
+    
+    const baseMinAmount = 0;
+    const quoteMinAmount = 0;
+    const data = "0x";
+    const deadline = Math.floor(Date.now() / 1000) + 3600;
+    
+    // The mutant calculation will produce quoteAmount = quoteBalance * shareAmount + totalShares
+    // This is astronomically larger than the actual quote balance, so the contract
+    // will try to transfer more than it has, causing a revert
+    await expect(
+      instance.connect(user).sellShares(
+        userShares,
+        user.address,
+        baseMinAmount,
+        quoteMinAmount,
+        data,
+        deadline
+      )
+    ).to.be.reverted;
+  });
+});
+```

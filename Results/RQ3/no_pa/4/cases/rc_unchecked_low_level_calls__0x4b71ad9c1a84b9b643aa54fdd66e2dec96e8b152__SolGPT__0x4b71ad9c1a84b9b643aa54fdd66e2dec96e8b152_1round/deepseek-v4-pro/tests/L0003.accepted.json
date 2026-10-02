@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "When calling transfer with an array of 3 distinct addresses, the reference contract transfers to all three, but the buggy contract only transfers to the last address, resulting in a different final token distribution (simulated by an external token contract).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Replace the function body with a loop that transfers to only the last address in the array",
+ "mutated_unit_code": "    function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0; i<_tos.length; i++){\n            if (i == _tos.length - 1) {\n                { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); require(_s); }\n            }\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airPort} from \"../src/airPort.sol\";\n\ncontract InvMutTest is Test {\n    airPort c;\n\n    address token;\n\n    function setUp() public {\n        c = new airPort();\n        token = address(new SimpleToken());\n        SimpleToken(token).mint(address(0x123), 100);\n    }\n\n    function testRegression_property() public {\n        address[] memory tos = new address[](3);\n        tos[0] = address(0xA);\n        tos[1] = address(0xB);\n        tos[2] = address(0xC);\n\n        vm.prank(address(0x123));\n        c.transfer(address(0x123), token, tos, 10);\n\n        assertTrue(SimpleToken(token).balanceOf(address(0xA)) == 10);\n    }\n}\n\ncontract SimpleToken {\n    mapping(address => uint256) public balanceOf;\n\n    function transferFrom(address from, address to, uint256 amount) external {\n        require(balanceOf[from] >= amount);\n        balanceOf[from] -= amount;\n        balanceOf[to] += amount;\n    }\n\n    function mint(address to, uint256 amount) external {\n        balanceOf[to] += amount;\n    }\n}"
+}

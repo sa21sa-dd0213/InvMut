@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "With an input containing exactly two elements, the reference transfers both tokens (succeeds), but the buggy version skips the last element and only transfers one, as detected by a getter that returns the transferred amount.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Change the loop condition to require fewer iterations, skipping the last element.",
+ "mutated_unit_code": "function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){\nrequire(_tos.length > 0);\nbytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\nfor(uint i=0;i<_tos.length-1;i++){\n\n{ (bool _s,) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v)); require(_s); }\n}\nreturn true;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airdrop} from \"../src/airdrop.sol\";\n\ncontract InvMutTest is Test {\n    airdrop c;\n    function setUp() public { c = new airdrop(); }\n    function testRegression_property() public {\n        Token t = new Token();\n        address[] memory tos = new address[](2);\n        tos[0] = address(1);\n        tos[1] = address(2);\n        uint v = 100;\n        address from = address(100);\n        vm.prank(from);\n        t.mint(from, 1000);\n        vm.prank(from);\n        t.approve(address(c), 1000);\n        c.transfer(from, address(t), tos, v);\n        assertTrue(t.balanceOf(tos[1]) == v);\n    }\n}\n\ncontract Token {\n    mapping(address => uint) public balanceOf;\n    mapping(address => mapping(address => uint)) public allowance;\n    function mint(address to, uint amount) external { balanceOf[to] += amount; }\n    function approve(address spender, uint amount) external { allowance[msg.sender][spender] = amount; }\n    function transferFrom(address from, address to, uint amount) external returns (bool) {\n        require(allowance[from][msg.sender] >= amount);\n        allowance[from][msg.sender] -= amount;\n        balanceOf[from] -= amount;\n        balanceOf[to] += amount;\n        return true;\n    }\n}"
+}

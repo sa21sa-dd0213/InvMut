@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "With two recipients (array length 2), the reference contract calls transferFrom twice leaving the recipient contract with 0 balance, while the mutant skips the second recipient, leaving 1 wei unclaimed.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "Replace the for loop increment with i+=2 to call transfer only on every other element in the arrays.",
+ "mutated_unit_code": "    function transfer(address from,address caddress, address[] memory _tos, uint[] memory v)public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0;i<_tos.length;i+=2){\n\n            caddress.call(abi.encodeWithSelector(id,from,_tos[i],v[i]));\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EBU} from \"../src/EBU.sol\";\n\ncontract InvMutTest is Test {\n    EBU c;\n    function setUp() public { c = new EBU(); }\n    function testRegression_property() public {\n        Recorder rec = new Recorder();\n        address[] memory tos = new address[](2);\n        tos[0] = address(rec);\n        tos[1] = address(rec);\n        uint[] memory vals = new uint[](2);\n        vals[0] = 1;\n        vals[1] = 1;\n        c.transfer(address(0), address(rec), tos, vals);\n        assertTrue(rec.totalCalls() == 2);\n    }\n}\n\ncontract Recorder {\n    uint public totalCalls;\n    function transferFrom(address, address, uint) external returns (bool) {\n        totalCalls++;\n        return true;\n    }\n    fallback() external { }\n}"
+}

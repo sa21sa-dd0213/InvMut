@@ -1,0 +1,107 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("FlashGovernanceArbiter - kill mutant m593faedf", function () {
+  it("should revert when block.prevrandao is used instead of block.timestamp for withdrawal", async function () {
+    const [owner, user] = await ethers.getSigners();
+    
+    // Deploy with a mock DAO address (we need to set up the DAO properly)
+    const MockDAO = await ethers.getContractFactory("MockLimboDAO");
+    const mockDAO = await MockDAO.deploy();
+    await mockDAO.waitForDeployment();
+    
+    const Factory = await ethers.getContractFactory("FlashGovernanceArbiter");
+    const arbiter = await Factory.deploy(await mockDAO.getAddress());
+    await arbiter.waitForDeployment();
+    
+    // Configure flash governance
+    // First, set DAO as msg.sender for successfulProposal check
+    await arbiter.setDAO(await mockDAO.getAddress());
+    
+    // Deploy a mock ERC20 token
+    const MockToken = await ethers.getContractFactory("MockERC20");
+    const token = await MockToken.deploy("Test", "TST", ethers.parseEther("1000"));
+    await token.waitForDeployment();
+    
+    // Configure flash governance parameters
+    await arbiter.configureFlashGovernance(
+      await token.getAddress(),
+      ethers.parseEther("10"),
+      3600, // unlockTime (1 hour)
+      false // assetBurnable
+    );
+    
+    // Set up pending flash decision by calling assertGovernanceApproved
+    // First, user needs to have tokens and approve the arbiter
+    await token.transfer(await user.getAddress(), ethers.parseEther("100"));
+    await token.connect(user).approve(await arbiter.getAddress(), ethers.parseEther("100"));
+    
+    // User calls assertGovernanceApproved to create a pending decision
+    await arbiter.connect(user).assertGovernanceApproved(
+      await user.getAddress(),
+      await arbiter.getAddress(),
+      false
+    );
+    
+    // Wait for the unlock time to pass (3600 seconds)
+    await ethers.provider.send("evm_increaseTime", [3601]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // Now try to withdraw - this should succeed on original (block.timestamp)
+    // but should fail on mutant (block.prevrandao) because prevrandao is not necessarily > unlockTime
+    await expect(
+      arbiter.connect(user).withdrawGovernanceAsset(
+        await arbiter.getAddress(),
+        await token.getAddress()
+      )
+    ).to.be.reverted;
+  });
+});
+
+// Mock contracts needed for testing
+contract MockLimboDAO {
+    function getFlashGoverner() external view returns (address) {
+        return address(0);
+    }
+    
+    function successfulProposal(address) external pure returns (bool) {
+        return false;
+    }
+    
+    function proposalConfig() external pure returns (uint256, uint256, address) {
+        return (0, 0, address(0));
+    }
+}
+
+contract MockERC20 {
+    string public name;
+    string public symbol;
+    uint256 public totalSupply;
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+    
+    constructor(string memory _name, string memory _symbol, uint256 _totalSupply) {
+        name = _name;
+        symbol = _symbol;
+        totalSupply = _totalSupply;
+        balanceOf[msg.sender] = _totalSupply;
+    }
+    
+    function transfer(address to, uint256 amount) external returns (bool) {
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+    
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
+    }
+    
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        allowance[from][msg.sender] -= amount;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+}

@@ -1,0 +1,47 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("B mutant mb4265566 - kill by testing target address", function () {
+  it("should fail on mutant because Ether goes to address(0) instead of the hardcoded address", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy the contract (no constructor arguments needed for B)
+    const Factory = await ethers.getContractFactory("B");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    const instanceAddress = await instance.getAddress();
+    
+    // Get the original hardcoded target address from the contract
+    const originalTarget = "0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C";
+    
+    // Record balances before the call
+    const originalTargetBalanceBefore = await ethers.provider.getBalance(originalTarget);
+    const zeroAddressBalanceBefore = await ethers.provider.getBalance(ethers.ZeroAddress);
+    const contractBalanceBefore = await ethers.provider.getBalance(instanceAddress);
+    
+    // Send 1 ETH to the contract via go() from addr1
+    const sendValue = ethers.parseEther("1.0");
+    const tx = await instance.connect(addr1).go({ value: sendValue });
+    await tx.wait();
+    
+    // Check balances after the call
+    const originalTargetBalanceAfter = await ethers.provider.getBalance(originalTarget);
+    const zeroAddressBalanceAfter = await ethers.provider.getBalance(ethers.ZeroAddress);
+    const contractBalanceAfter = await ethers.provider.getBalance(instanceAddress);
+    
+    // In the ORIGINAL contract: 1 ETH goes to originalTarget, then contract balance (which is now 0 after the call) goes to owner
+    // In the MUTANT: 1 ETH goes to address(0), then contract balance (which is now 0 after the call) goes to owner
+    
+    // The test that kills the mutant: originalTarget should NOT receive any Ether in the mutant
+    // We check that originalTarget's balance did NOT increase (which would be true for original, false for mutant)
+    expect(originalTargetBalanceAfter).to.equal(originalTargetBalanceBefore);
+    
+    // Additional check: address(0) should have received the Ether in the mutant
+    // This will pass on mutant (balance increases) and fail on original (balance stays same)
+    expect(zeroAddressBalanceAfter).to.equal(zeroAddressBalanceBefore + sendValue);
+    
+    // Final check: contract should have zero balance after the call
+    expect(contractBalanceAfter).to.equal(0);
+  });
+});

@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "Calling Put with zero msg.value does not revert on the original contract (so reverted == false iff amount == 0 is false), i.e. only calls with value > 0 may revert in the mutant.",
+ "render_status": "rendered",
+ "validation_status": "skipped",
+ "validation_error": null,
+ "kill": "bug_no_kill:m_no_cex_within_bound",
+ "origin": "primary",
+ "change_summary": "Change the require to forbid zero-value deposits by requiring msg.value > 0, affecting whether state changes occur and thus observable Put behavior.",
+ "mutated_unit_code": "function Put(uint _unlockTime)\n     public payable {\n        Holder storage acc = Acc[msg.sender];\n        require(msg.value > 0);\n        acc.balance += msg.value;\n        acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp;\n        LogFile.AddMessage(msg.sender,msg.value,\"Put\");\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {W_WALLET} from \"../src/W_WALLET.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    W_WALLET c;\n\n    function setUp() public {\n        c = new W_WALLET(address(this));\n    }\n\n    function _run(uint256 amount, uint256 unlock) internal {\n        amount = bound(amount, 0, 1000000000000000000000000000000);\n        vm.deal(address(this), VALUE_CAP);\n        vm.deal(address(c), VALUE_CAP);\n        vm.assume(address(this).balance >= amount);\n        bool reverted;\n        try c.Put{value: amount}(unlock) { reverted = false; } catch { reverted = true; }\n        assertTrue(reverted == false);\n    }\n\n    function testFuzz_run(uint256 amount, uint256 unlock) public {\n        _run(amount, unlock);\n    }\n\n    receive() external payable { }\n}\n"
+}

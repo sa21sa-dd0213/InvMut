@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0002",
+ "property_summary": "After deploying C with owner = address(this), funding the contract with 1 ether, and pranking the owner to call withdrawAll(address(1)), the reference reverts because the require statement checks owner and then transfers balance to address(1), while the buggy version (without require) always transfers balance successfully; thus the reference's balance becomes 0 and the bug's also becomes 0 \u2014 but the difference is that the bug allows any caller to drain, though here both succeed. Instead, to trigger observable divergence, we make a non-owner call: the reference reverts (balance unchanged), the bug transfers (balance drops).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Delete the require statement",
+ "mutated_unit_code": "    function withdrawAll(address _recipient) public {\n\n        payable(_recipient).transfer(address(this).balance);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Phishable} from \"../src/Phishable.sol\";\n\ncontract InvMutTest is Test {\n    Phishable c;\n    function setUp() public { c = new Phishable(address(this)); }\n    function testRegression_property() public {\n        vm.deal(address(c), 1 ether);\n        address nonOwner = address(0x1234);\n        vm.deal(nonOwner, 0);\n        vm.prank(nonOwner);\n        bool ok;\n        try c.withdrawAll(nonOwner) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        assertTrue(address(c).balance == 1 ether);\n    }\n}"
+}

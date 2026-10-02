@@ -1,0 +1,42 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Reentrance mutant m270e41b0 test", function () {   it("should detect that addToBalance with 1 wei does not update balance correctly", async function () {     const [owner] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Reentrance");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Get initial balance     const initialBalance = await instance.getBalance(owner.address);     expect(initialBalance).to.equal(0);      // Send exactly 1 wei to addToBalance     const tx = await instance.addToBalance({ value: ethers.parseEther("0.000000000000000001") });     await tx.wait();      // Check balance after the call     const finalBalance = await instance.getBalance(owner.address);          // In the original contract, balance should be 1 wei     // In the mutant, due to msg.value-1 in the require, balance stays 0     expect(finalBalance).to.equal(ethers.parseEther("0.000000000000000001"));   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Reentrance { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public payable { require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender])); userBalance[msg.sender] += msg.value; } function withdrawBalance() public{ uint256 tmp__1 = userBalance[msg.sender]; userBalance[msg.sender] = 0; { (bool _s, bytes memory _d) = msg.sender.call{value: tmp__1}(""); _d; if (! _s) { revert(); } } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Reentrance mutant m270e41b0 test", function () {
+  it("should detect that addToBalance with 1 wei does not update balance correctly", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Reentrance");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get initial balance
+    const initialBalance = await instance.getBalance(owner.address);
+    expect(initialBalance).to.equal(0);
+
+    // Send exactly 1 wei to addToBalance
+    const tx = await instance.addToBalance({ value: 1 });
+    await tx.wait();
+
+    // Check balance after the call
+    const finalBalance = await instance.getBalance(owner.address);
+
+    // In the original contract, balance should be 1 wei
+    // In the mutant, due to msg.value-1 in the require, balance stays 0
+    expect(finalBalance).to.equal(1);
+  });
+});
+```

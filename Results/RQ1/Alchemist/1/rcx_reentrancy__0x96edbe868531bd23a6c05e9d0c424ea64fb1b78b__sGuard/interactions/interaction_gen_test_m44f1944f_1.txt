@@ -1,0 +1,60 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m44f1944f of PENNY_BY_PENNY.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PENNY_BY_PENNY.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PENNY_BY_PENNY:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PENNY_BY_PENNY reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PENNY_BY_PENNY by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PENNY_BY_PENNY"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PENNY_BY_PENNY mutant m44f1944f test", function () {
+  it("should kill mutant by demonstrating balance > MinSum allows Collect in original but fails in mutant", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy LogFile first (required for PENNY_BY_PENNY constructor)
+    const LogFactory = await ethers.getContractFactory("LogFile");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy PENNY_BY_PENNY
+    const Factory = await ethers.getContractFactory("PENNY_BY_PENNY");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Initialize the contract
+    await instance.connect(owner).SetLogFile(await log.getAddress());
+    await instance.connect(owner).SetMinSum(ethers.parseEther("1"));
+    await instance.connect(owner).Initialized();
+    
+    // addr1 deposits 2 ETH (balance > MinSum of 1 ETH)
+    await instance.connect(addr1).Put(0, { value: ethers.parseEther("2") });
+    
+    // Verify balance is greater than MinSum
+    const acc = await instance.Acc(addr1.address);
+    expect(acc.balance).to.equal(ethers.parseEther("2"));
+    
+    // Attempt to collect 1 ETH - should succeed in original (balance >= MinSum)
+    // but should revert in mutant (balance <= MinSum is false since 2 > 1)
+    await expect(
+      instance.connect(addr1).Collect(ethers.parseEther("1"))
+    ).to.be.reverted;
+    
+    // Verify balance remained unchanged (collect failed)
+    const accAfter = await instance.Acc(addr1.address);
+    expect(accAfter.balance).to.equal(ethers.parseEther("2"));
+  });
+});
+```

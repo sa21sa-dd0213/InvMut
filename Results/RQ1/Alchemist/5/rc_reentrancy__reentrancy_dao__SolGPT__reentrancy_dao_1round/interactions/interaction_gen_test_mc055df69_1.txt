@@ -1,0 +1,57 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mc055df69 of ReentrancyDAO.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test ReentrancyDAO.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for ReentrancyDAO:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("ReentrancyDAO reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy ReentrancyDAO by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("ReentrancyDAO"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ReentrancyDAO mutant test - mc055df69", function () {
+  it("should detect that deposit credits one wei less than msg.value", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("ReentrancyDAO");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const depositAmount = ethers.parseEther("1.0");
+    
+    // addr1 deposits exactly 1 ether
+    const tx = await instance.connect(addr1).deposit({ value: depositAmount });
+    await tx.wait();
+
+    // Now withdrawAll - this should send back the credited amount (which is depositAmount - 1 wei in the mutant)
+    const initialBalance = await ethers.provider.getBalance(addr1.address);
+    const withdrawTx = await instance.connect(addr1).withdrawAll();
+    const receipt = await withdrawTx.wait();
+    
+    // Calculate gas cost
+    const gasCost = receipt.gasUsed * receipt.gasPrice;
+    
+    // Final balance should be: initialBalance + creditedAmount - gasCost
+    // In original: creditedAmount = depositAmount, so final = initialBalance + depositAmount - gasCost
+    // In mutant: creditedAmount = depositAmount - 1, so final = initialBalance + depositAmount - 1 - gasCost
+    const finalBalance = await ethers.provider.getBalance(addr1.address);
+    
+    // Expected balance for original (deposit then full withdrawal):
+    // initialBalance + depositAmount - gasCost
+    const expectedOriginal = initialBalance + depositAmount - gasCost;
+    
+    // For the mutant, the user would have 1 wei less than expected
+    expect(finalBalance).to.equal(expectedOriginal - 1n);
+  });
+});
+```

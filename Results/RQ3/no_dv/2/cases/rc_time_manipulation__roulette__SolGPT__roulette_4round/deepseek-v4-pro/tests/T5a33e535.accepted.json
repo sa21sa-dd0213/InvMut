@@ -1,0 +1,12 @@
+{
+ "difference_id": "T5a33e535",
+ "property_summary": "After two successful fallback calls with different timestamps, pastBlockTime in the correct contract equals the second call's timestamp, but in the buggy contract it stays at the first call's timestamp, violating the invariant that pastBlockTime tracks the latest call's block.timestamp.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete 'pastBlockTime = block.timestamp;' so that pastBlockTime never updates, potentially changing future call outcomes.",
+ "mutated_unit_code": "fallback() external payable {\n    require(msg.value == 10 ether);\n\n    require(block.timestamp > pastBlockTime);\n\n\n    if(block.number % 15 == 0) {\n        payable(msg.sender).transfer(address(this).balance);\n    }\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 ts1, uint256 ts2, uint256 blk1, uint256 blk2, address a1, address a2) public {\n        vm.assume(ts2 > ts1);\n        vm.assume(ts1 > 0);\n        vm.assume(blk1 % 15 != 0);\n        vm.assume(blk2 % 15 != 0);\n        vm.assume(a1 != address(0));\n        vm.assume(a2 != address(0));\n        vm.assume(a1 != a2);\n        vm.deal(a1, 10 ether);\n        vm.warp(ts1);\n        vm.roll(blk1);\n        vm.prank(a1);\n        (bool ok1, ) = address(c).call{value: 10 ether}(\"\");\n        require(ok1, \"first call failed\");\n        vm.deal(a2, 10 ether);\n        vm.warp(ts2);\n        vm.roll(blk2);\n        vm.prank(a2);\n        (bool ok2, ) = address(c).call{value: 10 ether}(\"\");\n        require(ok2, \"second call failed\");\n        assertEq(c.pastBlockTime(), ts2);\n    }\n}\n"
+}

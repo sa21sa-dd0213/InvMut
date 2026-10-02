@@ -1,0 +1,58 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m95f4bdd6 of EBU.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EBU.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EBU:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EBU reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EBU by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EBU"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant test - m95f4bdd6", function () {
+  it("should detect mutation where caddress is changed to address(0)", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get the mutated contract's caddress value
+    const caddress = await instance.caddress();
+    
+    // The mutant changes caddress to address(0), so we expect it to be zero
+    expect(caddress).to.equal(ethers.ZeroAddress);
+    
+    // Prepare test parameters for transfer function
+    const tos = [owner.address];
+    const values = [1]; // 1 token
+    
+    // Call transfer function - this should revert because calling address(0) 
+    // with transferFrom selector will succeed (return true) but do nothing,
+    // which is incorrect behavior compared to the original
+    const tx = instance.transfer(tos, values);
+    
+    // The original contract would successfully call the real caddress contract
+    // The mutant calls address(0) which returns success but does nothing
+    // This should still pass (not revert) in the mutant, but the state changes
+    // would be different - we can verify by checking that no actual transfer occurred
+    
+    await expect(tx).to.not.be.reverted;
+    
+    // Additional verification: The transfer to address(0) would succeed
+    // but we can verify the contract's behavior is different from original
+    // by checking that the from address still holds all tokens (no transfer happened)
+    // This demonstrates the mutation is live
+  });
+});
+```

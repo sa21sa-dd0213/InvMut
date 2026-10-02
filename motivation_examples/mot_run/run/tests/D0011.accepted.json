@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0011",
+ "property_summary": "After any deposit, the deposit function succeeds and does not revert, ensuring the call completes; the modified version returns early without updating state so the deposit itself never fails but also never records, thus observing that the call did revert or not is insufficient: the invariant is that a successful deposit makes the caller's balance strictly greater than zero.",
+ "render_status": "rendered",
+ "validation_status": "skipped",
+ "validation_error": null,
+ "kill": "bug_no_kill:m_no_cex_within_bound",
+ "origin": "primary",
+ "change_summary": "Insert an early return before the balance update, preventing the deposit from being recorded.",
+ "mutated_unit_code": "function deposit() external payable {\n        return;\n        balance[msg.sender] += msg.value;\n        rateSnapshot[msg.sender] = rewardRate;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {RewardVault} from \"../src/RewardVault.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    RewardVault c;\n\n    function setUp() public {\n        c = new RewardVault();\n    }\n\n    function _run(uint256 amount) internal {\n        amount = bound(amount, 0, 1000000000000000000000000000000);\n        vm.deal(address(this), VALUE_CAP);\n        vm.deal(address(c), VALUE_CAP);\n        vm.assume(address(this).balance >= amount && amount > 0);\n        bool ok = true;\n        try c.deposit{value: amount}() {\n        } catch {\n            ok = false;\n        }\n        assertTrue(ok && c.balance(address(this)) > 0);\n    }\n\n    function testFuzz_run(uint256 amount) public {\n        _run(amount);\n    }\n\n    receive() external payable {}\n}\n"
+}

@@ -1,0 +1,83 @@
+{
+ "case_id": "rc_reentrancy__reentrancy_dao__SolGPT__reentrancy_dao_1round",
+ "config_label": "gpt-5-mini",
+ "target_contract": "ReentrancyDAO",
+ "modification_kind": "control_flow",
+ "feasible": true,
+ "reason": null,
+ "n_accepted": 2,
+ "n_validated": 2,
+ "n_killing": 1,
+ "success": true,
+ "kills": [
+  {
+   "difference_id": "T39a22c73",
+   "property": "For any depositor and deposited amount, after withdrawAll() returns the depositor's credit mapping entry is zero (refere",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Move the external call to msg.sender.call to occur before resetting credit[msg.sender] to 0 (introduces reentrancy possibility and changes final state observable after withdrawAll).",
+   "mutated_unit_code": "function withdrawAll() public {\n        uint oCredit = credit[msg.sender];\n        if (oCredit > 0) {\n            balance -= oCredit;\n            (bool callResult, ) = msg.sender.call{value: oCredit}(\"\");\n            require(callResult);\n            credit[msg.sender] = 0;\n        }\n    }",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  },
+  {
+   "difference_id": "T9289e346",
+   "property": "For any depositor and deposited amount, the reference contract always successfully returns funds on withdrawAll even if ",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Send value using transfer instead of low-level call, which reverts on failure differently and caps gas, changing observable behavior when withdrawAll completes.",
+   "mutated_unit_code": "function withdrawAll() public {\n        uint oCredit = credit[msg.sender];\n        if (oCredit > 0) {\n            balance -= oCredit;\n            credit[msg.sender] = 0;\n            payable(msg.sender).transfer(oCredit);\n        }\n    }",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "T50c27f6c",
+   "property": "For any caller address that can receive Ether, after depositing a positive amount and calling withdrawAll, the reference",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Require that callResult is false instead of true, causing revert on successful sends and changing observable outcome.",
+   "mutated_unit_code": "function withdrawAll() public {\n        uint oCredit = credit[msg.sender];\n        if (oCredit > 0) {\n            balance -= oCredit;\n            credit[msg.sender] = 0;\n            (bool callResult, ) = msg.sender.call{value: oCredit}(\"\");\n            require(!callResult);\n        }\n    }",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "T735c9d38",
+   "property": "Invariant: After any call to withdrawAll by an address that had positive credit, that address's credit is zero (the cont",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "success_route": null,
+   "oracle_origin": null,
+   "kill_entrypoint": null,
+   "property_based_core": null,
+   "standalone_replay": null,
+   "oracle_reach": null,
+   "ce_id": null,
+   "source_difference_id": null,
+   "source_property_focus": null,
+   "change_summary": "Move the assignment that zeroes the caller's credit to after the external call, so credit is cleared only after the call returns (introduces a reentrancy-sensitive behavior).",
+   "mutated_unit_code": "function withdrawAll() public {\n        uint oCredit = credit[msg.sender];\n        if (oCredit > 0) {\n            balance -= oCredit;\n            // credit[msg.sender] = 0;  -- moved after external call\n            (bool callResult, ) = msg.sender.call{value: oCredit}(\"\");\n            require(callResult);\n            credit[msg.sender] = 0;\n        }\n    }",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  }
+ ],
+ "tokens": {
+  "prompt": 144402,
+  "completion": 53546,
+  "reasoning": 0,
+  "cached": 0
+ },
+ "wallclock_s": 744.6625151634216,
+ "infra_error": null
+}

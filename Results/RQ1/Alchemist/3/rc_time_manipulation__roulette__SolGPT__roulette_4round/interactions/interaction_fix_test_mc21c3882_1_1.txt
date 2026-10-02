@@ -1,0 +1,51 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Roulette mutant mc21c3882 test", function () {   it("should kill mutant by making two calls in the same timestamp", async function () {     const [owner] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Roulette");     const instance = await Factory.deploy({ value: ethers.parseEther("10") });     await instance.waitForDeployment();      // First call - should succeed on both original and mutant     const tx1 = await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10")     });     await tx1.wait();      // Mine a block with the same timestamp (force timestamp to stay the same)     await ethers.provider.send("evm_setNextBlockTimestamp", [       (await ethers.provider.getBlock("latest")).timestamp     ]);      // Second call at exactly the same timestamp     // Original reverts (strict >), mutant passes (>=)     const tx2 = owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10")     });      // The mutant will not revert, so we expect the original behavior to revert     // This assertion will pass for the original but fail (kill) the mutant     await expect(tx2).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant mc21c3882 test", function () {
+  it("should kill mutant by making two calls in the same timestamp", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy({ value: ethers.parseEther("10") });
+    await instance.waitForDeployment();
+
+    // First call - should succeed on both original and mutant
+    const tx1 = await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    await tx1.wait();
+
+    // Mine a block with the same timestamp (force timestamp to stay the same)
+    const latestBlock = await ethers.provider.getBlock("latest");
+    await ethers.provider.send("evm_setNextBlockTimestamp", [
+      latestBlock.timestamp
+    ]);
+
+    // Second call at exactly the same timestamp
+    // Original reverts (strict >), mutant passes (>=)
+    const tx2 = owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+
+    // The mutant will not revert, so we expect the original behavior to revert
+    // This assertion will pass for the original but fail (kill) the mutant
+    await expect(tx2).to.be.reverted;
+  });
+});
+```

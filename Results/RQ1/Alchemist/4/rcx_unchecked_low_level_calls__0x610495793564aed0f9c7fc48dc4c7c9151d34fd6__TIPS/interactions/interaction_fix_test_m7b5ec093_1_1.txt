@@ -1,0 +1,56 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("SimpleWallet reference (ethers v6; deploy may require constructor arguments)", function () {   it("should revert when sendMoney is called with a target that fails, but mutant silently succeeds", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("SimpleWallet");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Deploy a simple contract that always reverts on receiving ETH     const ReverterFactory = await ethers.getContractFactory("Reverter");     const reverter = await ReverterFactory.deploy();     await reverter.waitForDeployment();      // Fund the wallet with some ETH first     await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("1.0")     });      // Attempt to send ETH to the reverting contract - should revert in original     const tx = instance.connect(owner).sendMoney(       await reverter.getAddress(),       ethers.parseEther("0.5"),       "0x"     );      // The original contract should revert because the call fails     // The mutant will NOT revert (due to false condition), so this assertion kills the mutant     await expect(tx).to.be.reverted;   }); });  // Helper contract that always reverts on receive contract Reverter {   receive() external payable {     revert("Always reverting");   } }
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract SimpleWallet { address public owner = payable(msg.sender); uint public depositsCount; modifier onlyOwner(){ require(msg.sender == owner); _;} fallback() external payable { depositsCount++; } function withdrawAll()  public onlyOwner { withdraw(address(this).balance); } function withdraw(uint _value)  public onlyOwner { payable(msg.sender).transfer(_value); } function sendMoney(address _target, uint _value, bytes memory _data)  public onlyOwner { { (bool _s, bytes memory _d) = _target.call{value: _value}(_data); _d; if (! _s) { revert();} } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("SimpleWallet reference (ethers v6; deploy may require constructor arguments)", function () {
+  it("should revert when sendMoney is called with a target that fails, but mutant silently succeeds", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("SimpleWallet");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy a simple contract that always reverts on receiving ETH
+    const ReverterFactory = await ethers.getContractFactory("Reverter");
+    const reverter = await ReverterFactory.deploy();
+    await reverter.waitForDeployment();
+
+    // Fund the wallet with some ETH first
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("1.0")
+    });
+
+    // Attempt to send ETH to the reverting contract - should revert in original
+    const tx = instance.connect(owner).sendMoney(
+      await reverter.getAddress(),
+      ethers.parseEther("0.5"),
+      "0x"
+    );
+
+    // The original contract should revert because the call fails
+    // The mutant will NOT revert (due to false condition), so this assertion kills the mutant
+    await expect(tx).to.be.reverted;
+  });
+});
+
+// Helper contract that always reverts on receive
+contract Reverter {
+  receive() external payable {
+    revert("Always reverting");
+  }
+}
+```

@@ -1,0 +1,47 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("demo mutant m3f8e0a63 test", function () {   it("should revert when external call fails (original behavior), but mutant should not revert", async function () {     const [owner] = await ethers.getSigners();          // Deploy the demo contract (no constructor arguments needed)     const Factory = await ethers.getContractFactory("demo");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Create a fake token address that will cause transferFrom to fail     // We deploy a simple contract that always returns false from transferFrom     const FailTokenFactory = await ethers.getContractFactory(       "contract FailToken { function transferFrom(address, address, uint256) external returns (bool) { return false; } }"     );     const failToken = await FailTokenFactory.deploy();     await failToken.waitForDeployment();          const fakeTokenAddress = await failToken.getAddress();     const recipients = [owner.address];     const amount = ethers.parseEther("1");          // This should revert in the original contract because !_s is true     // but should NOT revert in the mutant because condition is replaced with false     await expect(       instance.transfer(owner.address, fakeTokenAddress, recipients, amount)     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract demo { function transfer(address from, address caddress, address[] memory _tos, uint v)  public returns (bool) { require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); _d; if (! _s) { revert();} } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("demo mutant m3f8e0a63 test", function () {
+  it("should revert when external call fails (original behavior), but mutant should not revert", async function () {
+    const [owner] = await ethers.getSigners();
+    
+    // Deploy the demo contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("demo");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Create a fake token address that will cause transferFrom to fail
+    // We deploy a simple contract that always returns false from transferFrom
+    const failTokenFactory = await ethers.getContractFactory(
+      "contract FailToken { function transferFrom(address, address, uint256) external returns (bool) { return false; } }"
+    );
+    const failToken = await failTokenFactory.deploy();
+    await failToken.waitForDeployment();
+    
+    const fakeTokenAddress = await failToken.getAddress();
+    const recipients = [owner.address];
+    const amount = ethers.parseEther("1");
+    
+    // This should revert in the original contract because !_s is true
+    // but should NOT revert in the mutant because condition is replaced with false
+    await expect(
+      instance.transfer(owner.address, fakeTokenAddress, recipients, amount)
+    ).to.be.reverted;
+  });
+});
+```

@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0006",
+ "property_summary": "After calling NETM() and then transferFrom with amount = 1, allowance is deducted by 1 on reference but by 0 on bug, so a second transferFrom reverts on reference but succeeds on bug.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Replace `allowed[_from][msg.sender] = (allowed[_from][msg.sender] - (_amount));` with `allowed[_from][msg.sender] = (allowed[_from][msg.sender] - (_amount - 1));` so that the allowance deduction is off by one.",
+ "mutated_unit_code": "    function transferFrom(address _from, address _to, uint256 _amount) onlyPayloadSize(3 * 32) public override virtual returns (bool success) {\n        require(_to != address(0));\n        require(_amount <= balances[_from]);\n        require(_amount <= allowed[_from][msg.sender]);\n\n        balances[_from] = (balances[_from] - (_amount));\n        allowed[_from][msg.sender] = (allowed[_from][msg.sender] - (_amount - 1));\n        balances[_to] = (balances[_to] + (_amount));\n        emit Transfer(_from, _to, _amount);\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {NewIntelTechMedia} from \"../src/NewIntelTechMedia.sol\";\n\ncontract InvMutTest is Test {\n    NewIntelTechMedia c;\n    function setUp() public { c = new NewIntelTechMedia(); }\n    function testRegression_property() public {\n        c.NETM();\n        c.approve(address(0xbeef), 1);\n        vm.prank(address(0xbeef));\n        c.transferFrom(address(this), address(0xdead), 1);\n        vm.prank(address(0xbeef));\n        bool ok;\n        try c.transferFrom(address(this), address(0xdead), 1) { ok = true; }\n        catch { ok = false; }\n        assertTrue(!ok, \"Bug should have caused revert\");\n    }\n}"
+}

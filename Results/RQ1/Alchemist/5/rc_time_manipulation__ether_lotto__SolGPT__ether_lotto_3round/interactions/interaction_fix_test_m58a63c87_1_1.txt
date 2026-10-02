@@ -1,0 +1,68 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EtherLotto mutant m58a63c87 detection", function () {   it("should detect the mutant by verifying different outcomes across blocks", async function () {     const [owner, player1, player2] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("EtherLotto");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const TICKET_AMOUNT = ethers.parseEther("10");     const FEE_AMOUNT = ethers.parseEther("1");      // Play multiple times in different blocks and collect results     const results: string[] = [];          // Play 5 times, each in a different block     for (let i = 0; i < 5; i++) {       // Get current pot before playing       const potBefore = await instance.pot();              // Play as player1       const tx = await instance.connect(player1).play({ value: TICKET_AMOUNT });       const receipt = await tx.wait();              // Determine who won by checking pot after transaction       const potAfter = await instance.pot();              if (potAfter === 0n) {         // Pot was reset - someone won         // Check if bank received fee         const bankBalance = await ethers.provider.getBalance(instance.target);         // If bank balance increased by exactly FEE_AMOUNT, bank didn't win (player won)         // If bank balance increased by more, bank won         results.push("winner_determined");       } else {         results.push("no_winner");       }              // Mine a new block to change block.prevrandao       await ethers.provider.send("evm_mine", []);     }      // The mutant should produce varying results across blocks     // The original with constant block.difficulty would always produce the same result     const uniqueResults = new Set(results);          // With 5 trials and random outcomes, we expect at least 2 different results     // (if mutant is present) or all same (if original behavior)     expect(uniqueResults.size).to.be.greaterThan(1);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant m58a63c87 detection", function () {
+  it("should detect the mutant by verifying different outcomes across blocks", async function () {
+    const [owner, player1, player2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = ethers.parseEther("10");
+    const FEE_AMOUNT = ethers.parseEther("1");
+
+    // Play multiple times in different blocks and collect results
+    const results: string[] = [];
+
+    // Play 5 times, each in a different block
+    for (let i = 0; i < 5; i++) {
+      // Get current pot before playing
+      const potBefore = await instance.pot();
+
+      // Play as player1
+      const tx = await instance.connect(player1).play({ value: TICKET_AMOUNT });
+      const receipt = await tx.wait();
+
+      // Determine who won by checking pot after transaction
+      const potAfter = await instance.pot();
+
+      if (potAfter === 0n) {
+        // Pot was reset - someone won
+        // Check if bank received fee
+        const bankBalance = await ethers.provider.getBalance(instance.target);
+        // If bank balance increased by exactly FEE_AMOUNT, bank didn't win (player won)
+        // If bank balance increased by more, bank won
+        results.push("winner_determined");
+      } else {
+        results.push("no_winner");
+      }
+
+      // Mine a new block to change block.prevrandao
+      await ethers.provider.send("evm_mine", []);
+    }
+
+    // The mutant should produce varying results across blocks
+    // The original with constant block.difficulty would always produce the same result
+    const uniqueResults = new Set(results);
+
+    // With 5 trials and random outcomes, we expect at least 2 different results
+    // (if mutant is present) or all same (if original behavior)
+    expect(uniqueResults.size).to.be.greaterThan(1);
+  });
+});
+```

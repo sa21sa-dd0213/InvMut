@@ -1,0 +1,51 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EtherLotto mutant m90b5ca14 detection", function () {   it("should detect mutant that increments pot by msg.value+1 instead of msg.value", async function () {     const [owner, player] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("EtherLotto");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const ticketAmount = 10n; // TICKET_AMOUNT = 10 wei     const feeAmount = 1n;     // FEE_AMOUNT = 1 wei      // Player sends exactly 10 wei to play     const tx = await instance.connect(player).play({ value: ticketAmount });     await tx.wait();      // In the original contract, pot = 10, player receives 9 on win, bank receives 1     // In the mutant, pot = 11 (msg.value + 1), so if player wins they would receive 10 instead of 9     // This test checks that the player's balance change is exactly 9 wei (pot - fee) when they win,     // which would fail against the mutant where the player would receive 10 wei          const playerBalanceAfter = await ethers.provider.getBalance(player.address);     // Since we can't guarantee win/loss outcome, we check the contract balance     // Contract should have exactly 10 wei after one play (before any payout)     const contractBalance = await ethers.provider.getBalance(instance.target);          // The mutant adds 1 to pot, so pot becomes 11 but only 10 wei actually sent     // This means contract balance (10) won't match pot (11) in mutant     // We can detect this by checking that pot equals contract balance     const pot = await instance.pot();     expect(pot).to.equal(contractBalance);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant m90b5ca14 detection", function () {
+  it("should detect mutant that increments pot by msg.value+1 instead of msg.value", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const ticketAmount = 10n; // TICKET_AMOUNT = 10 wei
+    const feeAmount = 1n;
+    // FEE_AMOUNT = 1 wei
+
+    // Player sends exactly 10 wei to play
+    const tx = await instance.connect(player).play({ value: ticketAmount });
+    await tx.wait();
+
+    // In the original contract, pot = 10, player receives 9 on win, bank receives 1
+    // In the mutant, pot = 11 (msg.value + 1), so if player wins they would receive 10 instead of 9
+    // This test checks that the player's balance change is exactly 9 wei (pot - fee) when they win,
+    // which would fail against the mutant where the player would receive 10 wei
+
+    const playerBalanceAfter = await ethers.provider.getBalance(player.address);
+    // Since we can't guarantee win/loss outcome, we check the contract balance
+    // Contract should have exactly 10 wei after one play (before any payout)
+    const contractBalance = await ethers.provider.getBalance(instance.target);
+
+    // The mutant adds 1 to pot, so pot becomes 11 but only 10 wei actually sent
+    // This means contract balance (10) won't match pot (11) in mutant
+    // We can detect this by checking that pot equals contract balance
+    const pot = await instance.pot();
+    expect(pot).to.equal(contractBalance);
+  });
+});
+```

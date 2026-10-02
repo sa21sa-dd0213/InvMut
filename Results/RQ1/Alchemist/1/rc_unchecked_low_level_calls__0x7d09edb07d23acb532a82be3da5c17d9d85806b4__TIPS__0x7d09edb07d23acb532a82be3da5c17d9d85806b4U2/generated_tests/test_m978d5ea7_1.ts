@@ -1,0 +1,147 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PoCGame mutant detection - blockhash replacement", function () {
+    it("should detect mutant that replaces blockhash(blockNumber) with 0 by verifying different block hashes produce different results", async function () {
+        const [owner, player] = await ethers.getSigners();
+        
+        // Deploy contract with whale address = owner and wager limit = 1 ether
+        const Factory = await ethers.getContractFactory("PoCGame");
+        const instance = await Factory.deploy(owner.address, ethers.parseEther("1"));
+        await instance.waitForDeployment();
+        
+        // Open to public
+        await instance.connect(owner).OpenToThePublic();
+        
+        // Set difficulty to a value that makes the blockhash matter
+        // Use difficulty = 100 so the winning number range is 1-100
+        await instance.connect(owner).AdjustDifficulty(100);
+        
+        // Player makes first wager at block N
+        const wagerAmount = ethers.parseEther("1");
+        await instance.connect(player).wager({ value: wagerAmount });
+        
+        // Mine a block to advance block number
+        await ethers.provider.send("evm_mine", []);
+        
+        // Store first result by calling play()
+        const tx1 = await instance.connect(player).play();
+        const receipt1 = await tx1.wait();
+        
+        // Get the block number of the first wager to verify it's different from second
+        // Mine another block to ensure we can wager again
+        await ethers.provider.send("evm_mine", []);
+        
+        // Player makes second wager at a different block
+        await instance.connect(player).wager({ value: wagerAmount });
+        
+        // Mine another block
+        await ethers.provider.send("evm_mine", []);
+        
+        // Call play() again - this should use a different blockhash
+        const tx2 = await instance.connect(player).play();
+        const receipt2 = await tx2.wait();
+        
+        // In the original contract, blockhash(blockNumber) changes per block
+        // In the mutant, it's always 0, making results deterministic for same player
+        // We can detect the mutant by verifying the events differ between the two plays
+        // (Win or Lose events should be different since blockhash differs)
+        
+        // Get the events from both transactions
+        const winEvent1 = receipt1.logs.find(log => {
+            try {
+                const parsed = instance.interface.parseLog(log);
+                return parsed?.name === "Win";
+            } catch { return false; }
+        });
+        
+        const loseEvent1 = receipt1.logs.find(log => {
+            try {
+                const parsed = instance.interface.parseLog(log);
+                return parsed?.name === "Lose";
+            } catch { return false; }
+        });
+        
+        const winEvent2 = receipt2.logs.find(log => {
+            try {
+                const parsed = instance.interface.parseLog(log);
+                return parsed?.name === "Win";
+            } catch { return false; }
+        });
+        
+        const loseEvent2 = receipt2.logs.find(log => {
+            try {
+                const parsed = instance.interface.parseLog(log);
+                return parsed?.name === "Lose";
+            } catch { return false; }
+        });
+        
+        // Determine results for both plays
+        const result1 = winEvent1 ? "win" : "lose";
+        const result2 = winEvent2 ? "win" : "lose";
+        
+        // In the original contract with different blockhashes, results could differ
+        // In the mutant, same player always gets same result (deterministic from 0)
+        // We expect results to potentially differ, but at minimum we verify 
+        // that different blockhashes produce different winning number calculations
+        
+        // This is a statistical test - run multiple times to increase confidence
+        // For a deterministic test, we check that the events exist and are different
+        // Actually, we need a more precise approach:
+        
+        // The mutant makes the winning number = (keccak256(0, player)) % 100 + 1
+        // which is always the same for this player
+        // Original makes it = (keccak256(blockhash(N), player)) % 100 + 1
+        // which varies per block
+        
+        // To kill the mutant, we verify that different blockhashes produce different outcomes
+        // Since we can't guarantee different outcomes (could be same by chance),
+        // we instead verify the contract state or emitted values
+        
+        // Better approach: check the actual winning numbers by inspecting events
+        // For the mutant, the winning number is constant; for original, it varies
+        
+        // Let's redo with a simpler check: just verify that two plays produce
+        // different winning numbers (high probability with difficulty=100)
+        
+        // Reset and try again with clear state
+        const Factory2 = await ethers.getContractFactory("PoCGame");
+        const instance2 = await Factory2.deploy(owner.address, ethers.parseEther("1"));
+        await instance2.waitForDeployment();
+        
+        await instance2.connect(owner).OpenToThePublic();
+        await instance2.connect(owner).AdjustDifficulty(100);
+        
+        // Play multiple rounds and collect results
+        const results: string[] = [];
+        
+        for (let i = 0; i < 5; i++) {
+            await instance2.connect(player).wager({ value: ethers.parseEther("1") });
+            await ethers.provider.send("evm_mine", []);
+            const tx = await instance2.connect(player).play();
+            const receipt = await tx.wait();
+            
+            const winEvent = receipt.logs.find(log => {
+                try {
+                    const parsed = instance2.interface.parseLog(log);
+                    return parsed?.name === "Win";
+                } catch { return false; }
+            });
+            
+            results.push(winEvent ? "win" : "lose");
+            
+            // Mine a block for next iteration
+            await ethers.provider.send("evm_mine", []);
+        }
+        
+        // Check if we got mixed results (some wins, some losses)
+        const uniqueResults = [...new Set(results)];
+        
+        // In the mutant, results would be all the same (all wins or all losses)
+        // In the original, with different blockhashes, we expect at least one win and one loss
+        // This test kills the mutant if we detect mixed results
+        
+        // For robustness, we also check that the contract is functioning
+        expect(uniqueResults.length).to.be.greaterThan(1);
+    });
+});

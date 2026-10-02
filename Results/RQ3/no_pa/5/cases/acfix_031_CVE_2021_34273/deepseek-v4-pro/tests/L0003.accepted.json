@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0003",
+ "property_summary": "After deploying C as owner=address(0), calling transferOwnership(alice) as alice should fail (require) due to onlyOwner modifier, but the buggy version writes msg.sender to owner before the modifier check? Actually both have modifier; the bug is that in the second version, transferOwnership sets owner = msg.sender instead of owner = newOwner, so after a legitimate owner call to transferOwnership to bob, owner becomes msg.sender (owner) not bob, breaking the expected transfer. Concrete: deploy (owner=address(0)), prank bob (random address) call owned() will revert (since owner is 0). Then prank address(0) (default caller) call transferOwnership(bob) — in reference, owner becomes bob, in buggy version owner stays address(0). Then assert owner is bob.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "-owner = newOwner;; +owner = msg.sender;",
+ "mutated_unit_code": "function transferOwnership(address newOwner) onlyOwner public {\n    owner = msg.sender;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Owned} from \"../src/Owned.sol\";\n\ncontract InvMutTest is Test {\n    Owned c;\n    function setUp() public { c = new Owned(); }\n    function testRegression_property() public {\n        address bob = address(0x1234);\n        vm.prank(bob);\n        bool ok;\n        try c.owned() { ok = true; } catch { ok = false; }\n        assertTrue(!ok);\n        vm.prank(address(0));\n        c.transferOwnership(bob);\n        assertEq(c.owner(), bob);\n    }\n}\n"
+}

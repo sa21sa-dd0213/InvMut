@@ -1,0 +1,12 @@
+{
+ "difference_id": "T0dab3cf5",
+ "property_summary": "For any non-empty _tos array and a callee contract that always succeeds on the encoded transferFrom calls, C.transfer(...) returns true (the mutant returns false for the same inputs), so the reference always returns true while the mutant can return false.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the returned value true with false so the function always returns false when it completes.",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0; i<_tos.length; i++){\n            { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); require(_s); }\n        }\n        return false;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airPort} from \"../src/airPort.sol\";\n\ncontract InvMutTest is Test {\n    airPort c;\n    function setUp() public { c = new airPort(); }\n\n    function testFuzz_property(address from, uint256 v, uint256 len) public {\n        uint256 tosLen = bound(len, 1, 5);\n\n        AlwaysSucceeds callee = new AlwaysSucceeds();\n\n        address[] memory tos = new address[](tosLen);\n        for (uint i = 0; i < tosLen; i++) {\n            tos[i] = address(callee);\n        }\n\n        bool ok;\n        try c.transfer(from, address(callee), tos, v) returns (bool ret) {\n            ok = ret;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok);\n    }\n}\n\ncontract AlwaysSucceeds {\n    fallback() external payable {\n    }\n    receive() external payable {}\n}\n"
+}

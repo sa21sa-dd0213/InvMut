@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "After any sequence of addToBalance calls, the sum of all individual deposits made by a user must equal that user's recorded balance; the mutant violates this by overwriting the balance instead of accumulating deposits.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace `userBalance[msg.sender] = add_uint256(userBalance[msg.sender], msg.value);` with `userBalance[msg.sender] = msg.value;` so old balance is overwritten.",
+ "mutated_unit_code": "function addToBalance()  public nonReentrant_ payable {\n         userBalance[msg.sender] = msg.value;\n     }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n\n    function testFuzz_property(address user, uint256 deposit1, uint256 deposit2) public {\n        vm.assume(user != address(0) && user != address(this));\n        vm.assume(deposit1 <= 1e36 && deposit2 <= 1e36);\n        vm.assume(deposit1 + deposit2 >= deposit1);\n\n        uint256 sum = deposit1 + deposit2;\n\n        vm.deal(user, sum);\n        vm.startPrank(user);\n        c.addToBalance{value: deposit1}();\n        c.addToBalance{value: deposit2}();\n        vm.stopPrank();\n\n        uint256 recorded = c.getBalance(user);\n        assertEq(recorded, sum, \"balance must equal sum of deposits\");\n    }\n}\n"
+}

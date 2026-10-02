@@ -1,0 +1,94 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("EBU mutant m0e64bde0 test", function () {   it("should kill mutant by verifying transfer loop executes when _tos has elements", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy EBU - no constructor arguments needed as per contract     const Factory = await ethers.getContractFactory("EBU");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Get the contract addresses     const fromAddress = await instance.from();     const caddress = await instance.caddress();          // Fund the from address with ETH so it can make calls (or use impersonation)     await owner.sendTransaction({       to: fromAddress,       value: ethers.parseEther("1.0")     });          // Prepare test data: one recipient, one value     const recipients = [addr1.address];     const values = [1]; // 1 token (will be multiplied by 1e18 inside contract)          // Call transfer from the authorized address (from)     await hre.network.provider.request({       method: "hardhat_impersonateAccount",       params: [fromAddress]     });     const fromSigner = await ethers.getSigner(fromAddress);          // Fund the fromSigner for gas     await owner.sendTransaction({       to: fromAddress,       value: ethers.parseEther("1.0")     });          // Execute transfer     const tx = await instance.connect(fromSigner).transfer(recipients, values);     await tx.wait();          // The original contract would make the transferFrom call.     // The mutant with i > _tos.length would skip the loop entirely.     // We can verify by checking that the call was made (e.g., via event or balance check)     // Since we cannot easily check the internal call, we can verify the function succeeded     // and that it didn't revert - but the mutant would also not revert.     // A better approach: check that the function returns true (original) vs      // we can observe that the loop never executes by checking that      // the contract's from address still has its ETH (no gas spent on internal calls)     // Actually, we can check the return value - both return true.          // The key difference: mutant loop never executes, so we need to verify      // that the internal call was made. We can do this by checking the      // recipient's ETH balance change (if transferFrom sends ETH) or      // by checking that the call reverted for invalid input vs not.          // Better: use a second call with invalid recipient to force revert in original     // but mutant would succeed (no loop execution = no revert)     const badRecipients = [ethers.ZeroAddress]; // address(0) will cause revert in transferFrom     const badValues = [1];          // Original should revert because transferFrom to zero address fails     await expect(       instance.connect(fromSigner).transfer(badRecipients, badValues)     ).to.be.reverted;          // If the mutant is live, the loop doesn't execute, so no revert occurs     // Therefore a test expecting revert will FAIL on the mutant -> kills it          // Stop impersonation     await hre.network.provider.request({       method: "hardhat_stopImpersonatingAccount",       params: [fromAddress]     });   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EBU { address public from = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9; address public caddress = 0x1f844685f7Bf86eFcc0e74D8642c54A257111923; function transfer( address[] memory _tos, uint[] memory v)  public returns (bool) { require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9); require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v[i] * 1000000000000000000)); _d; if (! _s) { revert();} } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant m0e64bde0 test", function () {
+  it("should kill mutant by verifying transfer loop executes when _tos has elements", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy EBU - no constructor arguments needed as per contract
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get the contract addresses
+    const fromAddress = await instance.from();
+    const caddress = await instance.caddress();
+
+    // Fund the from address with ETH so it can make calls (or use impersonation)
+    await owner.sendTransaction({
+      to: fromAddress,
+      value: ethers.parseEther("1.0")
+    });
+
+    // Prepare test data: one recipient, one value
+    const recipients = [addr1.address];
+    const values = [1]; // 1 token (will be multiplied by 1e18 inside contract)
+
+    // Call transfer from the authorized address (from)
+    await hre.network.provider.request({
+      method: "hardhat_impersonateAccount",
+      params: [fromAddress]
+    });
+    const fromSigner = await ethers.getSigner(fromAddress);
+
+    // Fund the fromSigner for gas
+    await owner.sendTransaction({
+      to: fromAddress,
+      value: ethers.parseEther("1.0")
+    });
+
+    // Execute transfer
+    const tx = await instance.connect(fromSigner).transfer(recipients, values);
+    await tx.wait();
+
+    // The original contract would make the transferFrom call.
+    // The mutant with i > _tos.length would skip the loop entirely.
+    // We can verify by checking that the call was made (e.g., via event or balance check)
+    // Since we cannot easily check the internal call, we can verify the function succeeded
+    // and that it didn't revert - but the mutant would also not revert.
+    // A better approach: check that the function returns true (original) vs 
+    // we can observe that the loop never executes by checking that 
+    // the contract's from address still has its ETH (no gas spent on internal calls)
+    // Actually, we can check the return value - both return true.
+
+    // The key difference: mutant loop never executes, so we need to verify 
+    // that the internal call was made. We can do this by checking the 
+    // recipient's ETH balance change (if transferFrom sends ETH) or
+    // by checking that the call reverted for invalid input vs not.
+
+    // Better: use a second call with invalid recipient to force revert in original
+    // but mutant would succeed (no loop execution = no revert)
+    const badRecipients = [ethers.ZeroAddress]; // address(0) will cause revert in transferFrom
+    const badValues = [1];
+
+    // Original should revert because transferFrom to zero address fails
+    await expect(
+      instance.connect(fromSigner).transfer(badRecipients, badValues)
+    ).to.be.reverted;
+
+    // If the mutant is live, the loop doesn't execute, so no revert occurs
+    // Therefore a test expecting revert will FAIL on the mutant -> kills it
+
+    // Stop impersonation
+    await hre.network.provider.request({
+      method: "hardhat_stopImpersonatingAccount",
+      params: [fromAddress]
+    });
+  });
+});
+```

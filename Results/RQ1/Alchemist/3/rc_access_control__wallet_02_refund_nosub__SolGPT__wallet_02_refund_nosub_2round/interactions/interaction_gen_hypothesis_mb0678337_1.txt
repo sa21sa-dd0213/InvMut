@@ -1,0 +1,23 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Wallet:
+        Contract Code: pragma solidity ^0.8.0; contract Wallet { address creator; mapping(address => uint256) balances; constructor() public { creator = payable(msg.sender); } function deposit() public payable { assert(balances[msg.sender] + msg.value > balances[msg.sender]); balances[msg.sender] += msg.value; } function withdraw(uint256 amount) public { require(amount <= balances[msg.sender]); payable(msg.sender).transfer(amount); balances[msg.sender] -= amount; } function refund() public { payable(msg.sender).transfer(balances[msg.sender]); balances[msg.sender] = 0; } function migrateTo(address to) public { require(creator == msg.sender); payable(to).transfer(address(this).balance); } }
+
+    Consider the following mutant of Wallet:
+        Mutant mb0678337 of function deposit replaces assert(balances[msg.sender] + msg.value > balances[msg.sender]); with 
+        Mutant Diff: ---|         assert(balances[msg.sender] + msg.value > balances[msg.sender]); +++|
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Looking at the mutant, the change is that the `assert(balances[msg.sender] + msg.value > balances[msg.sender]);` line has been removed entirely (the diff shows the original line is replaced with nothing).
+
+This assertion is a safety check that prevents integer overflow when adding to the user's balance. Without it, a user could theoretically deposit an amount that causes their balance to overflow (though in Solidity 0.8+, overflow is checked by default, so this assertion is redundant for overflow protection but serves as a logical guard).
+
+**Hypothesis:** The mutant removes the assertion that validates the deposit amount results in a balance increase. Therefore, a test case that deposits a very large amount (close to type(uint256).max) and then verifies that the balance does not wrap around to a smaller value due to overflow, or a test case that checks that the assertion condition is actually evaluated and reverts on overflow-like conditions, should kill the mutant. Specifically, a test that deposits an amount such that `balances[msg.sender] + msg.value` would mathematically exceed the maximum uint256 value, expecting a revert (due to the assert failing in the original), would pass on the original but fail on the mutant (since the mutant would either succeed with overflow or behave differently).

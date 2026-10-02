@@ -1,0 +1,77 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Reentrance mutant kill test", function () {   it("should revert when withdrawal fails (mutant removed revert)", async function () {     const [owner, attacker] = await ethers.getSigners();          // Deploy the Reentrance contract (no constructor args needed for this contract)     const Factory = await ethers.getContractFactory("Reentrance");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Deploy a receiver contract that rejects incoming ETH     const ReceiverFactory = await ethers.getContractFactory("RejectingReceiver");     const receiver = await ReceiverFactory.deploy();     await receiver.waitForDeployment();          // Fund the Reentrance contract with some ETH     await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("1.0")     });          // Fund the receiver's balance in Reentrance     const receiverAddress = await receiver.getAddress();     await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("0.5")     });     // Directly set balance for receiver (since addToBalance uses msg.sender)     // We'll use attacker to add balance to the receiver contract's address     await instance.connect(attacker).addToBalance({ value: ethers.parseEther("0.5") });     // Actually we need the receiver contract to be the one calling withdrawBalance     // So let's transfer ownership of the balance to receiver contract          // Alternative approach: have the receiver contract call withdrawBalance     // First add balance to the receiver contract's address     await instance.connect(owner).addToBalance({ value: ethers.parseEther("0.5") });     // Wait, we need to add balance from receiver contract's perspective          // Simpler: Use the receiver contract to call withdrawBalance     // First ensure receiver has balance in the contract     // Fund the contract and set balance for receiver address     await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("2.0")     });          // Call addToBalance from receiver contract to credit its address     await receiver.addBalance(await instance.getAddress(), { value: ethers.parseEther("1.0") });          // Now receiver has balance, call withdrawBalance from receiver     // This should fail because receiver rejects ETH, and the original would revert     await expect(       receiver.withdrawFrom(await instance.getAddress())     ).to.be.reverted;          // Verify that receiver's balance in Reentrance is preserved in original (not in mutant)     // In the original, the revert would keep the balance; in mutant, balance would be 0     const balanceAfter = await instance.getBalance(await receiver.getAddress());     expect(balanceAfter).to.equal(ethers.parseEther("1.0"));   }); });  // Helper contract that rejects ETH // This would be deployed as a separate contract // Note: For a complete test, you'd need to deploy this contract too // But since we can't deploy two contracts in this test, we'll use a different approach  // Alternative simpler test: describe("Reentrance mutant kill test v2", function () {   it("should revert when external call fails", async function () {     const [owner] = await ethers.getSigners();          const Factory = await ethers.getContractFactory("Reentrance");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Create a contract that will reject ETH     const Rejector = await ethers.getContractFactory("RejectingReceiver");     const rejector = await Rejector.deploy();     await rejector.waitForDeployment();          const rejectorAddress = await rejector.getAddress();          // Add balance to rejector address in Reentrance     await instance.connect(owner).addToBalance({ value: ethers.parseEther("1.0") });          // Have rejector call withdrawBalance     // The original would revert because rejector rejects ETH     // The mutant would not revert, setting balance to 0 incorrectly     await expect(       rejector.callWithdraw(await instance.getAddress())     ).to.be.reverted;          // Check that balance is preserved (original behavior)     const balance = await instance.getBalance(rejectorAddress);     expect(balance).to.equal(ethers.parseEther("1.0"));   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Reentrance { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public payable { require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender])); userBalance[msg.sender] += msg.value; } function withdrawBalance() public{ uint256 tmp__1 = userBalance[msg.sender]; userBalance[msg.sender] = 0; { (bool _s, bytes memory _d) = msg.sender.call{value: tmp__1}(""); _d; if (! _s) { revert(); } } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Reentrance mutant kill test", function () {
+  it("should revert when withdrawal fails (mutant removed revert)", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+
+    // Deploy the Reentrance contract
+    const Factory = await ethers.getContractFactory("Reentrance");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy a receiver contract that rejects incoming ETH
+    const ReceiverFactory = await ethers.getContractFactory("RejectingReceiver");
+    const receiver = await ReceiverFactory.deploy();
+    await receiver.waitForDeployment();
+
+    // Fund the Reentrance contract with some ETH
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("1.0")
+    });
+
+    // Add balance to receiver's address in Reentrance
+    await instance.connect(attacker).addToBalance({ value: ethers.parseEther("0.5") });
+    
+    // Add more balance from owner to receiver's address
+    await instance.connect(owner).addToBalance({ value: ethers.parseEther("1.5") });
+    
+    // Now call withdrawBalance from receiver contract
+    await expect(
+      receiver.withdrawFrom(await instance.getAddress())
+    ).to.be.reverted;
+
+    // Verify that receiver's balance in Reentrance is preserved (original behavior)
+    const balanceAfter = await instance.getBalance(await receiver.getAddress());
+    expect(balanceAfter).to.equal(ethers.parseEther("2.0"));
+  });
+});
+
+// Helper contract that rejects ETH
+contract RejectingReceiver {
+    function addBalance(address instanceAddress) external payable {
+        (bool success, ) = instanceAddress.call{value: msg.value}(
+            abi.encodeWithSignature("addToBalance()")
+        );
+        require(success, "Add balance failed");
+    }
+    
+    function withdrawFrom(address instanceAddress) external {
+        (bool success, ) = instanceAddress.call(
+            abi.encodeWithSignature("withdrawBalance()")
+        );
+        require(success, "Withdraw failed");
+    }
+    
+    // Reject incoming ETH
+    receive() external payable {
+        revert("ETH rejected");
+    }
+}
+```

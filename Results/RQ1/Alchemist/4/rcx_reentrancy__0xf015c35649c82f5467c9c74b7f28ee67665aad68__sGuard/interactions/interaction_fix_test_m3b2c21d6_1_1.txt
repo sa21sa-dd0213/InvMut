@@ -1,0 +1,55 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MY_BANK mutant m3b2c21d6 - reentrancy test", function () {   it("should detect missing nonReentrant_ modifier in Put by reentering the function", async function () {     const [owner, attacker] = await ethers.getSigners();          // Deploy Log contract first (required constructor argument for MY_BANK)     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();          // Deploy MY_BANK with Log address     const BankFactory = await ethers.getContractFactory("MY_BANK");     const bank = await BankFactory.deploy(await log.getAddress());     await bank.waitForDeployment();          // Deploy the reentrancy attacker contract     const AttackerFactory = await ethers.getContractFactory("ReentrancyAttacker");     const attackerContract = await AttackerFactory.deploy(await bank.getAddress());     await attackerContract.waitForDeployment();          // Fund attacker contract with initial ETH to perform reentrancy     await owner.sendTransaction({       to: await attackerContract.getAddress(),       value: ethers.parseEther("2.0")     });          // Trigger the attack - this should revert on original but pass on mutant     await expect(       attackerContract.attack({ value: ethers.parseEther("1.0") })     ).to.be.reverted;          // On mutant, the attack would succeed, meaning balance would be incorrectly doubled     // Verify by checking that attacker's balance in bank is only the initial deposit (not doubled)     const attackerBalance = await bank.Acc(await attackerContract.getAddress());     expect(attackerBalance.balance).to.equal(ethers.parseEther("1.0"));   }); });  // Reentrancy attacker contract - must be deployed as a separate contract // This is the Solidity contract that will be compiled and deployed // The attacker's fallback re-enters Put() // Note: This contract definition would be in a separate .sol file in the contracts folder contract ReentrancyAttacker {     MY_BANK public target;          constructor(address _target) {         target = MY_BANK(_target);     }          function attack() external payable {         target.Put(0);     }          fallback() external payable {         if (address(target).balance >= msg.value) {             target.Put(0);         }     } }
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } } contract MY_BANK is sGuard { function Put(uint _unlockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); LogFile.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant m3b2c21d6 - reentrancy test", function () {
+  it("should detect missing nonReentrant_ modifier in Put by reentering the function", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+
+    // Deploy Log contract first (required constructor argument for MY_BANK)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Deploy MY_BANK with Log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+
+    // Deploy the reentrancy attacker contract
+    const AttackerFactory = await ethers.getContractFactory("ReentrancyAttacker");
+    const attackerContract = await AttackerFactory.deploy(await bank.getAddress());
+    await attackerContract.waitForDeployment();
+
+    // Fund attacker contract with initial ETH to perform reentrancy
+    await owner.sendTransaction({
+      to: await attackerContract.getAddress(),
+      value: ethers.parseEther("2.0")
+    });
+
+    // Trigger the attack - this should revert on original but pass on mutant
+    await expect(
+      attackerContract.attack({ value: ethers.parseEther("1.0") })
+    ).to.be.reverted;
+
+    // On mutant, the attack would succeed, meaning balance would be incorrectly doubled
+    // Verify by checking that attacker's balance in bank is only the initial deposit (not doubled)
+    const attackerBalance = await bank.Acc(await attackerContract.getAddress());
+    expect(attackerBalance.balance).to.equal(ethers.parseEther("1.0"));
+  });
+});
+```

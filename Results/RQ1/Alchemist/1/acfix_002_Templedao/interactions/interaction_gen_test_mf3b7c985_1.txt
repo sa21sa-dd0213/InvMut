@@ -1,0 +1,98 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mf3b7c985 of StaxLPStaking.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test StaxLPStaking.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for StaxLPStaking:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("StaxLPStaking reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy StaxLPStaking by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("StaxLPStaking"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("StaxLPStaking - Kill mutant mf3b7c985 (_earned division replaced with addition)", function () {
+  let stakingToken: any;
+  let rewardToken: any;
+  let staking: any;
+  let owner: any;
+  let user: any;
+  let distributor: any;
+
+  beforeEach(async function () {
+    [owner, user, distributor] = await ethers.getSigners();
+
+    // Deploy a simple ERC20 for staking token
+    const ERC20Factory = await ethers.getContractFactory("ERC20PresetMinterPauser");
+    stakingToken = await ERC20Factory.deploy("Staking Token", "STK");
+    await stakingToken.waitForDeployment();
+
+    // Deploy a simple ERC20 for reward token
+    rewardToken = await ERC20Factory.deploy("Reward Token", "RWD");
+    await rewardToken.waitForDeployment();
+
+    // Deploy StaxLPStaking with staking token and distributor
+    const StaxLPStakingFactory = await ethers.getContractFactory("StaxLPStaking");
+    staking = await StaxLPStakingFactory.deploy(
+      await stakingToken.getAddress(),
+      distributor.address
+    );
+    await staking.waitForDeployment();
+
+    // Mint staking tokens to user
+    const mintAmount = ethers.parseEther("1000");
+    await stakingToken.mint(user.address, mintAmount);
+    await stakingToken.connect(user).approve(await staking.getAddress(), mintAmount);
+
+    // Mint reward tokens to distributor and approve
+    const rewardAmount = ethers.parseEther("1000");
+    await rewardToken.mint(distributor.address, rewardAmount);
+    await rewardToken.connect(distributor).approve(await staking.getAddress(), rewardAmount);
+
+    // Add reward token and notify reward amount
+    await staking.connect(owner).addReward(await rewardToken.getAddress());
+    await staking.connect(distributor).notifyRewardAmount(
+      await rewardToken.getAddress(),
+      rewardAmount
+    );
+  });
+
+  it("should detect the mutant by verifying earned rewards are correctly calculated after staking and time passage", async function () {
+    // User stakes 100 tokens
+    const stakeAmount = ethers.parseEther("100");
+    await staking.connect(user).stake(stakeAmount);
+
+    // Fast forward time to accumulate rewards (1 week = DURATION)
+    const DURATION = 86400 * 7; // 7 days
+    await ethers.provider.send("evm_increaseTime", [DURATION]);
+    await ethers.provider.send("evm_mine", []);
+
+    // Calculate expected reward manually:
+    // rewardRate = rewardAmount / DURATION = 1000e18 / 604800 ≈ 1.652e15
+    // For 100 tokens staked for full duration:
+    // earned = (balance * (rewardPerToken - userRewardPerTokenPaid)) / 1e18
+    // rewardPerToken = (timeElapsed * rewardRate * 1e18) / totalSupply
+    // = (604800 * (1000e18/604800) * 1e18) / 100e18 = (1000e18 * 1e18) / 100e18 = 10e18
+    // earned = (100e18 * (10e18 - 0)) / 1e18 = 100e18 * 10 = 1000e18
+
+    const expectedEarned = ethers.parseEther("1000");
+
+    // Get actual earned from contract
+    const actualEarned = await staking.earned(user.address, await rewardToken.getAddress());
+
+    // The mutant would compute: (balance * (rewardPerToken - userRewardPerTokenPaid)) + 1e18
+    // = (100e18 * 10e18) + 1e18 = 1000e36 + 1e18 which is vastly different from 1000e18
+    // Original should return exactly expectedEarned
+    expect(actualEarned).to.equal(expectedEarned);
+  });
+});
+```

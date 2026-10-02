@@ -1,0 +1,12 @@
+{
+ "difference_id": "T4356071b",
+ "property_summary": "For any caller and any deposited amount, C.withdrawAll succeeds (does not revert) and transfers funds out (so address(c).balance decreases accordingly); the mutant that replaces the external call with require(false) causes withdrawAll to revert for callers who have positive credit, breaking this rule for some inputs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the external call with a revert by requiring false, preventing transfers and changing observable behavior.",
+ "mutated_unit_code": "function withdrawAll() public {\n        uint oCredit = credit[msg.sender];\n        if (oCredit > 0) {\n            balance -= oCredit;\n            credit[msg.sender] = 0;\n            require(false);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ReentrancyDAO} from \"../src/ReentrancyDAO.sol\";\n\ncontract InvMutTest is Test {\n    ReentrancyDAO c;\n\n    function setUp() public { c = new ReentrancyDAO(); }\n\n    function testFuzz_property(address depositor, uint256 amount) public {\n        vm.assume(depositor != address(0));\n        amount = bound(amount, 0, 1 ether);\n\n        vm.deal(depositor, amount);\n\n        if (amount > 0) {\n            vm.prank(depositor);\n            c.deposit{value: amount}();\n        }\n\n        uint256 before = address(c).balance;\n\n        bool ok;\n        vm.prank(depositor);\n        try c.withdrawAll() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        if (amount > 0) {\n            assertTrue(ok && address(c).balance < before);\n        } else {\n            assertTrue(ok && address(c).balance == before);\n        }\n    }\n}\n\n"
+}

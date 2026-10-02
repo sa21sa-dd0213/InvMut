@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0008",
+ "property_summary": "After initialization, Deposit with msg.value = 1 for an address with balance 0 succeeds in reference (requires balances[msg.sender] + msg.value >= balances[msg.sender]), but reverts in the modified version (requires > instead of >=).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "-require(((balances[msg.sender] + msg.value) >= balances[msg.sender]));; +require((balances[msg.sender] + msg.value) > balances[msg.sender]);",
+ "mutated_unit_code": "function Deposit()\n    public\n    payable\n    {\n        require((balances[msg.sender] + msg.value) > balances[msg.sender]);\n        balances[msg.sender]+= msg.value;\n        Log.AddMessage(msg.sender,msg.value,\"Put\");\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {BANK_SAFE} from \"../src/BANK_SAFE.sol\";\n\ncontract InvMutTest is Test {\n    BANK_SAFE c;\n    function setUp() public { c = new BANK_SAFE(); }\n    function testRegression_property() public {\n        c.SetMinSum(10);\n        c.SetLogFile(address(new LogFile()));\n        c.Initialized();\n        address alice = address(0x123);\n        vm.deal(alice, 1 ether);\n        vm.prank(alice);\n        bool ok;\n        try c.Deposit{value: 0}() { ok = true; } catch { ok = false; }\n        assertTrue(ok);\n    }\n}\n\ncontract LogFile {\n    struct Message {\n        address Sender;\n        string  Data;\n        uint Val;\n        uint  Time;\n    }\n    Message[] public History;\n    Message LastMsg;\n    function AddMessage(address _adr,uint _val,string memory _data) public {\n        LastMsg.Sender = _adr;\n        LastMsg.Time = block.timestamp;\n        LastMsg.Val = _val;\n        LastMsg.Data = _data;\n        History.push(LastMsg);\n    }\n}"
+}

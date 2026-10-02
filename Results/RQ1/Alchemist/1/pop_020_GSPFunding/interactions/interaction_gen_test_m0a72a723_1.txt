@@ -1,0 +1,278 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m0a72a723 of GSPFunding.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test GSPFunding.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for GSPFunding:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("GSPFunding reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy GSPFunding by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("GSPFunding"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("GSPFunding mutant kill test - m0a72a723", function () {
+  it("should kill the mutant by providing equal proportional deposits of base and quote tokens", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy the GSPFunding contract
+    const Factory = await ethers.getContractFactory("GSPFunding");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Get the deployed contract address
+    const contractAddress = await instance.getAddress();
+    
+    // Deploy mock ERC20 tokens for base and quote
+    const TokenFactory = await ethers.getContractFactory("MockERC20");
+    const baseToken = await TokenFactory.deploy("Base", "BASE", 18);
+    await baseToken.waitForDeployment();
+    const quoteToken = await TokenFactory.deploy("Quote", "QUOTE", 18);
+    await quoteToken.waitForDeployment();
+    
+    const baseTokenAddress = await baseToken.getAddress();
+    const quoteTokenAddress = await quoteToken.getAddress();
+    
+    // Initialize the GSPFunding contract with tokens and initial parameters
+    // We need to set _BASE_TOKEN_, _QUOTE_TOKEN_, _I_, _K_, etc.
+    // First, let's set the tokens
+    await instance.setBaseToken(baseTokenAddress);
+    await instance.setQuoteToken(quoteTokenAddress);
+    
+    // Set initial price (i) and K
+    const initialPrice = ethers.parseEther("1"); // 1:1 ratio
+    const K = ethers.parseEther("0.5"); // 50% K value
+    await instance.setI(initialPrice);
+    await instance.setK(K);
+    
+    // Fund the contract with initial liquidity to set reserves
+    const initialBaseAmount = ethers.parseEther("1000");
+    const initialQuoteAmount = ethers.parseEther("1000");
+    
+    await baseToken.transfer(contractAddress, initialBaseAmount);
+    await quoteToken.transfer(contractAddress, initialQuoteAmount);
+    
+    // Set initial reserves and targets
+    await instance.setBaseReserve(initialBaseAmount);
+    await instance.setQuoteReserve(initialQuoteAmount);
+    await instance.setBaseTarget(initialBaseAmount);
+    await instance.setQuoteTarget(initialQuoteAmount);
+    
+    // Set totalSupply to non-zero to trigger the else-if branch
+    // First mint some shares to create initial supply
+    await instance.mint(owner.address, ethers.parseEther("10000"));
+    
+    // Now prepare equal proportional deposits
+    // We need baseInput/baseReserve == quoteInput/quoteReserve
+    // With current reserves of 1000 each, if we deposit 500 base and 500 quote
+    // baseInputRatio = 500/1000 = 0.5, quoteInputRatio = 500/1000 = 0.5
+    const depositBase = ethers.parseEther("500");
+    const depositQuote = ethers.parseEther("500");
+    
+    // Transfer tokens to the contract (these will be detected as input by buyShares)
+    await baseToken.transfer(contractAddress, depositBase);
+    await quoteToken.transfer(contractAddress, depositQuote);
+    
+    // Get totalSupply before buyShares to calculate expected shares
+    const totalSupplyBefore = await instance.totalSupply();
+    
+    // Execute buyShares - this is where the mutant will be triggered
+    // The original code would use baseInputRatio when ratios are equal
+    // The mutant would use quoteInputRatio when ratios are equal
+    // Since both ratios are equal (0.5), the difference is in which one is selected
+    
+    await instance.connect(addr1).buyShares(addr1.address);
+    
+    // Get the shares minted to addr1
+    const sharesMinted = await instance.balanceOf(addr1.address);
+    
+    // Calculate expected shares based on original behavior (using baseInputRatio)
+    // mintRatio = baseInputRatio = 0.5
+    // shares = totalSupply * mintRatio = 10000 * 0.5 = 5000
+    const expectedSharesOriginal = totalSupplyBefore * BigInt(500) / BigInt(1000);
+    
+    // The mutant would calculate the same because both ratios are equal
+    // However, the key difference is in how the targets are updated
+    // Original: _BASE_TARGET_ += _BASE_TARGET_ * mintRatio (using baseInputRatio)
+    // Mutant: _BASE_TARGET_ += _BASE_TARGET_ * mintRatio (using quoteInputRatio)
+    // Since both ratios are equal, the result is the same for this specific case
+    
+    // To truly kill the mutant, we need a scenario where the behavior diverges
+    // Let's reset and try with different but carefully chosen values
+    
+    // Actually, the key insight is: when quoteInputRatio == baseInputRatio exactly,
+    // the original selects baseInputRatio, the mutant selects quoteInputRatio.
+    // Both are equal, so shares minted will be the same.
+    // But the _BASE_TARGET_ update uses mintRatio, so we need to check targets.
+    
+    // Get the targets after buyShares
+    const baseTargetAfter = await instance.BASE_TARGET_();
+    const quoteTargetAfter = await instance.QUOTE_TARGET_();
+    
+    // Calculate expected targets based on original behavior
+    // Original: _BASE_TARGET_ += _BASE_TARGET_ * mintRatio (mintRatio = baseInputRatio = 0.5)
+    // Expected base target = 1000 + 1000 * 0.5 = 1500
+    // Expected quote target = 1000 + 1000 * 0.5 = 1500
+    const expectedBaseTarget = initialBaseAmount + (initialBaseAmount * BigInt(500) / BigInt(1000));
+    const expectedQuoteTarget = initialQuoteAmount + (initialQuoteAmount * BigInt(500) / BigInt(1000));
+    
+    // Assert that the targets match the original behavior
+    expect(baseTargetAfter).to.equal(expectedBaseTarget);
+    expect(quoteTargetAfter).to.equal(expectedQuoteTarget);
+    
+    // The mutant would produce the same result when ratios are equal,
+    // so we need a more precise test that checks the internal logic
+    
+    // Let's try with a different setup where we can distinguish the behavior
+    // We need to call buyShares when totalSupply == 0 to test the first branch
+    // But the mutant is in the else-if branch
+    
+    // Actually, let's test with unequal ratios first to establish baseline,
+    // then test with equal ratios to catch the mutant
+    
+    // Deploy a fresh contract for the critical test
+    const Factory2 = await ethers.getContractFactory("GSPFunding");
+    const instance2 = await Factory2.deploy();
+    await instance2.waitForDeployment();
+    const contractAddress2 = await instance2.getAddress();
+    
+    const baseToken2 = await TokenFactory.deploy("Base2", "BASE2", 18);
+    await baseToken2.waitForDeployment();
+    const quoteToken2 = await TokenFactory.deploy("Quote2", "QUOTE2", 18);
+    await quoteToken2.waitForDeployment();
+    
+    const baseTokenAddress2 = await baseToken2.getAddress();
+    const quoteTokenAddress2 = await quoteToken2.getAddress();
+    
+    await instance2.setBaseToken(baseTokenAddress2);
+    await instance2.setQuoteToken(quoteTokenAddress2);
+    await instance2.setI(initialPrice);
+    await instance2.setK(K);
+    
+    // Set initial reserves with different values to make ratios meaningful
+    const initBase = ethers.parseEther("2000");
+    const initQuote = ethers.parseEther("1000");
+    
+    await baseToken2.transfer(contractAddress2, initBase);
+    await quoteToken2.transfer(contractAddress2, initQuote);
+    
+    await instance2.setBaseReserve(initBase);
+    await instance2.setQuoteReserve(initQuote);
+    await instance2.setBaseTarget(initBase);
+    await instance2.setQuoteTarget(initQuote);
+    
+    // Mint initial shares
+    await instance2.mint(owner.address, ethers.parseEther("10000"));
+    
+    // Now deposit equal amounts to get equal ratios
+    // baseInputRatio = 1000/2000 = 0.5
+    // quoteInputRatio = 500/1000 = 0.5
+    const depositBase2 = ethers.parseEther("1000");
+    const depositQuote2 = ethers.parseEther("500");
+    
+    await baseToken2.transfer(contractAddress2, depositBase2);
+    await quoteToken2.transfer(contractAddress2, depositQuote2);
+    
+    // Get state before
+    const baseReserveBefore = await instance2.BASE_RESERVE_();
+    const quoteReserveBefore = await instance2.QUOTE_RESERVE_();
+    const baseTargetBefore = await instance2.BASE_TARGET_();
+    const quoteTargetBefore = await instance2.QUOTE_TARGET_();
+    const totalSupplyBefore2 = await instance2.totalSupply();
+    
+    // Execute buyShares
+    await instance2.connect(addr1).buyShares(addr1.address);
+    
+    // Get state after
+    const baseTargetAfter2 = await instance2.BASE_TARGET_();
+    const quoteTargetAfter2 = await instance2.QUOTE_TARGET_();
+    
+    // Calculate expected mintRatio for original code
+    // Original: mintRatio = quoteInputRatio < baseInputRatio ? quoteInputRatio : baseInputRatio
+    // Since quoteInputRatio (500/1000 = 0.5) is NOT less than baseInputRatio (1000/2000 = 0.5),
+    // original selects baseInputRatio = 0.5
+    
+    // Calculate expected mintRatio for mutant
+    // Mutant: mintRatio = quoteInputRatio <= baseInputRatio ? quoteInputRatio : baseInputRatio
+    // Since quoteInputRatio (0.5) <= baseInputRatio (0.5), mutant selects quoteInputRatio = 0.5
+    
+    // Both give the same mintRatio (0.5) in this case, so we need different ratios
+    
+    // Let's try with different reserve amounts where the ratios are exactly equal
+    // but the selection logic differs
+    
+    // Actually, the only way to kill this mutant is when quoteInputRatio == baseInputRatio
+    // and the contract state is such that the subsequent calculations diverge
+    // Let's check if the shares calculation differs
+    
+    // For the original: shares = totalSupply * baseInputRatio = 10000 * 0.5 = 5000
+    // For the mutant: shares = totalSupply * quoteInputRatio = 10000 * 0.5 = 5000
+    // Same result because ratios are equal
+    
+    // The test passes for both, so we need to find a case where the ratios are equal
+    // but the targets update differently... but the targets use mintRatio which is the same
+    
+    // The mutant is actually killed by checking that the contract uses the correct ratio
+    // when they are equal. Since the original uses baseInputRatio and mutant uses
+    // quoteInputRatio, and both are equal, the behavior is identical.
+    
+    // This means the mutant might be equivalent to the original when ratios are equal,
+    // and we need to find a different test case
+    
+    // Let's test with a scenario where we can observe the difference through the event
+    // The BuyShares event emits shares which should be the same...
+    
+    // Actually, let's re-examine: the mutant changes which ratio is used for mintRatio
+    // when they are equal. But since the ratios are equal, mintRatio is the same.
+    // Therefore this mutant might be behaviorally equivalent to the original.
+    
+    // To properly kill it, we need to test with different ratios where the comparison matters
+    // Let's test with baseInputRatio < quoteInputRatio
+    
+    // Deploy fresh
+    const Factory3 = await ethers.getContractFactory("GSPFunding");
+    const instance3 = await Factory3.deploy();
+    await instance3.waitForDeployment();
+    const contractAddress3 = await instance3.getAddress();
+    
+    const baseToken3 = await TokenFactory.deploy("Base3", "BASE3", 18);
+    await baseToken3.waitForDeployment();
+    const quoteToken3 = await TokenFactory.deploy("Quote3", "QUOTE3", 18);
+    await quoteToken3.waitForDeployment();
+    
+    const baseTokenAddress3 = await baseToken3.getAddress();
+    const quoteTokenAddress3 = await quoteToken3.getAddress();
+    
+    await instance3.setBaseToken(baseTokenAddress3);
+    await instance3.setQuoteToken(quoteTokenAddress3);
+    await instance3.setI(initialPrice);
+    await instance3.setK(K);
+    
+    // Set initial reserves
+    const initBase3 = ethers.parseEther("2000");
+    const initQuote3 = ethers.parseEther("2000");
+    
+    await baseToken3.transfer(contractAddress3, initBase3);
+    await quoteToken3.transfer(contractAddress3, initQuote3);
+    
+    await instance3.setBaseReserve(initBase3);
+    await instance3.setQuoteReserve(initQuote3);
+    await instance3.setBaseTarget(initBase3);
+    await instance3.setQuoteTarget(initQuote3);
+    
+    // Mint initial shares
+    await instance3.mint(owner.address, ethers.parseEther("10000"));
+    
+    // Deposit where baseInputRatio < quoteInputRatio
+    // baseInputRatio = 500/2000 = 0.25
+    // quoteInputRatio = 1000/2000 = 0.5
+    const depositBase3 = ethers.parseEther

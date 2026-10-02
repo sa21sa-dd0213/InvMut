@@ -1,0 +1,70 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m2829c56b of GameItems.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test GameItems.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for GameItems:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("GameItems reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy GameItems by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("GameItems"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("GameItems mutant test - adjustTransferability", function () {
+  it("should emit Unlocked event when transferable is set to true, but mutant always emits Locked", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy GameItems with constructor arguments: owner address and treasury address
+    const Factory = await ethers.getContractFactory("GameItems");
+    const instance = await Factory.deploy(owner.address, owner.address);
+    await instance.waitForDeployment();
+    
+    // First create a game item with transferable = false (initially locked)
+    await instance.createGameItem(
+      "Test Item",
+      "ipfs://test",
+      true,  // finiteSupply
+      false, // transferable (initially locked)
+      100,   // itemsRemaining
+      ethers.parseEther("1"),
+      10     // dailyAllowance
+    );
+    
+    // Now call adjustTransferability with transferable = true
+    // This should emit Unlocked event in original code
+    // But mutant will always emit Locked event
+    const tx = await instance.adjustTransferability(0, true);
+    const receipt = await tx.wait();
+    
+    // Check that Unlocked event was NOT emitted (mutant behavior)
+    // In the original, Unlocked should be emitted
+    // In the mutant, Locked is emitted instead
+    const unlockedEvents = receipt.logs.filter(
+      (log: any) => log.eventName === "Unlocked"
+    );
+    const lockedEvents = receipt.logs.filter(
+      (log: any) => log.eventName === "Locked"
+    );
+    
+    // The mutant should have 0 Unlocked events and 1 Locked event
+    // The original would have 1 Unlocked event and 0 Locked events
+    // This test kills the mutant by verifying the correct event is emitted
+    expect(unlockedEvents.length).to.equal(1);
+    expect(lockedEvents.length).to.equal(0);
+    
+    // Also verify the transferable state was actually changed
+    const item = await instance.allGameItemAttributes(0);
+    expect(item.transferable).to.equal(true);
+  });
+});
+```

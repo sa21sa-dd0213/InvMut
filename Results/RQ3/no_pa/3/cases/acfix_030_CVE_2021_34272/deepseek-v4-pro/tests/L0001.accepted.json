@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0001",
+ "property_summary": "After calling `owned()` by the initial owner, the reference contract leaves `owner` unchanged while the buggy contract would revert if there were any change, but since only the owner calls `owned()` and the state never changes, the observable difference is that after a non-owner calls `owned()`, the reference reverts and the buggy also reverts \u2014 wait, need a scenario where they differ: the buggy contract never changes owner, so if we call `transferOwnership` to a new owner, then call `owned()` as the new owner, the reference contract will let the new owner call `owned()` (since owner changed) while the buggy contract will revert because owner is still the original. So scenario: initial owner calls transferOwnership to addr1, then addr1 calls owned(): reference succeeds, buggy reverts.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Replace 'owner = newOwner;' with 'revert();' so that transferOwnership never changes owner",
+ "mutated_unit_code": "    function transferOwnership(address newOwner)  public onlyOwner {\n        revert();\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Owned} from \"../src/Owned.sol\";\n\ncontract InvMutTest is Test {\n    Owned c;\n    function setUp() public { c = new Owned(); }\n    function testRegression_property() public {\n        address owner = c.owner();\n        address newOwner = address(0x123);\n        vm.prank(owner);\n        c.transferOwnership(newOwner);\n        vm.prank(newOwner);\n        bool ok;\n        try c.owned() { ok = true; } catch { ok = false; }\n        assertTrue(ok);\n    }\n}\n"
+}

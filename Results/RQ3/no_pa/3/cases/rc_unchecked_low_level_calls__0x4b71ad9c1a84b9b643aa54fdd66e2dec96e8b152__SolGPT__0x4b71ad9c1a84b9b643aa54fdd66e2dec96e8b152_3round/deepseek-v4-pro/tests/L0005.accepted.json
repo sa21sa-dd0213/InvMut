@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0005",
+ "property_summary": "Call transfer with _tos.length=1; reference succeeds and returns true, buggy version reverts because loop starts at i=1 and i<_tos.length is false, so require(_tos.length>0) passes but loop does nothing and returns true, so there is no revert difference. Instead, use _tos of length 2 where the first call to transferFrom reverts (e.g., using a dummy token that rejects), causing reference to revert while bug skips the first element and succeeds.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "Replace the for loop initialization with uint i = 1; so the loop skips the first element.",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=1; i<_tos.length; i++){\n            { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); require(_s); }\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airPort} from \"../src/airPort.sol\";\n\ncontract InvMutTest is Test {\n    airPort c;\n    function setUp() public { c = new airPort(); }\n    function testRegression_property() public {\n        address dummyToken = address(new DummyToken());\n        address from = address(0x1234);\n        address to1 = address(0x5678);\n        address to2 = address(0x9abc);\n        address[] memory tos = new address[](2);\n        tos[0] = to1;\n        tos[1] = to2;\n        bool ok;\n        try c.transfer(from, dummyToken, tos, 100) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        assertTrue(!ok);\n    }\n}\n\ncontract DummyToken {\n    function transferFrom(address, address to, uint256) external pure returns (bool) {\n        if (to == address(0x5678)) {\n            revert(\"fail\");\n        }\n        return true;\n    }\n}"
+}

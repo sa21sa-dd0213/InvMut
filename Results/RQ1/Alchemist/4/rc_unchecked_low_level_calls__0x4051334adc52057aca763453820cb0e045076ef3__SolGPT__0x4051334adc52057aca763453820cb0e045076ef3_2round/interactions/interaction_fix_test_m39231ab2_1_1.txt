@@ -1,0 +1,52 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("airdrop reference (ethers v6; deploy may require constructor arguments)", function () {   it("should revert when _tos array is empty (kill mutant that changed > to >=)", async function () {     const [owner] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("airdrop");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Create a dummy token contract that the airdrop will call     // Since the airdrop contract calls transferFrom on an arbitrary token address,     // we need a token that will revert if called with empty _tos     const dummyTokenFactory = await ethers.getContractFactory("DummyToken");     const dummyToken = await dummyTokenFactory.deploy();     await dummyToken.waitForDeployment();      // Attempt to call transfer with empty _tos array - should revert on original     await expect(       instance.transfer(         owner.address,         await dummyToken.getAddress(),         [], // empty _tos array         ethers.parseEther("1")       )     ).to.be.reverted;   }); });  // Helper contract to provide a target that will be called // This is needed because the airdrop calls transferFrom on the caddress contract DummyToken {     function transferFrom(address, address, uint256) public pure returns (bool) {         return true;     } }
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract airdrop{ function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){ require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ { (bool _s,) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v)); require(_s); } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airdrop reference (ethers v6; deploy may require constructor arguments)", function () {
+  it("should revert when _tos array is empty (kill mutant that changed > to >=)", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("airdrop");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Create a dummy token contract that the airdrop will call
+    // Since the airdrop contract calls transferFrom on an arbitrary token address,
+    // we need a token that will revert if called with empty _tos
+    const dummyTokenFactory = await ethers.getContractFactory("DummyToken");
+    const dummyToken = await dummyTokenFactory.deploy();
+    await dummyToken.waitForDeployment();
+
+    // Attempt to call transfer with empty _tos array - should revert on original
+    await expect(
+      instance.transfer(
+        owner.address,
+        await dummyToken.getAddress(),
+        [], // empty _tos array
+        ethers.parseEther("1")
+      )
+    ).to.be.reverted;
+  });
+});
+
+// Helper contract to provide a target that will be called
+// This is needed because the airdrop calls transferFrom on the caddress contract
+contract DummyToken {
+    function transferFrom(address, address, uint256) public pure returns (bool) {
+        return true;
+    }
+}
+```

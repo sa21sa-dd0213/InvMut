@@ -1,0 +1,77 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mee857b20 of XBORNID.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test XBORNID.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for XBORNID:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("XBORNID reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy XBORNID by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("XBORNID"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("XBORNID mutant mee857b20 - onlyPayloadSize modifier change", function () {
+  it("should kill mutant by sending transfer with extra calldata bytes", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("XBORNID");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // First, ensure addr1 has some tokens by calling getTokens
+    // Need to send ether to trigger getTokens via receive() or call directly
+    // But getTokens has onlyWhitelist modifier, so we need to call from non-blacklisted address
+    // Owner can call distr directly to give tokens to addr1
+    // Use the distr function via a direct call to the private function? No, it's private.
+    // Instead, call getTokens() which is public and canDistr + onlyWhitelist
+    // Owner can call getTokens() since they're not blacklisted initially
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("1")
+    });
+
+    // Now construct a transfer call with extra calldata bytes
+    // Normal transfer(address,uint256) = 4 bytes selector + 32 bytes address + 32 bytes amount = 68 bytes
+    // We'll add an extra 32 bytes of zeros at the end to make calldata length 100 bytes
+    const transferSelector = instance.interface.getFunction("transfer").selector;
+    const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+    const normalCalldata = abiCoder.encode(
+      ["address", "uint256"],
+      [addr1.address, ethers.parseEther("1")]
+    );
+    
+    // Create extra padded calldata (original 68 bytes + extra 32 bytes)
+    const extraCalldata = ethers.hexlify(
+      ethers.concat([
+        transferSelector,
+        normalCalldata,
+        ethers.zeroPadValue("0x", 32) // 32 extra zero bytes
+      ])
+    );
+
+    // This should succeed on original (>= check passes) but revert on mutant (<= check fails)
+    await expect(
+      owner.sendTransaction({
+        to: await instance.getAddress(),
+        data: extraCalldata
+      })
+    ).to.be.reverted;
+
+    // Verify that normal transfer still works on both (68 bytes calldata)
+    const normalTx = await owner.sendTransaction({
+      to: await instance.getAddress(),
+      data: ethers.concat([transferSelector, normalCalldata])
+    });
+    await normalTx.wait();
+  });
+});
+```

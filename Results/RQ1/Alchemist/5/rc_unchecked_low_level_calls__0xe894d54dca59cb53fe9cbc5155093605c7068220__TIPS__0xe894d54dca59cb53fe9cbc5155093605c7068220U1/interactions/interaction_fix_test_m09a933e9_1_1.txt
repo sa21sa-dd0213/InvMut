@@ -1,0 +1,57 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("airDrop mutant m09a933e9 test", function () {   it("should detect sha256 replacement by verifying correct function selector is called", async function () {     const [owner, from, to] = await ethers.getSigners();          // Deploy a simple token contract that tracks transferFrom calls     const TokenFactory = await ethers.getContractFactory("contracts/TestToken.sol:TestToken");     const token = await TokenFactory.deploy("Test", "TST", 18);     await token.waitForDeployment();          // Deploy the airDrop contract (no constructor args)     const AirDropFactory = await ethers.getContractFactory("airDrop");     const airDrop = await AirDropFactory.deploy();     await airDrop.waitForDeployment();          // Mint tokens to 'from' and approve airDrop to spend them     const mintAmount = ethers.parseEther("100");     await token.mint(from.address, mintAmount);     await token.connect(from).approve(airDrop.target, mintAmount);          // Prepare test parameters     const recipients = [to.address];     const transferAmount = ethers.parseEther("10");     const decimals = 18;          // Call transfer function - in the original it should work, in the mutant it will call wrong selector     const tx = airDrop.connect(from).transfer(       from.address,       token.target,       recipients,       transferAmount,       decimals     );          // The mutant calls sha256 instead of keccak256, producing a different 4-byte selector     // This will call a non-existent function on the token contract, causing revert     await expect(tx).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract airDrop { function transfer(address from, address caddress, address[] memory _tos, uint v, uint _decimals)  public returns (bool) { require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); uint _value = v * 10 ** _decimals; for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], _value)); _d; if (! _s) { revert();} } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airDrop mutant m09a933e9 test", function () {
+  it("should detect sha256 replacement by verifying correct function selector is called", async function () {
+    const [owner, from, to] = await ethers.getSigners();
+    
+    // Deploy a simple token contract that tracks transferFrom calls
+    const TokenFactory = await ethers.getContractFactory("contracts/TestToken.sol:TestToken");
+    const token = await TokenFactory.deploy("Test", "TST", 18);
+    await token.waitForDeployment();
+    
+    // Deploy the airDrop contract (no constructor args)
+    const AirDropFactory = await ethers.getContractFactory("airDrop");
+    const airDrop = await AirDropFactory.deploy();
+    await airDrop.waitForDeployment();
+    
+    // Mint tokens to 'from' and approve airDrop to spend them
+    const mintAmount = ethers.parseEther("100");
+    await token.mint(from.address, mintAmount);
+    await token.connect(from).approve(airDrop.target, mintAmount);
+    
+    // Prepare test parameters
+    const recipients = [to.address];
+    const transferAmount = ethers.parseEther("10");
+    const decimals = 18;
+    
+    // Call transfer function - in the original it should work, in the mutant it will call wrong selector
+    const tx = airDrop.connect(from).transfer(
+      from.address,
+      token.target,
+      recipients,
+      transferAmount,
+      decimals
+    );
+    
+    // The mutant calls sha256 instead of keccak256, producing a different 4-byte selector
+    // This will call a non-existent function on the token contract, causing revert
+    await expect(tx).to.be.reverted;
+  });
+});
+```

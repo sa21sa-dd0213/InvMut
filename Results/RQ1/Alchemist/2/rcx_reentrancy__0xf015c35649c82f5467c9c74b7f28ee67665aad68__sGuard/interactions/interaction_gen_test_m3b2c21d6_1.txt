@@ -1,0 +1,81 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m3b2c21d6 of MY_BANK.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test MY_BANK.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for MY_BANK:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("MY_BANK reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy MY_BANK by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("MY_BANK"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant detection - reentrancy guard removal in Put", function () {
+  it("should detect mutant by allowing reentrant Put call that should revert with nonReentrant modifier", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the Log contract first (required constructor argument for MY_BANK)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+    
+    // Deploy MY_BANK with Log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bankInstance = await BankFactory.deploy(await logInstance.getAddress());
+    await bankInstance.waitForDeployment();
+    
+    // Deploy a malicious contract that will attempt reentrancy
+    const MaliciousFactory = await ethers.getContractFactory("MaliciousReentrancy");
+    const maliciousInstance = await MaliciousFactory.deploy(await bankInstance.getAddress());
+    await maliciousInstance.waitForDeployment();
+    
+    // Fund the malicious contract with some ether
+    await owner.sendTransaction({
+      to: await maliciousInstance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    
+    // Attempt reentrancy attack - the malicious contract's fallback will call Put again
+    // With nonReentrant modifier, this should revert
+    // Without it (mutant), the second Put will succeed
+    await expect(
+      maliciousInstance.connect(attacker).attack(ethers.parseEther("5"), 1000000)
+    ).to.be.reverted;
+  });
+});
+
+// Malicious contract for reentrancy testing
+contract MaliciousReentrancy {
+    address public bank;
+    
+    constructor(address _bank) {
+        bank = _bank;
+    }
+    
+    function attack(uint256 amount, uint256 unlockTime) external payable {
+        // First call to Put will trigger the fallback which calls Put again
+        (bool success, ) = bank.call{value: amount}(abi.encodeWithSignature("Put(uint256)", unlockTime));
+        require(success, "First Put failed");
+    }
+    
+    // Fallback triggers reentrant call
+    fallback() external payable {
+        if (address(bank).balance >= 1 ether) {
+            (bool success, ) = bank.call{value: 0}(abi.encodeWithSignature("Put(uint256)", block.timestamp));
+            require(success, "Reentrant Put failed");
+        }
+    }
+    
+    receive() external payable {}
+}
+```

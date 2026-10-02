@@ -1,0 +1,28 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Roulette:
+        Contract Code: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+
+    Consider the following mutant of Roulette:
+        Mutant mc4c6acff of function fallback replaces block.number with block.number-1
+        Mutant Diff: ---|         if(block.number % 15 == 0) { +++|         if(block.number-1 % 15 == 0) {
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's break this down:
+
+**Original logic**: The `if` condition is `block.number % 15 == 0` — it triggers the payout only when the current block number is exactly divisible by 15.
+
+**Mutant logic**: The condition becomes `block.number - 1 % 15 == 0` — due to operator precedence, this is actually `block.number - (1 % 15)`, which simplifies to `block.number - 1`. So the condition is true when `block.number - 1 == 0`, i.e., only on block number 1. This is a completely different condition that will almost never be true after deployment.
+
+**Key insight**: The mutant changes which blocks trigger a payout. A test that exercises the contract when `block.number % 15 == 0` should see a payout in the original, but no payout in the mutant (since the mutant only pays on block 1).
+
+**Hypothesis**:  
+"The mutant changes the block number condition from `block.number % 15 == 0` to `block.number - 1 % 15 == 0`, which effectively makes the payout trigger only on block number 1 instead of every 15th block. Therefore, a test case that sends exactly 10 ether to the contract on a block where `block.number % 15 == 0` (but not block 1), and then asserts that the sender's balance increased by the contract's full balance, should kill the mutant — because the original would transfer the balance, while the mutant would not."

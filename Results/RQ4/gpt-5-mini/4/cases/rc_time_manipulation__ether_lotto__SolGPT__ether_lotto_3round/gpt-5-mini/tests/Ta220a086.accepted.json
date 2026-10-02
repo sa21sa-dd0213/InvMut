@@ -1,0 +1,12 @@
+{
+ "difference_id": "Ta220a086",
+ "property_summary": "For any caller sending the exact ticket amount, the reference contract always increases its pot by that ticket (so address(c).balance == pot + bankBalance), while the mutant fails to increase pot for some inputs causing pot to be smaller than expected (specifically pot does not include the just-sent ticket).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Update pot accumulation to exclude the incoming ticket so pot isn't increased by the ticket before potential payout.",
+ "mutated_unit_code": "function play()  public payable {\n        require(msg.value == TICKET_AMOUNT);\n        // pot not increased by msg.value\n\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n\n        if (random == 0) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    function setUp() public { c = new EtherLotto(); }\n\n    function testFuzz_property(address caller) public {\n        vm.assume(caller != address(0));\n\n        uint256 ticket = 10;\n\n        vm.deal(caller, ticket);\n\n        uint256 potBefore = c.pot();\n        uint256 contractBalBefore = address(c).balance;\n\n        vm.prank(caller);\n        c.play{value: ticket}();\n\n        assertTrue(address(c).balance == c.pot());\n    }\n}\n"
+}

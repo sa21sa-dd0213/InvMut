@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0005",
+ "property_summary": "After calling transfer with a specific token address that has a vulnerable fallback (or no fallback), the reference contract calls transferFrom and succeeds, while the buggy contract calls transfer and reverts because the token contract's transfer function expects a different signature.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Change the function selector id from transferFrom to transfer",
+ "mutated_unit_code": "function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){\nrequire(_tos.length > 0);\nbytes4 id=bytes4(keccak256(\"transfer(address,address,uint256)\"));\nfor(uint i=0;i<_tos.length;i++){\n\n{ (bool _s,) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v)); require(_s); }\n}\nreturn true;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airdrop} from \"../src/airdrop.sol\";\n\ncontract InvMutTest is Test {\n    airdrop c;\n    function setUp() public { c = new airdrop(); }\n    function testRegression_property() public {\n        Token token = new Token();\n        address from = address(0x1234);\n        address[] memory tos = new address[](1);\n        tos[0] = address(0x5678);\n        uint v = 100;\n\n        bool success = c.transfer(from, address(token), tos, v);\n\n        assertTrue(success == true);\n    }\n}\n\ncontract Token {\n    mapping(address => mapping(address => uint)) public allowance;\n\n    function transferFrom(address from, address to, uint amount) external returns (bool) {\n        allowance[from][to] += amount;\n        return true;\n    }\n}"
+}

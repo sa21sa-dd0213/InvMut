@@ -1,0 +1,30 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract PredictTheBlockHashChallenge:
+        Contract Code: pragma solidity ^0.8.0; contract PredictTheBlockHashChallenge { struct guess { uint block; bytes32 guess; } mapping(address => guess) guesses; constructor() public payable { require(msg.value == 1 ether); } function lockInGuess(bytes32 hash) public payable { require(guesses[msg.sender].block == 0); require(msg.value == 1 ether); guesses[msg.sender].guess = hash; guesses[msg.sender].block = block.number + 1; } function settle() public { require(guesses[msg.sender].block != 0); require(block.number > guesses[msg.sender].block); bytes32 answer = blockhash(guesses[msg.sender].block); guesses[msg.sender].block = 0; if (answer != 0 && guesses[msg.sender].guess == answer) { payable(msg.sender).transfer(2 ether); } } }
+
+    Consider the following mutant of PredictTheBlockHashChallenge:
+        Mutant m76902ac8 of function constructor replaces == with <=
+        Mutant Diff: ---|         require(msg.value == 1 ether); +++|         require(msg.value <= 1 ether);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's walk through this step-by-step.
+
+The original contract has `require(msg.value == 1 ether);` in the constructor. This means that deploying the contract requires exactly 1 ETH; any other amount causes a revert.
+
+The mutant changes `==` to `<=`, so the constructor now accepts any `msg.value` that is less than or equal to 1 ETH.
+
+A test that would pass on the original (where 1 ETH is required) but fail on the mutant would need to rely on the invariant that the contract was funded with *exactly* 1 ETH.  
+
+If the mutant allows funding with less than 1 ETH (e.g., 0.5 ETH), then later when `settle()` tries to send 2 ETH via `payable(msg.sender).transfer(2 ether)`, the contract would not have enough balance to do so, causing a revert. The original, funded with exactly 1 ETH plus the player’s 1 ETH lock-in, would have 2 ETH and succeed.
+
+**Hypothesis:**  
+A test case that deploys the contract with exactly 0.5 ETH, then calls `lockInGuess` with 1 ETH, and finally calls `settle` with a correct guess — expecting the transfer of 2 ETH to succeed — should pass on the original (where deployment with 0.5 ETH would revert) and kill the mutant (where deployment succeeds but the contract lacks the funds to pay out).

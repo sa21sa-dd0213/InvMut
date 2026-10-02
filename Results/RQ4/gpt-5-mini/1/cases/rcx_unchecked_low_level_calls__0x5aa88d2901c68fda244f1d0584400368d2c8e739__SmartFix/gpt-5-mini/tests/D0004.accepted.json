@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0004",
+ "property_summary": "For every input where the Caller (msg.sender) is Owner and forwards a low-level call that intentionally reverts, the reference contract C (which ignores the callee's returned success) will not revert the Command call (so Command returns normally), whereas the mutated contract M that requires the callee's call to succeed will revert; thus the property: Command succeeds (does not revert) for all such inputs on the reference, but the mutant fails for some input where the callee reverts.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace adr.call{value: msg.value}(data); with a call that checks the return and reverts on failure, affecting observable revert behavior of Command.",
+ "mutated_unit_code": "function Command(address adr,bytes memory data)\n    payable\n    public\n    {\n        require(msg.sender == Owner);\n\n        (bool ok, ) = adr.call{value: msg.value}(data);\n        require(ok);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MultiplicatorX3} from \"../src/MultiplicatorX3.sol\";\n\ncontract InvMutTest is Test {\n    MultiplicatorX3 c;\n    function setUp() public { c = new MultiplicatorX3(); }\n\n    function testFuzz_property(uint128 amount, bytes memory payload) public {\n        uint256 amt = bound(amount, 0, 1 ether);\n\n        Reverter rev = new Reverter();\n\n        vm.deal(address(this), amt);\n\n        bool ok;\n        try c.Command{value: amt}(address(rev), payload) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok);\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"revert\");\n    }\n    receive() external payable {\n        revert(\"revert\");\n    }\n}"
+}

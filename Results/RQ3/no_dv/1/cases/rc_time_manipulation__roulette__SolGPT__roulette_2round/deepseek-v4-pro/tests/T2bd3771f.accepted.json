@@ -1,0 +1,12 @@
+{
+ "difference_id": "T2bd3771f",
+ "property_summary": "In the reference contract, pastBlockTime is always strictly greater than the previous call's pastBlockTime after any successful fallback, so two successful calls can never occur in the same block. The buggy version allows two calls in the same block, and when the second call resets pastBlockTime to the same timestamp, pastBlockTime remains unchanged from the first call's update.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change block.timestamp > pastBlockTime to >= so same-block calls can succeed, affecting state updates and possible transfers.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp >= pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 blockNum1, uint256 blockNum2) public {\n        vm.assume(blockNum1 != blockNum2);\n        vm.assume(blockNum1 % 15 != 0);\n        vm.assume(blockNum2 % 15 != 0);\n\n        address sender = address(0x1234);\n        vm.deal(sender, 100 ether);\n\n        vm.warp(1000);\n        vm.roll(blockNum1);\n        vm.prank(sender);\n        (bool ok1,) = address(c).call{value: 10 ether}(\"\");\n        assertTrue(ok1);\n\n        uint256 pastBeforeSecond = c.pastBlockTime();\n\n        vm.warp(1000);\n        vm.roll(blockNum2);\n        vm.prank(sender);\n        (bool ok2,) = address(c).call{value: 10 ether}(\"\");\n\n        assertTrue(!ok2 || c.pastBlockTime() != pastBeforeSecond);\n    }\n}"
+}

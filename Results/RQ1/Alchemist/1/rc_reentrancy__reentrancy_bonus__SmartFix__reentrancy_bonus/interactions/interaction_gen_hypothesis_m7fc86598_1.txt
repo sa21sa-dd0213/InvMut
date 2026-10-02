@@ -1,0 +1,26 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Reentrancy_bonus:
+        Contract Code: pragma solidity ^0.8.0; contract SmartFix { bool public _locked = false; modifier _nonReentrant() { require(!_locked); _locked = true; _; _locked = false; } } contract Reentrancy_bonus is SmartFix { mapping (address => uint) private userBalances; mapping (address => bool) private claimedBonus; mapping (address => uint) private rewardsForA; function withdrawReward(address recipient)  public _nonReentrant  { uint amountToWithdraw = rewardsForA[recipient]; rewardsForA[recipient] = 0; (bool success, ) = recipient.call{value: amountToWithdraw}(""); require(success); } function getFirstWithdrawalBonus(address recipient) public { require(!claimedBonus[recipient]); rewardsForA[recipient] += 100; withdrawReward(recipient); claimedBonus[recipient] = true; } }
+
+    Consider the following mutant of Reentrancy_bonus:
+        Mutant m7fc86598 of function withdrawReward replaces require(success); with 
+        Mutant Diff: ---|         require(success); +++|
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let’s think it through step-by-step.
+
+The original `withdrawReward` function has a `require(success);` after the external call. This ensures that if the external call fails (e.g., because the recipient is a contract that reverts), the entire transaction reverts, protecting the contract’s state.
+
+The mutant **removes** `require(success);`. This means if the external call fails, the function will still complete, and the user’s `rewardsForA` balance will have been set to zero, effectively losing the funds.
+
+**Hypothesis**:  
+The mutant removes the success check on the external call. Therefore, a test case that makes the `withdrawReward` function send ether to a recipient contract that deliberately reverts on receive, and then checks that the user’s rewards balance was **not** zeroed out (i.e., the state remains unchanged), should detect the mutant. In the original, the transaction would revert and the balance would remain intact; in the mutant, the balance would be incorrectly set to zero despite the failed transfer.

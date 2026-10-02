@@ -1,0 +1,12 @@
+{
+ "difference_id": "Te3421f1b",
+ "property_summary": "For any recipient and reward amount, if withdrawReward is called and the external transfer succeeds, the reference contract always clears rewardsForA[recipient] to 0 afterwards; the mutant that omits zeroing can leave a non-zero stored reward when the external call reverts, so using a callee that reverts will make the mutant differ.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Remove the line that zeroes the stored reward before the external call, so stored reward remains unchanged after withdrawReward.",
+ "mutated_unit_code": "function withdrawReward(address recipient)  public _nonReentrant  {\n        uint amountToWithdraw = rewardsForA[recipient];\n        (bool success, ) = recipient.call{value: amountToWithdraw}(\"\");\n        require(success);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrancy_bonus} from \"../src/Reentrancy_bonus.sol\";\n\ncontract InvMutTest is Test {\n    Reentrancy_bonus c;\n    function setUp() public { c = new Reentrancy_bonus(); }\n\n    function testFuzz_property(address recipient, uint256 reward) public {\n        vm.assume(recipient != address(0));\n        reward = bound(reward, 1, 1 ether);\n\n        Reverter rev = new Reverter();\n\n        Receiver recv = new Receiver();\n\n        address target = (uint160(recipient) & 1 == 1) ? address(rev) : address(recv);\n\n        vm.deal(address(c), reward + 1);\n\n        reward = 100;\n\n        vm.deal(address(c), reward);\n\n        bool ok;\n        try c.getFirstWithdrawalBonus(target) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        bool withdrawOk;\n        try c.withdrawReward(target) {\n            withdrawOk = true;\n        } catch {\n            withdrawOk = false;\n        }\n\n        assertTrue(!ok || withdrawOk);\n    }\n}\n\ncontract Reverter { fallback() external payable { revert(); } }\ncontract Receiver { receive() external payable { } }"
+}

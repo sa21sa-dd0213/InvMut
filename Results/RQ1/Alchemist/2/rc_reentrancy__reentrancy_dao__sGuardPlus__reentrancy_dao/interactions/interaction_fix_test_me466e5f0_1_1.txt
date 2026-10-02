@@ -1,0 +1,46 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("ReentrancyDAO mutant kill test - me466e5f0", function () {   it("should revert or not change state when user with zero credit calls withdrawAll", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("ReentrancyDAO");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // First, have owner deposit some ETH so balance > 0     const depositAmount = ethers.parseEther("1.0");     await instance.connect(owner).deposit({ value: depositAmount });      // Now addr1 (who has zero credit) tries to withdrawAll     const balanceBefore = await ethers.provider.getBalance(await instance.getAddress());     const creditBefore = await instance.credit(addr1.address);      await instance.connect(addr1).withdrawAll();      const balanceAfter = await ethers.provider.getBalance(await instance.getAddress());     const creditAfter = await instance.credit(addr1.address);      // On the original contract, balance and credit should remain unchanged     // On the mutant, balance might change (subtract 0) and credit set to 0 (still 0)     // But the key invariant: a user with zero credit should not trigger any state change     expect(balanceAfter).to.equal(balanceBefore);     expect(creditAfter).to.equal(creditBefore);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuardPlus { constructor() { __lock_modifier0_lock = false; } bool private __lock_modifier0_lock; modifier __lock_modifier0() { require(!__lock_modifier0_lock); __lock_modifier0_lock = true; _; __lock_modifier0_lock = false; } } contract ReentrancyDAO is sGuardPlus { mapping (address  => uint )    credit; uint     balance; function withdrawAll () public __lock_modifier0  { uint     oCredit = credit[msg.sender]; if (oCredit>0) { balance-=oCredit; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); credit[msg.sender]=0; } } function deposit () public payable { credit[msg.sender]+=msg.value; balance+=msg.value; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ReentrancyDAO mutant kill test - me466e5f0", function () {
+  it("should revert or not change state when user with zero credit calls withdrawAll", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("ReentrancyDAO");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // First, have owner deposit some ETH so balance > 0
+    const depositAmount = ethers.parseEther("1.0");
+    await instance.connect(owner).deposit({ value: depositAmount });
+
+    // Now addr1 (who has zero credit) tries to withdrawAll
+    const balanceBefore = await ethers.provider.getBalance(await instance.getAddress());
+    const creditBefore = await instance.credit(addr1.address);
+
+    await instance.connect(addr1).withdrawAll();
+
+    const balanceAfter = await ethers.provider.getBalance(await instance.getAddress());
+    const creditAfter = await instance.credit(addr1.address);
+
+    // On the original contract, balance and credit should remain unchanged
+    // On the mutant, balance might change (subtract 0) and credit set to 0 (still 0)
+    // But the key invariant: a user with zero credit should not trigger any state change
+    expect(balanceAfter).to.equal(balanceBefore);
+    expect(creditAfter).to.equal(creditBefore);
+  });
+});
+```

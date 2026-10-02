@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tc3579b0a",
+ "property_summary": "For any non-empty _tos array, the reference contract always returns true when all low-level calls to the callee do not revert (even if they return false), whereas the mutant returns false as soon as any low-level call reports success; the mutant thus can produce a different boolean return for some inputs where a callee returns success without reverting.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change the function to return false immediately if any internal call succeeds (invert success check), causing return value to differ when calls succeed but not revert.",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0; i<_tos.length; i++){\n            { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); if(_s) return false; }\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airPort} from \"../src/airPort.sol\";\n\ncontract InvMutTest is Test {\n    airPort c;\n    function setUp() public { c = new airPort(); }\n\n    function testFuzz_property(address from, uint256 v, uint256 n) public {\n        uint256 len = bound(n, 1, 5);\n\n        HonestCallee helper = new HonestCallee();\n\n        address[] memory tos = new address[](len);\n        for (uint i = 0; i < len; i++) tos[i] = address(helper);\n\n        bool ok;\n        try c.transfer(from, address(helper), tos, v) returns (bool ret) {\n            ok = ret;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok);\n    }\n}\n\ncontract HonestCallee {\n    function transferFrom(address, address, uint256) external pure returns (bool) {\n        return true;\n    }\n}"
+}

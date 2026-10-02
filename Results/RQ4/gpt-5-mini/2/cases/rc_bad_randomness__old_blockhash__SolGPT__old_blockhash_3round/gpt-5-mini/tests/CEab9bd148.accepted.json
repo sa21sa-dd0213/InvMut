@@ -1,0 +1,12 @@
+{
+ "difference_id": "CEab9bd148",
+ "property_summary": "(property test)",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "replay_verdict": "kill_holds",
+ "replay_settings": "fuzz_runs=10000 seed=InvMut max_test_rejects=2560000 hardened",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {PredictTheBlockHashChallenge as C} from \"../src/PredictTheBlockHashChallenge.sol\";\n\ncontract InvMutTest is Test {\n    C c;\n\n    function setUp() public { c = new C{value: 1 ether}(); }\n\n    // Fuzz parameters: address player and a bytes32 guessHash\n    function testFuzz_property(address player, bytes32 guessHash) public {\n        player = address(uint160(bound(uint256(uint160(player)), 0xffff + 1, type(uint160).max)));\n        vm.assume(player.code.length == 0 && player != address(this) && player != 0x7109709ECfa91a80626fF3989D68f67F5b1DD12D && player != 0x000000000000000000636F6e736F6c652e6c6f67 && player != 0x4e59b44847b379578588920cA78FbF26c0B4956C && player != 0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38);\n        // keep player non-zero and distinct from this contract\n        vm.assume(player != address(0));\n        vm.assume(player != address(this));\n\n        // fund the player so they can send 1 ether for lockInGuess\n        vm.deal(player, 2 ether);\n\n        // Player locks in a guess in the next block number (we must call lockInGuess first)\n        vm.prank(player);\n        // lockInGuess requires exactly 1 ether\n        c.lockInGuess{value: 1 ether}(guessHash);\n\n        // Now attempt to call settle in the SAME block as lockInGuess: to simulate this in a test\n        // we must ensure both calls occur in the same block. Foundry executes sequentially in the same block\n        // unless vm.roll or vm.warp are used. We DO NOT advance the block, so this models trying to settle in same block.\n        bool ok;\n        try c.settle{gas: gasleft()}() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        // General property (single assertion): On the correct reference implementation, settle() MUST revert\n        // (i.e., not succeed) when called in the same block as the lock (require(block.number > guesses[msg.sender].block)).\n        // The mutant changing to '>=' will allow success for some inputs; thus the assertion will fail for the mutant.\n        assertTrue(!ok);\n    }\n}\n"
+}

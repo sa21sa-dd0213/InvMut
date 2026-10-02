@@ -1,0 +1,52 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("airdrop reference (ethers v6; deploy may require constructor arguments)", function () {   it("should revert when calling transfer with empty _tos array on original, but pass on mutant", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("airdrop");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Create a mock token contract that will accept any transferFrom call     const MockTokenFactory = await ethers.getContractFactory(       "contracts/mocks/MockERC20.sol:MockERC20"     );     const mockToken = await MockTokenFactory.deploy();     await mockToken.waitForDeployment();      // Fund addr1 with tokens so transferFrom will succeed     await mockToken.mint(addr1.address, ethers.parseEther("100"));     await mockToken.connect(addr1).approve(instance.target, ethers.parseEther("100"));      // Attempt to call transfer with empty _tos array     const emptyTos: string[] = [];          // This should revert on original (require(_tos.length > 0))     // but succeed on mutant (require(_tos.length >= 0) always true)     await expect(       instance.connect(addr1).transfer(         addr1.address,         mockToken.target,         emptyTos,         ethers.parseEther("10")       )     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract airdrop{ function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){ require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ { (bool _s,) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v)); require(_s); } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airdrop reference (ethers v6; deploy may require constructor arguments)", function () {
+  it("should revert when calling transfer with empty _tos array on original, but pass on mutant", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("airdrop");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Create a mock token contract that will accept any transferFrom call
+    const MockTokenFactory = await ethers.getContractFactory(
+      "contracts/mocks/MockERC20.sol:MockERC20"
+    );
+    const mockToken = await MockTokenFactory.deploy();
+    await mockToken.waitForDeployment();
+
+    // Fund addr1 with tokens so transferFrom will succeed
+    await mockToken.mint(addr1.address, ethers.parseEther("100"));
+    await mockToken.connect(addr1).approve(instance.target, ethers.parseEther("100"));
+
+    // Attempt to call transfer with empty _tos array
+    const emptyTos: string[] = [];
+    
+    // This should revert on original (require(_tos.length > 0))
+    // but succeed on mutant (require(_tos.length >= 0) always true)
+    await expect(
+      instance.connect(addr1).transfer(
+        addr1.address,
+        mockToken.target,
+        emptyTos,
+        ethers.parseEther("10")
+      )
+    ).to.be.reverted;
+  });
+});
+```

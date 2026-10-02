@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Roulette:
+        Contract Code: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+
+    Consider the following mutant of Roulette:
+        Mutant m916b9143 of function fallback replaces block.timestamp with block.prevrandao
+        Mutant Diff: ---|         require(block.timestamp > pastBlockTime); +++|         require(block.prevrandao > pastBlockTime);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant replaces `block.timestamp` with `block.prevrandao` in the require statement. In the original contract, the condition checks that the current block's timestamp is greater than the previously recorded timestamp, ensuring that each new call occurs in a later block (or at least a later timestamp). The mutant instead compares the block's `prevrandao` value (which is a random number from the beacon chain) against `pastBlockTime`. Since `block.prevrandao` is not a time-based value, it is highly unlikely to be greater than a previous timestamp, causing the require statement to almost always fail.
+
+**Hypothesis**: "A test case that first successfully calls the fallback function (satisfying the original timestamp condition) and then immediately calls it again in a new block with the same block timestamp should pass on the original contract (since the second call would revert due to `block.timestamp` not being greater than `pastBlockTime`), but on the mutant it will likely fail because the second call may pass (if `block.prevrandao` happens to be greater than `pastBlockTime` by chance), or more reliably, a test that calls the fallback function twice in rapid succession (within the same block timestamp) should detect the mutant because the mutant's condition based on `prevrandao` is unpredictable and not time-ordered, whereas the original correctly enforces time progression."

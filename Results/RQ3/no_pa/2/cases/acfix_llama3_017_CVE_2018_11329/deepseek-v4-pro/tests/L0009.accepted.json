@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0009",
+ "property_summary": "After a call to collectDrugs(address(0)) from address(1) with no prior referral, the reference sets referral to address(0) while the bug sets it to msg.sender, so address(0) gets a referral bonus in the reference but not in the bug.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Change the referral assignment so that it always sets the referral to the caller (msg.sender) instead of the provided address.",
+ "mutated_unit_code": "    function collectDrugs(address ref) public{\n        require(initialized);\n        if(referrals[msg.sender] == address(0) && referrals[msg.sender]!=msg.sender){\n            referrals[msg.sender]=msg.sender;\n        }\n        uint256 drugsUsed=getMyDrugs();\n        uint256 newKilo=SafeMath.div(drugsUsed,DRUGS_TO_PRODUCE_1KILO);\n        Kilos[msg.sender]=SafeMath.add(Kilos[msg.sender],newKilo);\n        claimedDrugs[msg.sender]=0;\n        lastCollect[msg.sender]=block.timestamp;\n\n        claimedDrugs[referrals[msg.sender]]=SafeMath.add(claimedDrugs[referrals[msg.sender]],SafeMath.div(drugsUsed,5));\n\n        marketDrugs=SafeMath.add(marketDrugs,SafeMath.div(drugsUsed,10));\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherCartel} from \"../src/EtherCartel.sol\";\n\ncontract InvMutTest is Test {\n    EtherCartel c;\n    function setUp() public { c = new EtherCartel(); }\n    function testRegression_property() public {\n        vm.deal(address(this), 1 ether);\n        c.seedMarket{value: 1 ether}(1000000);\n\n        vm.prank(address(1));\n        c.getFreeKilo();\n\n        vm.warp(block.timestamp + 86400);\n\n        vm.prank(address(1));\n        c.collectDrugs(address(0));\n\n        uint256 bonus = c.claimedDrugs(address(0));\n        assertTrue(bonus > 0, \"Reference: address(0) should have received referral bonus\");\n    }\n}"
+}

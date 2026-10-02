@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0001",
+ "property_summary": "On input (from=address(1), caddress=address(2), _tos=[address(3)], v=[100]), the reference contract makes an external call to caddress, while the buggy contract does not; the test detects the absence of the call by checking that caddress's (auto-generated) `lastSender` public variable (if it were a contract that stores call data) is not set \u2014 but since C is the contract under test and caddress is arbitrary, I realize this approach won't work without a helper. Instead: the test uses a separate deployment of a simple receiver contract that records whether transferFrom was called, then calls the reference C's transfer and checks the receiver's state, and the buggy version's transfer fails that check.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "concrete",
+ "change_summary": "Replace the for loop with an empty loop that does nothing, so the function always returns true without making any calls.",
+ "mutated_unit_code": "    function transfer(address from,address caddress, address[] memory _tos, uint[] memory v)public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0;i<_tos.length;i++){\n            // no call\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EBU} from \"../src/EBU.sol\";\n\ncontract Receiver {\n    bool public called;\n    function transferFrom(address, address, uint256) external returns (bool) {\n        called = true;\n        return true;\n    }\n}\n\ncontract InvMutTest is Test {\n    EBU c;\n    Receiver receiver;\n    function setUp() public { \n        c = new EBU(); \n        receiver = new Receiver();\n    }\n    function testRegression_property() public {\n        address[] memory tos = new address[](1);\n        tos[0] = address(0x3);\n        uint[] memory vals = new uint[](1);\n        vals[0] = 100;\n        c.transfer(address(0x1), address(receiver), tos, vals);\n        assertTrue(receiver.called());\n    }\n}"
+}

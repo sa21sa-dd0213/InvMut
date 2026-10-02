@@ -1,0 +1,53 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Kill mutant m2edef8f2 of B", function () {   it("should revert when external call fails in original but not in mutant", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy contract B (no constructor arguments needed)     const Factory = await ethers.getContractFactory("B");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Fund the contract with some initial balance to make the transfer meaningful     const fundTx = await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("1.0")     });     await fundTx.wait();          // The target address 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C is a random address with no code     // Calling it with value will fail (revert) because it's not a payable contract     // In the original contract, this should cause a revert     // In the mutant (where !_s is replaced with false), it will NOT revert and will proceed to transfer balance          // Attempt to call go() from a non-owner address with some ether     // The external call to the target will fail, and in the original the whole tx reverts     // The mutant will not revert and will try to transfer balance to owner     await expect(       instance.connect(addr1).go({ value: ethers.parseEther("0.1") })     ).to.be.reverted;          // Additional verification: in the mutant, the contract balance would be transferred to owner     // so owner's balance would increase - but since we expect revert, this is just extra safety     const contractBalance = await ethers.provider.getBalance(await instance.getAddress());     expect(contractBalance).to.equal(ethers.parseEther("1.0")); // Balance unchanged if reverted   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract B { address public owner = payable(msg.sender); function go()  public payable { address target = 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C; { (bool _s, bytes memory _d) = target.call{value: msg.value}(""); _d; if (! _s) { revert();} } payable(owner).transfer(address(this).balance); } fallback() external payable { } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Kill mutant m2edef8f2 of B", function () {
+  it("should revert when external call fails in original but not in mutant", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy contract B (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("B");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Fund the contract with some initial balance to make the transfer meaningful
+    const fundTx = await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("1.0")
+    });
+    await fundTx.wait();
+
+    // The target address 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C is a random address with no code
+    // Calling it with value will fail (revert) because it's not a payable contract
+    // In the original contract, this should cause a revert
+    // In the mutant (where !_s is replaced with false), it will NOT revert and will proceed to transfer balance
+
+    // Attempt to call go() from a non-owner address with some ether
+    // The external call to the target will fail, and in the original the whole tx reverts
+    // The mutant will not revert and will try to transfer balance to owner
+    await expect(
+      instance.connect(addr1).go({ value: ethers.parseEther("0.1") })
+    ).to.be.reverted;
+
+    // Additional verification: in the mutant, the contract balance would be transferred to owner
+    // so owner's balance would increase - but since we expect revert, this is just extra safety
+    const contractBalance = await ethers.provider.getBalance(await instance.getAddress());
+    expect(contractBalance).to.equal(ethers.parseEther("1.0")); // Balance unchanged if reverted
+  });
+});
+```

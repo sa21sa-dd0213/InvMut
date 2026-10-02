@@ -1,0 +1,95 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Roulette mutant m19e5b15a test", function () {   it("should detect mutant that changes block.number to block.number-1 in payout condition", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Roulette");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Get current block number     const currentBlock = await ethers.provider.getBlockNumber();          // Calculate the next block that is a multiple of 15 (but not block 1)     const blocksUntilMultiple = 15 - (currentBlock % 15);     const targetBlockNumber = currentBlock + blocksUntilMultiple;          // Send 10 ether to trigger the fallback on a block that is a multiple of 15     const tx = await addr1.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10")     });          // Wait for the transaction to be mined     const receipt = await tx.wait();          // Get the block number where the transaction was mined     const minedBlockNumber = receipt.blockNumber;          // If the block number is a multiple of 15, the original would pay out     // The mutant only pays out on block number == 1     if (minedBlockNumber % 15 === 0) {       // Original should have transferred balance to addr1       // Mutant would not transfer (since it only pays on block 1)       const addr1Balance = await ethers.provider.getBalance(addr1.address);       // The original would have transferred the contract balance to addr1       // Since we only sent 10 ether and no one else called, contract balance is 10 ether       // On the original, addr1 would receive ~10 ether (minus gas)       // On the mutant, addr1 would have only spent gas       expect(addr1Balance).to.be.gt(ethers.parseEther("10000")); // addr1 started with 10000 ether     }          // If the block is not a multiple of 15, we need to wait for one     if (minedBlockNumber % 15 !== 0) {       // Mine blocks until we reach a multiple of 15       const blocksToMine = 15 - (minedBlockNumber % 15);              // Send another 10 ether to trigger the fallback on the target block       const tx2 = await addr1.sendTransaction({         to: await instance.getAddress(),         value: ethers.parseEther("10")       });       await tx2.wait();              // Now mine blocks to reach a multiple of 15       for (let i = 0; i < blocksToMine; i++) {         await ethers.provider.send("evm_mine", []);       }              // Send 10 ether on a block that is a multiple of 15       const tx3 = await addr1.sendTransaction({         to: await instance.getAddress(),         value: ethers.parseEther("10")       });       const receipt3 = await tx3.wait();              // Check that the payout happened (original) or didn't (mutant)       // The original pays out on block.number % 15 == 0       // The mutant pays out on block.number == 1 (only once after deployment)       const addr1FinalBalance = await ethers.provider.getBalance(addr1.address);              // On the original, addr1 should have received the contract balance       // On the mutant, addr1 should not have received the payout       // Since we sent 30 ether total and the original pays out on each multiple of 15       // The contract should have paid out at least once       expect(addr1FinalBalance).to.be.gt(ethers.parseEther("10000"));     }   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp + 1; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant m19e5b15a test", function () {
+  it("should detect mutant that changes block.number to block.number-1 in payout condition", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get current block number
+    const currentBlock = await ethers.provider.getBlockNumber();
+    
+    // Calculate the next block that is a multiple of 15 (but not block 1)
+    const blocksUntilMultiple = 15 - (currentBlock % 15);
+    const targetBlockNumber = currentBlock + blocksUntilMultiple;
+
+    // Send 10 ether to trigger the fallback on a block that is a multiple of 15
+    const tx = await addr1.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+
+    // Wait for the transaction to be mined
+    const receipt = await tx.wait();
+
+    // Get the block number where the transaction was mined
+    const minedBlockNumber = receipt.blockNumber;
+
+    // If the block number is a multiple of 15, the original would pay out
+    // The mutant only pays out on block number == 1
+    if (minedBlockNumber % 15 === 0) {
+      // Original should have transferred balance to addr1
+      // Mutant would not transfer (since it only pays on block 1)
+      const addr1Balance = await ethers.provider.getBalance(addr1.address);
+      // The original would have transferred the contract balance to addr1
+      // Since we only sent 10 ether and no one else called, contract balance is 10 ether
+      // On the original, addr1 would receive ~10 ether (minus gas)
+      // On the mutant, addr1 would have only spent gas
+      expect(addr1Balance).to.be.gt(ethers.parseEther("10000")); // addr1 started with 10000 ether
+    }
+
+    // If the block is not a multiple of 15, we need to wait for one
+    if (minedBlockNumber % 15 !== 0) {
+      // Mine blocks until we reach a multiple of 15
+      const blocksToMine = 15 - (minedBlockNumber % 15);
+
+      // Send another 10 ether to trigger the fallback on the target block
+      const tx2 = await addr1.sendTransaction({
+        to: await instance.getAddress(),
+        value: ethers.parseEther("10")
+      });
+      await tx2.wait();
+
+      // Now mine blocks to reach a multiple of 15
+      for (let i = 0; i < blocksToMine; i++) {
+        await ethers.provider.send("evm_mine", []);
+      }
+
+      // Send 10 ether on a block that is a multiple of 15
+      const tx3 = await addr1.sendTransaction({
+        to: await instance.getAddress(),
+        value: ethers.parseEther("10")
+      });
+      const receipt3 = await tx3.wait();
+
+      // Check that the payout happened (original) or didn't (mutant)
+      // The original pays out on block.number % 15 == 0
+      // The mutant pays out on block.number == 1 (only once after deployment)
+      const addr1FinalBalance = await ethers.provider.getBalance(addr1.address);
+
+      // On the original, addr1 should have received the contract balance
+      // On the mutant, addr1 should not have received the payout
+      // Since we sent 30 ether total and the original pays out on each multiple of 15
+      // The contract should have paid out at least once
+      expect(addr1FinalBalance).to.be.gt(ethers.parseEther("10000"));
+    }
+  });
+});
+```

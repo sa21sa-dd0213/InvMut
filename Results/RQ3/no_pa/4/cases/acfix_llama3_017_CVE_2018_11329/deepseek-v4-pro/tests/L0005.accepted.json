@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0005",
+ "property_summary": "After calling getFreeKilo with one user and then collectDrugs with a reference, the reference contract increases marketDrugs by 1/10 of drugsUsed (which is 300*86400 due to the starting kilos and time warp), so marketDrugs becomes 2592000; the mutant does not increase marketDrugs, leaving it at 0; this affects subsequent calculateDrugSell calculations, making the reference return a non-zero value and the mutant revert due to division by zero in calculateTrade.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Delete the line that adds to marketDrugs, so marketDrugs is not increased on collect.",
+ "mutated_unit_code": "    function collectDrugs(address ref) public{\n        require(initialized);\n        if(referrals[msg.sender] == address(0) && referrals[msg.sender]!=msg.sender){\n            referrals[msg.sender]=ref;\n        }\n        uint256 drugsUsed=getMyDrugs();\n        uint256 newKilo=SafeMath.div(drugsUsed,DRUGS_TO_PRODUCE_1KILO);\n        Kilos[msg.sender]=SafeMath.add(Kilos[msg.sender],newKilo);\n        claimedDrugs[msg.sender]=0;\n        lastCollect[msg.sender]=block.timestamp;\n\n        claimedDrugs[referrals[msg.sender]]=SafeMath.add(claimedDrugs[referrals[msg.sender]],SafeMath.div(drugsUsed,5));\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherCartel} from \"../src/EtherCartel.sol\";\n\ncontract InvMutTest is Test {\n    EtherCartel c;\n    function setUp() public { c = new EtherCartel(); }\n    function testRegression_property() public {\n        vm.prank(address(0x85abE8E3bed0d4891ba201Af1e212FE50bb65a26));\n        c.seedMarket(0);\n        vm.prank(address(0x1));\n        c.getFreeKilo();\n        vm.warp(block.timestamp + 86400);\n        vm.prank(address(0x1));\n        c.collectDrugs(address(0));\n        uint256 ret;\n        bool ok;\n        uint256 marketDrugs = c.marketDrugs();\n        assertTrue(marketDrugs > 0, \"marketDrugs should be >0 in reference\");\n    }\n}\n"
+}

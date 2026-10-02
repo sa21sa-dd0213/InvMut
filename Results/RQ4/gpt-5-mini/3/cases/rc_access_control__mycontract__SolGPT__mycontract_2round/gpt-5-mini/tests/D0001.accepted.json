@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "For every caller, calling sendTo(...) from the reference contract will only succeed in transferring ether if the caller is the stored owner (non-owners cannot make the contract send funds); the mutant removes the owner check so some non-owner callers can cause transfers and thus violate this rule.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Removed the owner check so any caller can invoke sendTo, changing who can trigger transfers.",
+ "mutated_unit_code": "function sendTo(address receiver, uint amount) public {\n        // owner check removed to allow any caller\n        require(receiver != address(0));\n        require(amount > 0);\n        payable(receiver).transfer(amount);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MyContract} from \"../src/MyContract.sol\";\n\ncontract InvMutTest is Test {\n    MyContract c;\n\n    function setUp() public { c = new MyContract(); }\n\n    function testFuzz_property(address caller, uint256 amount) public {\n        amount = bound(amount, 0, 1 ether);\n\n        vm.deal(address(c), 1 ether);\n\n        address owner = address(this);\n\n        bool ok;\n        vm.prank(caller);\n        try c.sendTo(address(0x1234), amount) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok == (caller == owner && amount > 0));\n    }\n}\n"
+}

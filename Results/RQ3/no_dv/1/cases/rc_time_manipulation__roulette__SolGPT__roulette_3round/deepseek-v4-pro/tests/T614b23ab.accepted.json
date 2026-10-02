@@ -1,0 +1,12 @@
+{
+ "difference_id": "T614b23ab",
+ "property_summary": "After any successful execution of fallback() that sends exactly 10 ether, if the block number is divisible by 15, the reference correctly transfers the full contract balance to the sender (leaving the contract balance zero), while the mutant fails to transfer and keeps the balance nonzero.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Delete the entire if block that transfers the balance.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp + 1;\n\n        \n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 actorSeed, uint256 roll, uint256 warpOffset) public {\n        uint256 blockNumber = bound(roll, 1, 1_000_000);\n        vm.roll(blockNumber);\n        vm.warp(blockNumber + bound(warpOffset, 1, 1000));\n        address actor = address(uint160(uint256(keccak256(abi.encode(actorSeed)))));\n        vm.assume(actor != address(0));\n        vm.deal(actor, 100 ether);\n\n        vm.prank(actor);\n        (bool ok, ) = address(c).call{value: 10 ether}(\"\");\n        require(ok, \"call failed\");\n\n        if (blockNumber % 15 == 0) {\n            assertEq(address(c).balance, 0, \"Balance should be 0 after transfer\");\n        }\n    }\n}\n"
+}

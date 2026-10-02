@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0003",
+ "property_summary": "After a burn by the owner, the sum of all balanceOf entries must equal totalSupply; the buggy version increases the burner's balance while decreasing totalSupply, breaking the invariant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace `balanceOf[msg.sender] -= _value;` with `balanceOf[msg.sender] += _value;` so burning increases the burner's balance instead of decreasing it.",
+ "mutated_unit_code": "function burn(uint256 _value)  public onlyOwner returns (bool success) {\n        require(balanceOf[msg.sender] >= _value);\n        balanceOf[msg.sender] += _value;\n        totalSupply -= _value;\n        emit Burn(msg.sender, _value);\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ERCDDAToken} from \"../src/ERCDDAToken.sol\";\n\ncontract InvMutTest is Test {\n    ERCDDAToken c;\n    address owner = address(0x1);\n    address acc1 = address(0x2);\n    address acc2 = address(0x3);\n\n    function setUp() public {\n        vm.prank(owner);\n        c = new ERCDDAToken(1000, \"Test\", \"TST\");\n        vm.prank(owner);\n        c.mintToken(acc1, 500);\n        vm.prank(owner);\n        c.mintToken(acc2, 300);\n    }\n\n    function testFuzz_property(uint256 burnAmount) public {\n        uint256 ownerBal = c.balanceOf(owner);\n        vm.assume(burnAmount > 0 && burnAmount <= ownerBal);\n\n        uint256 preBal0 = c.balanceOf(owner);\n        uint256 preBal1 = c.balanceOf(acc1);\n        uint256 preBal2 = c.balanceOf(acc2);\n        uint256 preTotalSupply = c.totalSupply();\n\n        vm.prank(owner);\n        c.burn(burnAmount);\n\n        uint256 postBal0 = c.balanceOf(owner);\n        uint256 postBal1 = c.balanceOf(acc1);\n        uint256 postBal2 = c.balanceOf(acc2);\n        uint256 postTotalSupply = c.totalSupply();\n        uint256 sumBalances = postBal0 + postBal1 + postBal2;\n\n        assertTrue(sumBalances <= postTotalSupply);\n    }\n}"
+}

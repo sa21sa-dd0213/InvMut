@@ -1,0 +1,61 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EtherLotto mutant kill test", function () {   it("should detect pot mutation by verifying exact pot balance after play", async function () {     const [owner, player] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("EtherLotto");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const TICKET_AMOUNT = ethers.parseEther("10");     const FEE_AMOUNT = ethers.parseEther("1");      // Player sends exactly 10 ether     await instance.connect(player).play({ value: TICKET_AMOUNT });      // After play, if random == 0, pot is reset to 0; if random == 1, pot remains     // We need to check the scenario where random == 1 (pot not reset)     // Since random is based on block.timestamp and block.difficulty, we can't control it     // So we run multiple times until we get random == 1          let potAfterPlay;     let attempts = 0;     const maxAttempts = 20;          while (attempts < maxAttempts) {       potAfterPlay = await instance.pot();              // If pot is 0, random was 0 and pot was reset; try again       if (potAfterPlay === 0n) {         await instance.connect(player).play({ value: TICKET_AMOUNT });         attempts++;       } else {         break;       }     }      // If we got random == 1, pot should be exactly TICKET_AMOUNT (10 ether)     // Original: pot += msg.value => pot = 10 ether     // Mutant: pot += msg.value - 1 => pot = 9.999999999999999999 ether (1 wei less)     if (potAfterPlay > 0n) {       expect(potAfterPlay).to.equal(TICKET_AMOUNT);     }   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant kill test", function () {
+  it("should detect pot mutation by verifying exact pot balance after play", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = ethers.parseEther("10");
+    const FEE_AMOUNT = ethers.parseEther("1");
+
+    // Player sends exactly 10 ether
+    await instance.connect(player).play({ value: TICKET_AMOUNT });
+
+    // After play, if random == 0, pot is reset to 0; if random == 1, pot remains
+    // We need to check the scenario where random == 1 (pot not reset)
+    // Since random is based on block.timestamp and block.difficulty, we can't control it
+    // So we run multiple times until we get random == 1
+    
+    let potAfterPlay;
+    let attempts = 0;
+    const maxAttempts = 20;
+    
+    while (attempts < maxAttempts) {
+      potAfterPlay = await instance.pot();
+      
+      // If pot is 0, random was 0 and pot was reset; try again
+      if (potAfterPlay === 0n) {
+        await instance.connect(player).play({ value: TICKET_AMOUNT });
+        attempts++;
+      } else {
+        break;
+      }
+    }
+
+    // If we got random == 1, pot should be exactly TICKET_AMOUNT (10 ether)
+    // Original: pot += msg.value => pot = 10 ether
+    // Mutant: pot += msg.value - 1 => pot = 9.999999999999999999 ether (1 wei less)
+    if (potAfterPlay > 0n) {
+      expect(potAfterPlay).to.equal(TICKET_AMOUNT);
+    }
+  });
+});
+```

@@ -1,0 +1,41 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("airdrop mutant detection - m39231ab2", function () {   it("should revert when _tos array is empty (original behavior) but mutant would not revert", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy the airdrop contract (no constructor arguments needed)     const Factory = await ethers.getContractFactory("airdrop");     const instance = await Factory.deploy();     await instance.waitForDeployment();          const tokenAddress = addr1.address; // using a random address as token (will fail call but we test the require first)     const emptyRecipients: string[] = [];     const value = ethers.parseEther("1");          // The original contract requires _tos.length > 0, so calling with empty array should revert     // The mutant with >= 0 would pass the require and attempt the loop (which does nothing)     // Since the call inside the loop will revert on a random address, the mutant will revert later,     // but we specifically test that the empty array causes a revert at the require statement     await expect(       instance.transfer(owner.address, tokenAddress, emptyRecipients, value)     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract airdrop{ function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){ require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ { (bool _s,) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v)); require(_s); } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("airdrop mutant detection - m39231ab2", function () {
+  it("should revert when _tos array is empty (original behavior) but mutant would not revert", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy the airdrop contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("airdrop");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const tokenAddress = addr1.address; // using a random address as token (will fail call but we test the require first)
+    const emptyRecipients: string[] = [];
+    const value = ethers.parseEther("1");
+
+    // The original contract requires _tos.length > 0, so calling with empty array should revert
+    // The mutant with >= 0 would pass the require and attempt the loop (which does nothing)
+    // Since the call inside the loop will revert on a random address, the mutant will revert later,
+    // but we specifically test that the empty array causes a revert at the require statement
+    await expect(
+      instance.transfer(owner.address, tokenAddress, emptyRecipients, value)
+    ).to.be.reverted;
+  });
+});
+```

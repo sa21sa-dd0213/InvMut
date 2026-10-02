@@ -1,0 +1,12 @@
+{
+ "difference_id": "T8fef4906",
+ "property_summary": "A withdraw must transfer the caller's full recorded balance; the bug transfers 0 instead, so after a successful withdraw the contract's ETH balance decreases by less than the eliminated balance amount.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the amount sent in the call from balances[msg.sender] to a fixed value (e.g., 0), so that no ether is transferred but the balance is still reset.",
+ "mutated_unit_code": "function withdraw () public __lock_modifier0  {\n(bool __sent_result100, ) = msg.sender.call{value: 0}(\"\");\nrequire(__sent_result100);\nbalances[msg.sender]=0;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {keepMyEther} from \"../src/keepMyEther.sol\";\n\ncontract InvMutTest is Test {\n    keepMyEther c;\n    function setUp() public { c = new keepMyEther(); }\n\n    function testFuzz_property(uint256 depositAmount, uint256 withdrawAmount, address actor) public {\n        vm.assume(depositAmount > 0);\n        vm.assume(withdrawAmount > 0);\n        vm.assume(actor != address(0));\n        vm.assume(actor != address(c));\n        vm.assume(actor != address(this));\n        vm.assume(depositAmount <= type(uint256).max / 2);\n        vm.assume(withdrawAmount <= depositAmount);\n\n        vm.deal(actor, depositAmount);\n        vm.prank(actor);\n        (bool ok,) = address(c).call{value: depositAmount}(\"\");\n        require(ok, \"fallback fail\");\n\n        uint256 preUserBalance = c.balances(actor);\n        uint256 preContractBalance = address(c).balance;\n        uint256 expectedBalanceReduction = preUserBalance;\n\n        vm.prank(actor);\n        bool withdrewOk;\n        try c.withdraw() { withdrewOk = true; } catch { withdrewOk = false; }\n\n        assertTrue(withdrewOk ? (preContractBalance - address(c).balance == expectedBalanceReduction) : true);\n    }\n}"
+}

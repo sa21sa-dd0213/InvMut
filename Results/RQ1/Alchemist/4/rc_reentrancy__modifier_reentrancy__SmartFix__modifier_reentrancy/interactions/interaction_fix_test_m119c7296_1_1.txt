@@ -1,0 +1,55 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("ModifierEntrancy mutant m119c7296 - supportsToken >= replacement", function () {   it("should revert when called from a contract that returns a larger hash value (mutant would pass)", async function () {     const [owner, attacker] = await ethers.getSigners();      // Deploy the malicious Bank contract that returns a hash value greater than "Nu Token"     const MaliciousBankFactory = await ethers.getContractFactory("MaliciousBank");     const maliciousBank = await MaliciousBankFactory.deploy();     await maliciousBank.waitForDeployment();      // Deploy ModifierEntrancy     const ModifierEntrancyFactory = await ethers.getContractFactory("ModifierEntrancy");     const instance = await ModifierEntrancyFactory.deploy();     await instance.waitForDeployment();      // Attacker calls airDrop() through the malicious Bank contract     // The malicious Bank returns a hash larger than keccak256("Nu Token"), which should fail the == check in original     await expect(       maliciousBank.connect(attacker).attack(await instance.getAddress())     ).to.be.reverted;   }); });  // Helper contract to be deployed in the test contract MaliciousBank {   function supportsToken() external pure returns (bytes32) {     // Return a value strictly greater than keccak256("Nu Token")     bytes32 nuTokenHash = keccak256(abi.encodePacked("Nu Token"));     return bytes32(uint256(nuTokenHash) + 1);   }    function attack(address target) external {     // Cast target to ModifierEntrancy and call airDrop     (bool success, ) = target.call(abi.encodeWithSignature("airDrop()"));     require(success, "airDrop failed");   } }
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract SmartFix { bool public _locked = false; modifier _nonReentrant() { require(!_locked); _locked = true; _; _locked = false; } } contract ModifierEntrancy is SmartFix { mapping (address => uint) public tokenBalance; string constant name = "Nu Token"; function airDrop()  public _nonReentrant  hasNoBalance supportsToken { require(((tokenBalance[msg.sender] + 20) >= tokenBalance[msg.sender])); tokenBalance[msg.sender] += 20; } modifier supportsToken() { require(keccak256(abi.encodePacked("Nu Token")) == Bank(msg.sender).supportsToken()); _; } modifier hasNoBalance { require(tokenBalance[msg.sender] == 0); _; } } contract Bank{ function supportsToken() external pure returns (bytes32){ return(keccak256(abi.encodePacked("Nu Token"))); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ModifierEntrancy mutant m119c7296 - supportsToken >= replacement", function () {
+  it("should revert when called from a contract that returns a larger hash value (mutant would pass)", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+
+    // Deploy the malicious Bank contract that returns a hash value greater than "Nu Token"
+    const MaliciousBankFactory = await ethers.getContractFactory("MaliciousBank");
+    const maliciousBank = await MaliciousBankFactory.deploy();
+    await maliciousBank.waitForDeployment();
+
+    // Deploy ModifierEntrancy
+    const ModifierEntrancyFactory = await ethers.getContractFactory("ModifierEntrancy");
+    const instance = await ModifierEntrancyFactory.deploy();
+    await instance.waitForDeployment();
+
+    // Attacker calls airDrop() through the malicious Bank contract
+    // The malicious Bank returns a hash larger than keccak256("Nu Token"), which should fail the == check in original
+    await expect(
+      maliciousBank.connect(attacker).attack(await instance.getAddress())
+    ).to.be.reverted;
+  });
+});
+
+// Helper contract to be deployed in the test
+contract MaliciousBank {
+  function supportsToken() external pure returns (bytes32) {
+    // Return a value strictly greater than keccak256("Nu Token")
+    bytes32 nuTokenHash = keccak256(abi.encodePacked("Nu Token"));
+    return bytes32(uint256(nuTokenHash) + 1);
+  }
+
+  function attack(address target) external {
+    // Cast target to ModifierEntrancy and call airDrop
+    (bool success, ) = target.call(abi.encodeWithSignature("airDrop()"));
+    require(success, "airDrop failed");
+  }
+}
+```

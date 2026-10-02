@@ -1,0 +1,31 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract SimpleWallet:
+        Contract Code: pragma solidity ^0.8.0; contract SimpleWallet { address public owner = msg.sender; uint public depositsCount; modifier onlyOwner { require(msg.sender == owner); _; } receive() external payable { require(((depositsCount + 1) >= depositsCount)); depositsCount++; } function withdrawAll() public onlyOwner { withdraw(address(this).balance); } function withdraw(uint _value) public onlyOwner { payable(msg.sender).transfer(_value); } function sendMoney(address _target, uint _value, bytes memory _data) public onlyOwner { _target.call{value: _value}(_data); } }
+
+    Consider the following mutant of SimpleWallet:
+        Mutant m0f4ea6e3 of function receive replaces >= with <=
+        Mutant Diff: ---|         require(((depositsCount + 1) >= depositsCount)); +++|         require(((depositsCount + 1) <= depositsCount));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's break it down step-by-step.
+
+**Original logic**:  
+`require(((depositsCount + 1) >= depositsCount))` – this is a redundant check that is always true (because adding 1 to an unsigned integer always results in a value greater than or equal to itself, unless overflow occurs, but Solidity 0.8.x has built-in overflow protection). So in the original, this requirement never fails.
+
+**Mutant logic**:  
+`require(((depositsCount + 1) <= depositsCount))` – this would only be true if `depositsCount + 1` is less than or equal to `depositsCount`. Since that is impossible under normal arithmetic (it would require overflow), this condition will **always be false** once `depositsCount` is zero or any positive number. Therefore, the first call to `receive()` will revert.
+
+**Difference**:  
+The mutant changes the condition from always-true to always-false, making it impossible to accept any ETH via `receive()`.
+
+**Hypothesis**:  
+A test case that sends Ether to the contract via a regular transfer (triggering `receive()`) and expects the transaction to succeed should detect the mutant, because the mutant will always revert on such a call.

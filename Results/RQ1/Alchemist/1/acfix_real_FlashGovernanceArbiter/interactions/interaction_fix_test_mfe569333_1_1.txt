@@ -1,0 +1,114 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("FlashGovernanceArbiter mutant mfe569333 test", function () {   it("should kill mutant by calling withdrawGovernanceAsset with amount = 0", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy with a mock DAO address (needed for constructor)     const FlashGovernanceArbiter = await ethers.getContractFactory("FlashGovernanceArbiter");     const instance = await FlashGovernanceArbiter.deploy(owner.address);     await instance.waitForDeployment();      // First, we need to set up the flash governance config via configureFlashGovernance     // This requires a successful proposal, but for testing we'll set values directly     // since we're testing the withdrawal logic          // We need to call assertGovernanceApproved first to create a pending decision     // For that, we need to set flashGovernanceConfig and have tokens          // For simplicity, we'll test the direct scenario:      // Call withdrawGovernanceAsset with amount = 0, which should fail on original but succeed on mutant          // Set up a mock pending decision by directly manipulating storage (or we can test the require logic)     // The mutant changes && to ||, so with amount = 0:     // Original: requires (asset matches) && (amount > 0) && (unlockTime passed) -> fails because amount > 0 is false     // Mutant: requires (asset matches) || (amount > 0) || (unlockTime passed) -> passes because asset matches (0x0) is false, amount > 0 is false, unlockTime < block.timestamp is false -> actually fails too          // Let me reconsider - we need one condition true for mutant to pass     // Set asset to match but amount = 0 and unlockTime in future     // Mutant: asset matches (true) || amount > 0 (false) || unlockTime < block.timestamp (false) -> true, passes     // Original: asset matches (true) && amount > 0 (false) && unlockTime < block.timestamp (false) -> false, reverts          // To set this up, we need to manipulate storage or call assertGovernanceApproved     // Let's deploy with a mock token and set up the config          // Deploy a mock ERC20 token     const MockToken = await ethers.getContractFactory("contracts/mocks/MockERC20.sol:MockERC20");     const token = await MockToken.deploy("Test", "TST", ethers.parseEther("1000"));     await token.waitForDeployment();          // Mint tokens to addr1 and approve the contract     await token.transfer(addr1.address, ethers.parseEther("100"));     await token.connect(addr1).approve(await instance.getAddress(), ethers.parseEther("100"));          // Configure flash governance - we need to be a successful proposal or bypass     // Since we're owner and DAO is set to owner, we can try to configure     // But configureFlashGovernance has onlySuccessfulProposal modifier          // Alternative: directly set flashGovernanceConfig via storage manipulation     // For Hardhat ethers v6, we can use storage layout or just call the internal function          // Let's use the owner to set DAO and then call setGoverned to whitelist ourselves     // First, set the flashGovernanceConfig directly by calling configureFlashGovernance     // We need to bypass the onlySuccessfulProposal check          // Since this is complex, let's use a simpler approach:     // Deploy with a mock contract that implements the required interfaces     // Or we can test the require statement directly by understanding the storage layout          // Actually, the simplest approach: use the fact that owner is DAO     // The flashEnabled modifier allows DAO to call assertGovernanceApproved     // Let's set up the config and call assertGovernanceApproved to create pending decision          // Configure flash governance (this will revert due to onlySuccessfulProposal)     // We need to first set configured = true and make ourselves a successful proposal          // Alternative: use the fact that we can set flashGovernanceConfig by calling configureFlashGovernance     // after making ourselves a successful proposal through the DAO          // For testing purposes, let's just manipulate the storage directly     // Storage slot 0: flashGovernanceConfig.amount (uint256)     // Storage slot 1: flashGovernanceConfig.unlockTime (uint256)       // Storage slot 2: flashGovernanceConfig.asset (address)     // Storage slot 3: flashGovernanceConfig.assetBurnable (bool)          // Set flashGovernanceConfig.asset to token address     const assetSlot = 2;     await ethers.provider.send("hardhat_setStorageAt", [       await instance.getAddress(),       "0x" + ethers.toBeHex(assetSlot, 32),       ethers.zeroPadValue(token.address, 32)     ]);          // Set flashGovernanceConfig.amount to some value     const amountSlot = 0;     await ethers.provider.send("hardhat_setStorageAt", [       await instance.getAddress(),       "0x" + ethers.toBeHex(amountSlot, 32),       ethers.zeroPadValue(ethers.toBeHex(ethers.parseEther("1")), 32)     ]);          // Set flashGovernanceConfig.unlockTime to past time (so it's unlocked)     const unlockTimeSlot = 1;     await ethers.provider.send("hardhat_setStorageAt", [       await instance.getAddress(),       "0x" + ethers.toBeHex(unlockTimeSlot, 32),       ethers.zeroPadValue(ethers.toBeHex(1), 32) // timestamp 1, definitely in past     ]);          // Now we need to set pendingFlashDecision for targetContract = owner, sender = addr1     // This is a nested mapping, so storage slot calculation is complex     // Let's use a different approach - test via assertGovernanceApproved          // Call assertGovernanceApproved from addr1 (who is DAO, so flashEnabled passes)     // This will set pendingFlashDecision[target][sender]     await instance.connect(addr1).assertGovernanceApproved(       addr1.address,       owner.address,       false     );          // Now we have a pending decision with amount > 0 and unlockTime in the past     // We need to modify the pending decision to have amount = 0     // This is complex due to nested mapping, so let's use a different strategy          // Actually, let's just test the require statement directly by creating the right conditions     // The key insight: for the mutant to pass and original to fail, we need:     // asset matches (true) AND amount > 0 (false) AND unlockTime passed (any)      // OR in mutant: asset matches (true) OR amount > 0 (false) OR unlockTime passed (any) -> true          // So we need pendingFlashDecision where asset matches but amount = 0          // Let's reset and use storage manipulation for the pending decision     // The pendingFlashDecision mapping is at storage slot 4 (after the structs and mapping)     // Actually, let's check the storage layout:     // Slot 0: flashGovernanceConfig.amount     // Slot 1: flashGovernanceConfig.unlockTime     // Slot 2: flashGovernanceConfig.asset     // Slot 3: flashGovernanceConfig.assetBurnable     // Slot 4: security.epochSize     // Slot 5: security.lastFlashGovernanceAct     // Slot 6: security.maxGovernanceChangePerEpoch     // Slot 7: security.changeTolerance     // Slot 8: governed mapping     // Slot 9: pendingFlashDecision mapping (nested mapping)          // For nested mapping pendingFlashDecision[target][sender]:     // keccak256(abi.encode(sender, keccak256(abi.encode(target, slot))))     // where slot = 9          // Let's compute this storage slot     const targetAddress = owner.address;     const senderAddress = addr1.address;     const baseSlot = ethers.toBeHex(9, 32);          // keccak256(abi.encode(target, baseSlot))     const innerHash = ethers.keccak256(       ethers.concat([         ethers.zeroPadValue(targetAddress, 32),         baseSlot       ])     );          // keccak256(abi.encode(sender, innerHash))     const pendingSlot = ethers.keccak256(       ethers.concat([         ethers.zeroPadValue(senderAddress, 32),         innerHash       ])     );          // The FlashGovernanceConfig struct has 4 slots starting from pendingSlot     // Set asset to token address (slot pendingSlot + 2)     await ethers.provider.send("hardhat_setStorageAt", [       await instance.getAddress(),       ethers.toBeHex(BigInt(pendingSlot) + 2n, 32),       ethers.zeroPadValue(token.address, 32)     ]);          // Set amount to 0 (slot pendingSlot + 0)     await ethers.provider.send("hardhat_setStorageAt", [       await instance.getAddress(),       ethers.toBeHex(BigInt(pendingSlot) + 0n, 32),       ethers.zeroPadValue("0x0", 32)     ]);          // Set unlockTime to past (slot pendingSlot + 1)     await ethers.provider.send("hardhat_setStorageAt", [       await instance.getAddress(),       ethers.toBeHex(BigInt(pendingSlot) + 1n, 32),       ethers.zeroPadValue(ethers.toBeHex(1), 32)     ]);          // Now call withdrawGovernanceAsset with targetContract = owner, asset = token     // Original should revert because amount > 0 is false (AND condition fails)     // Mutant should succeed because asset matches (OR condition passes)          await expect(       instance.connect(addr1).withdrawGovernanceAsset(owner.address, token.address)     ).to.be.revertedWith("Limbo: Flashgovernance decision pending.");   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; abstract contract Burnable { function burn (uint amount) public virtual; } abstract contract FlashGovernanceArbiterLike { function assertGovernanceApproved(address sender, address target, bool emergency) public virtual; function enforceToleranceInt(int256 v1, int256 v2) public view virtual; function enforceTolerance(uint256 v1, uint256 v2) public view virtual; function burnFlashGovernanceAsset( address targetContract, address user, address asset, uint256 amount ) public virtual; function setEnforcement(bool enforce) public virtual; } interface IERC20 { event Transfer(address indexed from, address indexed to, uint256 value); event Approval(address indexed owner, address indexed spender, uint256 value); function totalSupply() external view returns (uint256); function balanceOf(address account) external view returns (uint256); function transfer(address to, uint256 amount) external returns (bool); function allowance(address owner, address spender) external view returns (uint256); function approve(address spender, uint256 amount) external returns (bool); function transferFrom(address from, address to, uint256 amount) external returns (bool); } abstract contract LimboDAOLike { function approveFlanMintingPower(address minter, bool enabled) public virtual; function makeProposal(address proposal, address proposer) public virtual; function currentProposalState() public view virtual returns ( uint256, uint256, address, uint256, address ); function setProposalConfig( uint256 votingDuration, uint256 requiredFateStake, address proposalFactory ) public virtual; function setApprovedAsset( address asset, bool approved, bool isUniswap, uint256 period ) public virtual; function successfulProposal(address proposal) public view virtual returns (bool); function domainConfig() public virtual returns ( address, address, address, address, bool, address, address ); function getFlashGoverner() external view virtual returns (address); function proposalConfig() public view virtual returns ( uint256, uint256, address ); function setFateToFlan(uint256 rate) public virtual; } abstract contract ProposalFactoryLike { function toggleWhitelistProposal(address proposal) public virtual; function soulUpdateProposal () public  virtual view returns (address); } abstract contract Governable { FlashGovernanceArbiterLike public governer; bool public configured; address public DAO; function endConfiguration() public { configured = true; } modifier onlySuccessfulProposal() { assertSuccessfulProposal(msg.sender); _; } modifier onlySoulUpdateProposal() { assertSoulUpdateProposal(msg.sender); _; } function assertSoulUpdateProposal(address sender) internal view { (, , address proposalFactory) = LimboDAOLike(DAO).proposalConfig(); require(!configured || sender == ProposalFactoryLike(proposalFactory).soulUpdateProposal(), "EJ"); assertSuccessfulProposal(sender); } function _governanceApproved(bool emergency) internal { bool successfulProposal = LimboDAOLike(DAO).successfulProposal(msg.sender); if (successfulProposal) { governer.setEnforcement(false); } else if (configured) { governer.setEnforcement(true); governer.assertGovernanceApproved(msg.sender, address(this), emergency); } } modifier governanceApproved(bool emergency) { _governanceApproved(emergency); _; } function assertSuccessfulProposal(address sender) internal view { require(!configured || LimboDAOLike(DAO).successfulProposal(sender), "EJ"); } constructor(address dao) { setDAO(dao); } function flashGoverner() internal returns (FlashGovernanceArbiterLike) { if (address(governer) == address(0)) governer = FlashGovernanceArbiterLike(LimboDAOLike(DAO).getFlashGoverner()); return governer; } function setDAO(address dao) public { require(DAO == address(0) || msg.sender == DAO || !configured, "EK"); DAO = dao; delete governer; } } abstract contract Configurable { function configured() public view virtual returns (bool); } contract FlashGovernanceArbiter is Governable { event flashDecision(address actor, address deposit_asset, uint256 amount, address target); mapping(address => bool) enforceLimitsActive; constructor(address dao) Governable(dao) {} struct FlashGovernanceConfig { uint256 amount; uint256 unlockTime; address asset; bool assetBurnable; } struct SecurityParameters { uint256 epochSize; uint256 lastFlashGovernanceAct; uint8 maxGovernanceChangePerEpoch; uint8 changeTolerance; } FlashGovernanceConfig public flashGovernanceConfig; SecurityParameters public security; mapping(address => bool) public governed; function setGoverned(address[] calldata governables, bool[] calldata isGoverned) external onlySuccessfulProposal { require(governables.length == isGoverned.length, "LIMBO: length mismatch"); for (uint256 i = 0; i < governables.length; i++) { governed[governables[i]] = isGoverned[i]; } } modifier flashEnabled(){ require(msg.sender == DAO || governed[msg.sender], "LIMBO: EP"); _; } mapping(address => mapping(address => FlashGovernanceConfig)) public pendingFlashDecision; function assertGovernanceApproved( address sender, address target, bool emergency ) public flashEnabled{ if ( IERC20(flashGovernanceConfig.asset).transferFrom(sender, address(this), flashGovernanceConfig.amount) && pendingFlashDecision[target][sender].unlockTime < block.timestamp ) { require( emergency || (block.timestamp - security.lastFlashGovernanceAct > security.epochSize), "LIMBO: flash governance disabled for rest of epoch" ); pendingFlashDecision[target][sender] = flashGovernanceConfig; pendingFlashDecision[target][sender].unlockTime += block.timestamp; security.lastFlashGovernanceAct = block.timestamp; emit flashDecision(sender, flashGovernanceConfig.asset, flashGovernanceConfig.amount, target); } else { revert("LIMBO: governance decision rejected."); } } function configureFlashGovernance( address asset, uint256 amount, uint256 unlockTime, bool assetBurnable ) public virtual onlySuccessfulProposal { flashGovernanceConfig.asset = asset; flashGovernanceConfig.amount = amount; flashGovernanceConfig.unlockTime = unlockTime; flashGovernanceConfig.assetBurnable = assetBurnable; } function configureSecurityParameters( uint8 maxGovernanceChangePerEpoch, uint256 epochSize, uint8 changeTolerance ) public virtual onlySuccessfulProposal { security.maxGovernanceChangePerEpoch = maxGovernanceChangePerEpoch; security.epochSize = epochSize; require(security.changeTolerance < 100, "Limbo: % between 0 and 100"); security.changeTolerance = changeTolerance; } function burnFlashGovernanceAsset( address targetContract, address user, address asset, uint256 amount ) public virtual onlySuccessfulProposal { if (pendingFlashDecision[targetContract][user].assetBurnable) { Burnable(asset).burn(amount); } delete pendingFlashDecision[targetContract][user]; } function withdrawGovernanceAsset(address targetContract, address asset) public virtual { require( pendingFlashDecision[targetContract][msg.sender].asset == asset && pendingFlashDecision[targetContract][msg.sender].amount > 0 && pendingFlashDecision[targetContract][msg.sender].unlockTime < block.timestamp, "Limbo: Flashgovernance decision pending." ); IERC20(pendingFlashDecision[targetContract][msg.sender].asset).transfer( msg.sender, pendingFlashDecision[targetContract][msg.sender].amount ); delete pendingFlashDecision[targetContract][msg.sender]; } function setEnforcement(bool enforce) public { enforceLimitsActive[msg.sender] = enforce; } function enforceToleranceInt(int256 v1, int256 v2) public view { if (!configured) return; uint256 uv1 = uint256(v1 > 0 ? v1 : -1 * v1); uint256 uv2 = uint256(v2 > 0 ? v2 : -1 * v2); enforceTolerance(uv1, uv2); } function enforceTolerance(uint256 v1, uint256 v2) public view { if (!enforceLimitsActive[msg.sender] || !Configurable(msg.sender).configured()) return; if (v1 > v2) { if (v2 == 0) require(v1 <= 1, "FE1"); else require(((v1 - v2) * 100) < security.changeTolerance * v1, "FE1"); } else { if (v1 == 0) require(v2 <= 1, "FE1"); else require(((v2 - v1) * 100) < security.changeTolerance * v1, "FE1"); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("FlashGovernanceArbiter mutant mfe569333 test", function () {
+  it("should kill mutant by calling withdrawGovernanceAsset with amount = 0", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy with a mock DAO address (needed for constructor)
+    const FlashGovernanceArbiter = await ethers.getContractFactory("FlashGovernanceArbiter");
+    const instance = await FlashGovernanceArbiter.deploy(owner.address);
+    await instance.waitForDeployment();
+
+    // Deploy a mock ERC20 token
+    const MockToken = await ethers.getContractFactory("MockERC20");
+    const token = await MockToken.deploy("Test", "TST", ethers.parseEther("1000"));
+    await token.waitForDeployment();
+
+    // Mint tokens to addr1 and approve the contract
+    await token.transfer(addr1.address, ethers.parseEther("100"));
+    await token.connect(addr1).approve(await instance.getAddress(), ethers.parseEther("100"));
+
+    // Set flashGovernanceConfig via storage manipulation
+    // Storage slot 0: flashGovernanceConfig.amount (uint256)
+    // Storage slot 1: flashGovernanceConfig.unlockTime (uint256)
+    // Storage slot 2: flashGovernanceConfig.asset (address)
+    // Storage slot 3: flashGovernanceConfig.assetBurnable (bool)
+
+    // Set flashGovernanceConfig.asset to token address (slot 2)
+    await ethers.provider.send("hardhat_setStorageAt", [
+      await instance.getAddress(),
+      "0x" + ethers.toBeHex(2, 32),
+      ethers.zeroPadValue(token.address, 32)
+    ]);
+
+    // Set flashGovernanceConfig.amount to some value (slot 0)
+    await ethers.provider.send("hardhat_setStorageAt", [
+      await instance.getAddress(),
+      "0x" + ethers.toBeHex(0, 32),
+      ethers.zeroPadValue(ethers.toBeHex(ethers.parseEther("1")), 32)
+    ]);
+
+    // Set flashGovernanceConfig.unlockTime to past time (slot 1)
+    await ethers.provider.send("hardhat_setStorageAt", [
+      await instance.getAddress(),
+      "0x" + ethers.toBeHex(1, 32),
+      ethers.zeroPadValue(ethers.toBeHex(1), 32) // timestamp 1, definitely in past
+    ]);
+
+    // Compute storage slot for pendingFlashDecision mapping (slot 9)
+    const targetAddress = owner.address;
+    const senderAddress = addr1.address;
+    const baseSlot = ethers.toBeHex(9, 32);
+
+    // keccak256(abi.encode(target, baseSlot))
+    const innerHash = ethers.keccak256(
+      ethers.concat([
+        ethers.zeroPadValue(targetAddress, 32),
+        baseSlot
+      ])
+    );
+
+    // keccak256(abi.encode(sender, innerHash))
+    const pendingSlot = ethers.keccak256(
+      ethers.concat([
+        ethers.zeroPadValue(senderAddress, 32),
+        innerHash
+      ])
+    );
+
+    // Set pendingFlashDecision asset to token address (slot pendingSlot + 2)
+    await ethers.provider.send("hardhat_setStorageAt", [
+      await instance.getAddress(),
+      ethers.toBeHex(BigInt(pendingSlot) + 2n, 32),
+      ethers.zeroPadValue(token.address, 32)
+    ]);
+
+    // Set pendingFlashDecision amount to 0 (slot pendingSlot + 0)
+    await ethers.provider.send("hardhat_setStorageAt", [
+      await instance.getAddress(),
+      ethers.toBeHex(BigInt(pendingSlot) + 0n, 32),
+      ethers.zeroPadValue("0x0", 32)
+    ]);
+
+    // Set pendingFlashDecision unlockTime to past (slot pendingSlot + 1)
+    await ethers.provider.send("hardhat_setStorageAt", [
+      await instance.getAddress(),
+      ethers.toBeHex(BigInt(pendingSlot) + 1n, 32),
+      ethers.zeroPadValue(ethers.toBeHex(1), 32)
+    ]);
+
+    // Now call withdrawGovernanceAsset with targetContract = owner, asset = token
+    // Original should revert because amount > 0 is false (AND condition fails)
+    // Mutant should succeed because asset matches (OR condition passes)
+    await expect(
+      instance.connect(addr1).withdrawGovernanceAsset(owner.address, token.address)
+    ).to.be.revertedWith("Limbo: Flashgovernance decision pending.");
+  });
+});
+```

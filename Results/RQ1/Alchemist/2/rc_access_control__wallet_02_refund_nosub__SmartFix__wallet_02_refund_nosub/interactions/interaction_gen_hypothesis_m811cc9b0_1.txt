@@ -1,0 +1,22 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Wallet:
+        Contract Code: pragma solidity ^0.8.0; contract Wallet { address creator; mapping(address => uint256) balances; constructor() public { creator = payable(msg.sender); } function deposit() public payable { assert(balances[msg.sender] + msg.value > balances[msg.sender]); balances[msg.sender] += msg.value; } function withdraw(uint256 amount) public { require(amount <= balances[msg.sender]); payable(msg.sender).transfer(amount); balances[msg.sender] -= amount; } function refund() public { uint256 tmp__1 = balances[msg.sender]; balances[msg.sender] = 0; payable(msg.sender).transfer(tmp__1); } function migrateTo(address to) public { require(creator == msg.sender); payable(to).transfer(address(this).balance); } }
+
+    Consider the following mutant of Wallet:
+        Mutant m811cc9b0 of function withdraw replaces require(amount <= balances[msg.sender]); with 
+        Mutant Diff: ---|          require(amount <= balances[msg.sender]); +++|
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant removes the entire `require` statement that checks if the withdrawal amount is less than or equal to the sender's balance. This means the mutated contract will allow a user to withdraw any amount, even exceeding their balance, leading to an underflow in the balance subtraction (since Solidity 0.8+ automatically reverts on underflow, the transaction would revert at the subtraction step instead of at the require).  
+
+**Hypothesis:**  
+A test case that deposits a specific amount (e.g., 10 wei) into the contract from one address, then attempts to withdraw an amount larger than that deposit (e.g., 100 wei) from the same address, and expects the transaction to revert due to insufficient balance. The original contract will revert at the `require` statement, while the mutant will either revert at the underflow (if using Solidity 0.8+) or succeed and corrupt state (in older versions), thus failing the test.

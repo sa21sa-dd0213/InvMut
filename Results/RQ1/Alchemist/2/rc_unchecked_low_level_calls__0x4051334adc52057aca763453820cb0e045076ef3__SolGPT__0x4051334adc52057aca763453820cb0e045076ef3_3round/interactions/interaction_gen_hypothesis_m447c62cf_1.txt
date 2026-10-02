@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract airdrop:
+        Contract Code: pragma solidity ^0.8.0; contract airdrop{ function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){ require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ { (bool _s,) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v)); require(_s); } } return true; } }
+
+    Consider the following mutant of airdrop:
+        Mutant m447c62cf of function transfer replaces < with <=
+        Mutant Diff: ---| for(uint i=0;i<_tos.length;i++){ +++| for(uint i=0;i<=_tos.length;i++){
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the loop condition from `i < _tos.length` to `i <= _tos.length`, which causes the loop to iterate one extra time beyond the array bounds. On the last iteration, `_tos[i]` will attempt to access an out-of-bounds index, causing the call to `transferFrom` with an invalid address (zero address or garbage), which will likely revert or cause unexpected behavior.
+
+**Hypothesis**: A test case that calls the `transfer` function with an array of recipients containing exactly one address should pass on the original contract (looping only once), but on the mutant it will attempt a second iteration with an out-of-bounds array access, causing the transaction to revert. This test should kill the mutant.

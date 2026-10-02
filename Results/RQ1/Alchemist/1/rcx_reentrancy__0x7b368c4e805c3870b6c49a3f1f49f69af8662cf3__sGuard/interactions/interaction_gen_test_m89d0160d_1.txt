@@ -1,0 +1,78 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m89d0160d of W_WALLET.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test W_WALLET.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for W_WALLET:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("W_WALLET reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy W_WALLET by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("W_WALLET"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("W_WALLET mutant detection test", function () {
+  it("should detect mutant where Collect never deducts balance after successful call", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy the Log contract first (required constructor argument for W_WALLET)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+    
+    // Deploy W_WALLET with Log contract address
+    const WWalletFactory = await ethers.getContractFactory("W_WALLET");
+    const wWalletInstance = await WWalletFactory.deploy(await logInstance.getAddress());
+    await wWalletInstance.waitForDeployment();
+    
+    const walletAddress = await wWalletInstance.getAddress();
+    
+    // Send 2 ether to the contract via Put with a future unlock time
+    const depositAmount = ethers.parseEther("2");
+    const futureTime = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
+    
+    const putTx = await wWalletInstance.connect(addr1).Put(futureTime, { value: depositAmount });
+    await putTx.wait();
+    
+    // Verify initial balance
+    let holder = await wWalletInstance.Acc(addr1.address);
+    expect(holder.balance).to.equal(depositAmount);
+    
+    // Wait for unlock time (or use evm_increaseTime in hardhat)
+    await ethers.provider.send("evm_increaseTime", [3600]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // Attempt to collect 1 ether (should succeed in original, but mutant will not deduct)
+    const collectAmount = ethers.parseEther("1");
+    
+    // Get balance before collect
+    const balanceBefore = await ethers.provider.getBalance(walletAddress);
+    
+    const collectTx = await wWalletInstance.connect(addr1).Collect(collectAmount);
+    const receipt = await collectTx.wait();
+    
+    // Check that the transaction succeeded (the call should return true)
+    expect(receipt.status).to.equal(1);
+    
+    // Get balance after collect
+    const balanceAfter = await ethers.provider.getBalance(walletAddress);
+    
+    // In the original, the balance should have decreased by exactly collectAmount
+    // In the mutant (if (false)), the balance will NOT be deducted, so this assertion will fail
+    expect(balanceAfter).to.equal(balanceBefore - collectAmount);
+    
+    // Also verify the user's stored balance was updated
+    holder = await wWalletInstance.Acc(addr1.address);
+    expect(holder.balance).to.equal(depositAmount - collectAmount);
+  });
+});
+```

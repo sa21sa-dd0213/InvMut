@@ -1,0 +1,66 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("X_WALLET mutant m28e886d0 test", function () {     it("should revert when Put is called with msg.value that would cause overflow, but mutant passes", async function () {         const [owner, addr1] = await ethers.getSigners();         const Factory = await ethers.getContractFactory("X_WALLET");                  // Deploy with a Log contract address (constructor requires address of Log)         const LogFactory = await ethers.getContractFactory("Log");         const logInstance = await LogFactory.deploy();         await logInstance.waitForDeployment();                  const instance = await Factory.deploy(await logInstance.getAddress());         await instance.waitForDeployment();          // Get the current balance of addr1 to check overflow behavior         const initialBalance = await instance.Acc(addr1.address);                  // Calculate a value that when added to current balance will overflow uint256         // We use max uint256 minus current balance plus 1 to cause overflow         const overflowValue = ethers.MaxUint256 - initialBalance.balance + 1n;                  // In the original contract, this should revert due to overflow protection         // In the mutant, the require condition (balance + msg.value + 1 >= balance)          // will still pass but the actual addition acc.balance += msg.value will overflow and revert         // However, the mutant's require condition changes the behavior for edge cases                  // Actually, let's test with a value that makes the require condition behave differently:         // Test with msg.value = 0 - both original and mutant pass         // Test with msg.value such that balance + msg.value overflows         // The mutant's condition becomes: balance + msg.value + 1 >= balance         // For overflow case, this condition might still pass while original would revert                  // Let's test the overflow scenario:         await expect(             instance.connect(addr1).Put(overflowValue, { value: overflowValue })         ).to.be.reverted; // Both should revert due to arithmetic overflow on acc.balance += msg.value                  // Now test with a value that only triggers the require difference:         // Set initial balance to 0 by deploying fresh         const instance2 = await Factory.deploy(await logInstance.getAddress());         await instance2.waitForDeployment();                  // Call Put with msg.value = 0 (both original and mutant pass)         await instance2.connect(addr1).Put(0, { value: 0 });                  // The key test: call Put with a value that causes acc.balance + msg.value to overflow         // but the mutant's +1 makes the require pass differently         // Actually, the mutant's require is always true for any non-negative msg.value         // The real difference is that the mutant's require condition is mathematically          // equivalent to "true" for all valid inputs                  // Test the specific mutant behavior: call Put with msg.value = 0         // Original require: (0 + 0) >= 0 => true         // Mutant require: (0 + 0 + 1) >= 0 => true         // Both pass, so this doesn't kill the mutant                  // Let's think differently: The mutant's require adds +1 to the left side         // This means the require will always pass (since left side > right side always)         // But the actual balance update uses msg.value without +1         // So a test that checks the balance after Put with msg.value = 0:         // Both would add 0 to balance, so balance remains same                  // The key insight: the mutant removes the overflow check semantics         // Test: call Put with msg.value = 1, then check balance increased by exactly 1         await instance2.connect(addr1).Put(0, { value: 1 });         const balanceAfter = await instance2.Acc(addr1.address);         expect(balanceAfter.balance).to.equal(1);                  // This doesn't kill the mutant either                  // Final approach: test the overflow guard removal         // In Solidity 0.8+, overflow is checked by default, so both revert on overflow         // The mutant's require change is effectively a no-op for all practical purposes         // The only way to detect it is to test with values that make the require fail in original         // But original require never fails for valid msg.value (always non-negative)                  // Actually, the mutant changes the condition to be ALWAYS true         // The original condition could fail if acc.balance + msg.value overflows uint256         // But Solidity 0.8+ catches this before the require         // So the mutant is semantically identical for all inputs                  // The test that kills the mutant must exploit the +1:         // Call Put with msg.value = type(uint256).max         // Original: (balance + max) >= balance => overflow => revert in Solidity 0.8+         // Mutant: (balance + max + 1) >= balance => overflow in addition => revert in Solidity 0.8+         // Both revert, so no difference                  // Wait - the require happens BEFORE the addition, so:         // Original: require((balance + msg.value) >= balance) - this will revert due to overflow         // Mutant: require((balance + msg.value + 1) >= balance) - this will ALSO revert due to overflow         // Both revert at the require line                  // The ONLY case where they differ is if balance + msg.value overflows but balance + msg.value + 1 doesn't         // This is impossible in modular arithmetic                  // Therefore the mutant is equivalent to the original         // The test should verify this equivalence                  // Test that both contracts behave the same for normal operations         const instance3 = await Factory.deploy(await logInstance.getAddress());         await instance3.waitForDeployment();                  await instance3.connect(addr1).Put(0, { value: ethers.parseEther("1") });         const bal = await instance3.Acc(addr1.address);         expect(bal.balance).to.equal(ethers.parseEther("1"));     }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract X_WALLET { function Put(uint _unlockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("X_WALLET mutant m28e886d0 test", function () {
+    it("should revert when Put is called with msg.value that would cause overflow, but mutant passes", async function () {
+        const [owner, addr1] = await ethers.getSigners();
+        const Factory = await ethers.getContractFactory("X_WALLET");
+        
+        // Deploy with a Log contract address (constructor requires address of Log)
+        const LogFactory = await ethers.getContractFactory("Log");
+        const logInstance = await LogFactory.deploy();
+        await logInstance.waitForDeployment();
+
+        const instance = await Factory.deploy(await logInstance.getAddress());
+        await instance.waitForDeployment();
+
+        // Get the current balance of addr1 to check overflow behavior
+        const initialAccount = await instance.Acc(addr1.address);
+        const initialBalance = initialAccount.balance;
+
+        // Calculate a value that when added to current balance will overflow uint256
+        // We use max uint256 minus current balance plus 1 to cause overflow
+        const overflowValue = ethers.MaxUint256 - initialBalance + 1n;
+
+        // Test the overflow scenario
+        await expect(
+            instance.connect(addr1).Put(overflowValue, { value: overflowValue })
+        ).to.be.reverted; // Both should revert due to arithmetic overflow
+
+        // Now test with a fresh deployment
+        const instance2 = await Factory.deploy(await logInstance.getAddress());
+        await instance2.waitForDeployment();
+
+        // Call Put with msg.value = 0 (both original and mutant pass)
+        await instance2.connect(addr1).Put(0, { value: 0 });
+
+        // Test: call Put with msg.value = 1, then check balance increased by exactly 1
+        await instance2.connect(addr1).Put(0, { value: 1 });
+        const balanceAfter = await instance2.Acc(addr1.address);
+        expect(balanceAfter.balance).to.equal(1);
+
+        // Test that both contracts behave the same for normal operations
+        const instance3 = await Factory.deploy(await logInstance.getAddress());
+        await instance3.waitForDeployment();
+
+        await instance3.connect(addr1).Put(0, { value: ethers.parseEther("1") });
+        const bal = await instance3.Acc(addr1.address);
+        expect(bal.balance).to.equal(ethers.parseEther("1"));
+    });
+});
+```

@@ -1,0 +1,51 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("X_WALLET mutant kill test - m3348fdeb", function () {   it("should allow partial withdrawal (kill mutant that changed >= to ==)", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy the Log contract first (needed as constructor argument for X_WALLET)     const LogFactory = await ethers.getContractFactory("Log");     const logInstance = await LogFactory.deploy();     await logInstance.waitForDeployment();          // Deploy X_WALLET with Log address     const Factory = await ethers.getContractFactory("X_WALLET");     const instance = await Factory.deploy(await logInstance.getAddress());     await instance.waitForDeployment();          // Deposit 2 ether into the contract from addr1     const depositAmount = ethers.parseEther("2");     await instance.connect(addr1).Put(0, { value: depositAmount });          // Attempt to withdraw 1 ether (partial withdrawal)     const withdrawAmount = ethers.parseEther("1");          // On original contract this should succeed, on mutant it should revert     // because mutant requires acc.balance == _am (exact match) instead of >=     await expect(       instance.connect(addr1).Collect(withdrawAmount)     ).to.not.be.reverted;          // Verify balance was reduced by 1 ether     const holder = await instance.Acc(addr1.address);     expect(holder.balance).to.equal(ethers.parseEther("1"));   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } } contract X_WALLET is sGuard { function Put(uint _unlockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); LogFile.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("X_WALLET mutant kill test - m3348fdeb", function () {
+  it("should allow partial withdrawal (kill mutant that changed >= to ==)", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy the Log contract first (needed as constructor argument for X_WALLET)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+    
+    // Deploy X_WALLET with Log address
+    const Factory = await ethers.getContractFactory("X_WALLET");
+    const instance = await Factory.deploy(await logInstance.getAddress());
+    await instance.waitForDeployment();
+    
+    // Deposit 2 ether into the contract from addr1
+    const depositAmount = ethers.parseEther("2");
+    await instance.connect(addr1).Put(0, { value: depositAmount });
+    
+    // Attempt to withdraw 1 ether (partial withdrawal)
+    const withdrawAmount = ethers.parseEther("1");
+    
+    // On original contract this should succeed, on mutant it should revert
+    // because mutant requires acc.balance == _am (exact match) instead of >=
+    await expect(
+      instance.connect(addr1).Collect(withdrawAmount)
+    ).to.not.be.reverted;
+    
+    // Verify balance was reduced by 1 ether
+    const holder = await instance.Acc(addr1.address);
+    expect(holder.balance).to.equal(ethers.parseEther("1"));
+  });
+});
+```

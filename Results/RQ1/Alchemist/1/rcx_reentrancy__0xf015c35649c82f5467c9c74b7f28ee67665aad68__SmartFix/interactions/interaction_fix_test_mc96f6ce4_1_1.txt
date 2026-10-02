@@ -1,0 +1,54 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MY_BANK mutant mc96f6ce4 detection", function () {   it("should detect mutant by comparing unlockTime to block.timestamp when _unlockTime is 0", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy Log contract first (required constructor argument for MY_BANK)     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();          // Deploy MY_BANK with Log address     const BankFactory = await ethers.getContractFactory("MY_BANK");     const bank = await BankFactory.deploy(await log.getAddress());     await bank.waitForDeployment();          // Get current block timestamp     const blockNumBefore = await ethers.provider.getBlock("latest");     const currentTimestamp = blockNumBefore.timestamp;          // Call Put with _unlockTime = 0 and some ETH     const putTx = await bank.connect(addr1).Put(0, { value: ethers.parseEther("1") });     await putTx.wait();          // Get the unlockTime stored for addr1     const holder = await bank.Acc(addr1.address);     const storedUnlockTime = holder.unlockTime;          // In original: unlockTime should be >= current block.timestamp     // In mutant: unlockTime may be 0 or some other value not tied to timestamp     // This assertion will pass on original but likely fail on mutant     expect(storedUnlockTime).to.be.at.least(currentTimestamp);          // Additional check: unlockTime should not be 0 when _unlockTime was 0     expect(storedUnlockTime).to.not.equal(0);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract MY_BANK { function Put(uint _unlockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant mc96f6ce4 detection", function () {
+  it("should detect mutant by comparing unlockTime to block.timestamp when _unlockTime is 0", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy Log contract first (required constructor argument for MY_BANK)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Deploy MY_BANK with Log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+
+    // Get current block timestamp
+    const blockNumBefore = await ethers.provider.getBlock("latest");
+    const currentTimestamp = blockNumBefore!.timestamp;
+
+    // Call Put with _unlockTime = 0 and some ETH
+    const putTx = await bank.connect(addr1).Put(0, { value: ethers.parseEther("1") });
+    await putTx.wait();
+
+    // Get the unlockTime stored for addr1
+    const holder = await bank.Acc(addr1.address);
+    const storedUnlockTime = holder.unlockTime;
+
+    // In original: unlockTime should be >= current block.timestamp
+    // In mutant: unlockTime may be 0 or some other value not tied to timestamp
+    // This assertion will pass on original but likely fail on mutant
+    expect(storedUnlockTime).to.be.at.least(currentTimestamp);
+
+    // Additional check: unlockTime should not be 0 when _unlockTime was 0
+    expect(storedUnlockTime).to.not.equal(0);
+  });
+});
+```

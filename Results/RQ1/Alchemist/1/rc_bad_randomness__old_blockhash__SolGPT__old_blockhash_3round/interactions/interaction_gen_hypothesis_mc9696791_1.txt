@@ -1,0 +1,30 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract PredictTheBlockHashChallenge:
+        Contract Code: pragma solidity ^0.8.0; contract PredictTheBlockHashChallenge { struct Guess { uint block; bytes32 guess; } mapping(address => Guess) guesses; constructor() public payable { require(msg.value == 1 ether); } function lockInGuess(bytes32 hash) public payable { require(guesses[msg.sender].block == 0); require(msg.value == 1 ether); guesses[msg.sender].guess = hash; guesses[msg.sender].block = block.number + 1; } function settle() public { require(guesses[msg.sender].block != 0); require(block.number > guesses[msg.sender].block); bytes32 answer = keccak256(abi.encodePacked(blockhash(guesses[msg.sender].block))); guesses[msg.sender].block = 0; if (guesses[msg.sender].guess == answer) { payable(msg.sender).transfer(2 ether); } } }
+
+    Consider the following mutant of PredictTheBlockHashChallenge:
+        Mutant mc9696791 of function constructor replaces msg.value with msg.value+1
+        Mutant Diff: ---|         require(msg.value == 1 ether); +++|         require(msg.value+1 == 1 ether);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's reason through this step-by-step:
+
+1. **Original behavior**: In the constructor, `require(msg.value == 1 ether)` ensures that exactly 1 ether is sent when deploying the contract.
+
+2. **Mutant behavior**: `require(msg.value + 1 == 1 ether)` means the condition is satisfied when `msg.value + 1 == 1 ether`, i.e., `msg.value == 1 ether - 1`, or in other words, `msg.value == 0 ether`.
+
+3. **Effect**: The mutant will **accept a deployment with 0 ether** (no value sent) instead of requiring 1 ether. Conversely, if someone sends exactly 1 ether, the condition becomes `1 ether + 1 == 1 ether`, which is false, and the transaction would revert.
+
+4. **Detection strategy**: A test that sends **exactly 1 ether** when deploying the contract should pass on the original (since 1 ether is required) but fail on the mutant (since the mutant would revert because `1 ether + 1 ≠ 1 ether`).
+
+**Hypothesis**:  
+"The mutant changes the constructor's requirement from `msg.value == 1 ether` to `msg.value + 1 == 1 ether`. Therefore, a test case that deploys the contract with exactly 1 ether and expects success should kill the mutant, because the mutant will revert when exactly 1 ether is sent."

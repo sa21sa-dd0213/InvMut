@@ -1,0 +1,51 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Reentrance mutant test - mcc648c58", function () {   it("should detect the mutant that adds 1 extra wei to user balance", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Reentrance");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Get initial contract balance (should be 0)     const initialContractBalance = await ethers.provider.getBalance(instance.target);     expect(initialContractBalance).to.equal(0n);      // Add exactly 1 wei to balance via addr1     const depositAmount = 1n;     const tx = await instance.connect(addr1).addToBalance({ value: depositAmount });     await tx.wait();      // Check addr1's balance in the contract - should be exactly 1 wei in original     const userBalanceAfterDeposit = await instance.getBalance(addr1.address);          // Withdraw the balance     const withdrawTx = await instance.connect(addr1).withdrawBalance();     await withdrawTx.wait();      // Check final contract balance - in original it should be 0, in mutant it will revert     const finalContractBalance = await ethers.provider.getBalance(instance.target);          // The mutant will fail this assertion because:     // Original: deposits 1, balance becomes 1, withdraws 1, contract balance = 0     // Mutant: deposits 1, balance becomes 2, tries to withdraw 2 but contract only has 1, reverts     expect(finalContractBalance).to.equal(0n);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Reentrance { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public payable { require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender])); userBalance[msg.sender] += msg.value; } function withdrawBalance() public{ uint256 tmp__1 = userBalance[msg.sender]; userBalance[msg.sender] = 0; { (bool _s, bytes memory _d) = msg.sender.call{value: tmp__1}(""); _d; if (! _s) { revert(); } } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Reentrance mutant test - mcc648c58", function () {
+  it("should detect the mutant that adds 1 extra wei to user balance", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Reentrance");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get initial contract balance (should be 0)
+    const initialContractBalance = await ethers.provider.getBalance(instance.target);
+    expect(initialContractBalance).to.equal(0n);
+
+    // Add exactly 1 wei to balance via addr1
+    const depositAmount = 1n;
+    const tx = await instance.connect(addr1).addToBalance({ value: depositAmount });
+    await tx.wait();
+
+    // Check addr1's balance in the contract - should be exactly 1 wei in original
+    const userBalanceAfterDeposit = await instance.getBalance(addr1.address);
+
+    // Withdraw the balance
+    const withdrawTx = await instance.connect(addr1).withdrawBalance();
+    await withdrawTx.wait();
+
+    // Check final contract balance - in original it should be 0, in mutant it will revert
+    const finalContractBalance = await ethers.provider.getBalance(instance.target);
+
+    // The mutant will fail this assertion because:
+    // Original: deposits 1, balance becomes 1, withdraws 1, contract balance = 0
+    // Mutant: deposits 1, balance becomes 2, tries to withdraw 2 but contract only has 1, reverts
+    expect(finalContractBalance).to.equal(0n);
+  });
+});
+```

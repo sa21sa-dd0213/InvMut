@@ -1,0 +1,130 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("VaultAdapter mutant mcee5496f test", function () {
+  it("should kill mutant by testing multiplier calculation when utilization is below kink", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy VaultAdapter (no constructor arguments needed as it uses _disableInitializers())
+    const VaultAdapterFactory = await ethers.getContractFactory("VaultAdapter");
+    const vaultAdapter = await VaultAdapterFactory.deploy();
+    await vaultAdapter.waitForDeployment();
+
+    // Deploy a mock vault contract to return utilization data
+    // We need a contract that implements IVault with currentUtilizationIndex and utilization functions
+    const MockVaultFactory = await ethers.getContractFactory("MockVault");
+    const mockVault = await MockVaultFactory.deploy();
+    await mockVault.waitForDeployment();
+
+    // Initialize VaultAdapter
+    const AccessControlFactory = await ethers.getContractFactory("MockAccessControl");
+    const accessControl = await AccessControlFactory.deploy();
+    await accessControl.waitForDeployment();
+
+    // Grant access to owner for setSlopes and setLimits
+    await accessControl.grantAccess(vaultAdapter.setSlopes.selector, await vaultAdapter.getAddress(), owner.address);
+    await accessControl.grantAccess(vaultAdapter.setLimits.selector, await vaultAdapter.getAddress(), owner.address);
+    await accessControl.grantAccess(ethers.ZeroHash, await vaultAdapter.getAddress(), owner.address); // For upgrade authorization
+
+    await vaultAdapter.initialize(await accessControl.getAddress());
+
+    // Setup slopes with kink at 50% (5e26 out of 1e27)
+    const kink = ethers.parseEther("0.5"); // 5e26
+    const slope0 = ethers.parseEther("0.1"); // 1e26
+    const slope1 = ethers.parseEther("0.2"); // 2e26
+    await vaultAdapter.setSlopes(await mockVault.getAddress(), {
+      kink: kink,
+      slope0: slope0,
+      slope1: slope1
+    });
+
+    // Set limits
+    const maxMultiplier = ethers.parseEther("2"); // 2e27
+    const minMultiplier = ethers.parseEther("0.5"); // 5e26
+    const rate = ethers.parseEther("0.1"); // 1e26
+    await vaultAdapter.setLimits(maxMultiplier, minMultiplier, rate);
+
+    // Configure mock vault to return utilization below kink (40%)
+    const utilization = ethers.parseEther("0.4"); // 4e26
+    const currentIndex = ethers.parseEther("1.1"); // Some index value
+    await mockVault.setUtilization(utilization);
+    await mockVault.setCurrentUtilizationIndex(currentIndex);
+
+    // First call to rate to initialize lastUpdate and index
+    await vaultAdapter.rate(await mockVault.getAddress(), await mockVault.getAddress());
+
+    // Advance time by 1 hour (3600 seconds) to have non-zero elapsed time
+    await ethers.provider.send("evm_increaseTime", [3600]);
+    await ethers.provider.send("evm_mine", []);
+
+    // Call rate again - this should trigger the else branch (utilization < kink)
+    // The mutant changes the denominator calculation, producing a different multiplier
+    const result = await vaultAdapter.rate(await mockVault.getAddress(), await mockVault.getAddress());
+
+    // Calculate expected interest rate manually using original formula
+    // For utilization < kink:
+    // multiplier = multiplier * 1e27 / (1e27 + (1e27 * (kink - utilization) / kink) * elapsed * rate / 1e27)
+    // interestRate = (slope0 * utilization / kink) * multiplier / 1e27
+
+    const oneE27 = ethers.parseEther("1");
+    const elapsed = BigInt(3600);
+
+    // Original formula calculation
+    const kinkMinusUtil = kink - utilization; // 1e26
+    const numerator = oneE27 * kinkMinusUtil / kink; // 2e26
+    const product = numerator * elapsed * rate / oneE27; // (2e26 * 3600 * 1e26) / 1e27 = 7.2e28
+    const denominator = oneE27 + product; // 1e27 + 7.2e28 = 7.3e28
+    // Initial multiplier starts at 1e27 (default)
+    const expectedMultiplier = oneE27 * oneE27 / denominator; // ~1.3699e25
+
+    // Check if multiplier is within min/max bounds
+    const finalMultiplier = expectedMultiplier < minMultiplier ? minMultiplier :
+                            (expectedMultiplier > maxMultiplier ? maxMultiplier : expectedMultiplier);
+
+    // Expected interest rate
+    const baseRate = slope0 * utilization / kink; // (1e26 * 4e26) / 5e26 = 8e25
+    const expectedRate = baseRate * finalMultiplier / oneE27;
+
+    // The mutant will produce a different result due to subtraction instead of division
+    // Original: / (1e27 + product / 1e27)
+    // Mutant:   / (1e27 + product - 1e27) = / product
+    // This will give a drastically different multiplier and interest rate
+    expect(result).to.not.equal(expectedRate);
+  });
+});
+
+// Helper contract to mock IVault behavior
+// This would be deployed separately
+contract MockVault {
+    uint256 private _utilization;
+    uint256 private _currentIndex;
+
+    function setUtilization(uint256 _val) external {
+        _utilization = _val;
+    }
+
+    function setCurrentUtilizationIndex(uint256 _val) external {
+        _currentIndex = _val;
+    }
+
+    function utilization(address) external view returns (uint256) {
+        return _utilization;
+    }
+
+    function currentUtilizationIndex(address) external view returns (uint256) {
+        return _currentIndex;
+    }
+}
+
+// Helper contract for access control
+contract MockAccessControl {
+    mapping(bytes4 => mapping(address => mapping(address => bool))) private _access;
+
+    function grantAccess(bytes4 _selector, address _contract, address _address) external {
+        _access[_selector][_contract][_address] = true;
+    }
+
+    function checkAccess(bytes4 _selector, address _contract, address _caller) external view returns (bool) {
+        return _access[_selector][_contract][_caller];
+    }
+}

@@ -1,0 +1,59 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MONEY_BOX mutant m796ed952 test", function () {   it("should detect the mutant that adds 1 to msg.value in Put", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy Log contract first (required by MONEY_BOX)     const LogFactory = await ethers.getContractFactory("Log");     const logInstance = await LogFactory.deploy();     await logInstance.waitForDeployment();          // Deploy MONEY_BOX     const MoneyBoxFactory = await ethers.getContractFactory("MONEY_BOX");     const moneyBoxInstance = await MoneyBoxFactory.deploy();     await moneyBoxInstance.waitForDeployment();          // Set MinSum to 0 so Collect can work with any amount     await moneyBoxInstance.SetMinSum(0);     await moneyBoxInstance.Initialized();          // Set the LogFile address     await moneyBoxInstance.SetLogFile(await logInstance.getAddress());          // Deposit exactly 1 wei     const depositAmount = 1n;     const tx = await moneyBoxInstance.connect(addr1).Put(0, { value: depositAmount });     await tx.wait();          // Check the recorded balance - should be 1 wei in original, but 2 wei in mutant     const holderInfo = await moneyBoxInstance.Acc(await addr1.getAddress());     expect(holderInfo.balance).to.equal(depositAmount);          // Additional check: try to Collect exactly 1 wei     // In original it should succeed, in mutant the recorded balance is 2 wei so it should also succeed     // But then the remaining balance should be 0 in original, but 1 in mutant     const collectTx = await moneyBoxInstance.connect(addr1).Collect(depositAmount);     await collectTx.wait();          const holderInfoAfter = await moneyBoxInstance.Acc(await addr1.getAddress());     expect(holderInfoAfter.balance).to.equal(0n);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } } contract MONEY_BOX is sGuard { struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; uint public MinSum; Log LogFile; bool intitalized; function SetMinSum(uint _val)  public nonReentrant_ { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log)  public nonReentrant_ { if(intitalized)revert(); LogFile = Log(_log); } function Initialized()  public nonReentrant_ { intitalized = true; } function Put(uint _lockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); if(add_uint256(block.timestamp, _lockTime)>acc.unlockTime)acc.unlockTime=add_uint256(block.timestamp, _lockTime); LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); LogFile.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } } contract Log is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MONEY_BOX mutant m796ed952 test", function () {
+  it("should detect the mutant that adds 1 to msg.value in Put", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy Log contract first (required by MONEY_BOX)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+
+    // Deploy MONEY_BOX
+    const MoneyBoxFactory = await ethers.getContractFactory("MONEY_BOX");
+    const moneyBoxInstance = await MoneyBoxFactory.deploy();
+    await moneyBoxInstance.waitForDeployment();
+
+    // Set MinSum to 0 so Collect can work with any amount
+    await moneyBoxInstance.SetMinSum(0);
+    await moneyBoxInstance.Initialized();
+
+    // Set the LogFile address
+    await moneyBoxInstance.SetLogFile(await logInstance.getAddress());
+
+    // Deposit exactly 1 wei
+    const depositAmount = 1n;
+    const tx = await moneyBoxInstance.connect(addr1).Put(0, { value: depositAmount });
+    await tx.wait();
+
+    // Check the recorded balance - should be 1 wei in original, but 2 wei in mutant
+    const holderInfo = await moneyBoxInstance.Acc(await addr1.getAddress());
+    expect(holderInfo.balance).to.equal(depositAmount);
+
+    // Additional check: try to Collect exactly 1 wei
+    // In original it should succeed, in mutant the recorded balance is 2 wei so it should also succeed
+    // But then the remaining balance should be 0 in original, but 1 in mutant
+    const collectTx = await moneyBoxInstance.connect(addr1).Collect(depositAmount);
+    await collectTx.wait();
+
+    const holderInfoAfter = await moneyBoxInstance.Acc(await addr1.getAddress());
+    expect(holderInfoAfter.balance).to.equal(0n);
+  });
+});
+```

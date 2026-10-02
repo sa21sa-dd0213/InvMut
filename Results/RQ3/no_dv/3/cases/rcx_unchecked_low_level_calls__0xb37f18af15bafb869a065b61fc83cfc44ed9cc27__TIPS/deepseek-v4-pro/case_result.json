@@ -1,0 +1,112 @@
+{
+ "case_id": "rcx_unchecked_low_level_calls__0xb37f18af15bafb869a065b61fc83cfc44ed9cc27__TIPS",
+ "config_label": "deepseek-v4-pro",
+ "target_contract": "SimpleWallet",
+ "modification_kind": "control_flow",
+ "feasible": true,
+ "reason": null,
+ "n_accepted": 7,
+ "n_validated": 7,
+ "n_killing": 3,
+ "success": true,
+ "kills": [
+  {
+   "difference_id": "D0001",
+   "property": "After any call to sendMoney, a non-owner cannot successfully withdraw the contract's entire balance; the missing onlyOwn",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Remove the require check from onlyOwner so anyone can call withdrawAll.",
+   "mutated_unit_code": "modifier onlyOwner(){\n\t\n\t_;}",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "T13fb05e9",
+   "property": "After the owner calls withdraw with any positive amount less than or equal to the contract balance, either the call reve",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Delete the transfer statement inside withdraw(uint256), so no ether is ever sent.",
+   "mutated_unit_code": "function withdraw(uint _value)  public onlyOwner {\n\t\n\t}",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "D0003",
+   "property": "For any recipient and amount, if the reference sendMoney call with sufficient gas succeeds, the buggy version reverts wh",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Replace the low-level call with a regular transfer, which forwards a fixed 2300 gas and reverts on failure, changing the observable success/failure behavior for recipients with fallback logic requiring more gas or returning data.",
+   "mutated_unit_code": "function sendMoney(address _target, uint _value)  public onlyOwner {\n\tpayable(_target).transfer(_value);\n}",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "D0004",
+   "property": "When sendMoney is called with a non-zero target and value, the target's balance increases by exactly that value in the o",
+   "render": "rendered",
+   "validation": "skipped",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Send the value to msg.sender instead of _target, so the call sends ether to the owner rather than the intended recipient.",
+   "mutated_unit_code": "function sendMoney(address _target, uint _value)  public onlyOwner {\n\t{ (bool _s, bytes memory _d) = msg.sender.call{value: _value}(\"\"); _d; if (! _s) {\n\trevert();} }\n}",
+   "kill": "bug_fail",
+   "kill_via": "esbmc",
+   "counts_toward_success": true
+  },
+  {
+   "difference_id": "D0005",
+   "property": "After sendMoney, the recipient's balance increases by the _value parameter.",
+   "render": "rendered",
+   "validation": "skipped",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Change the call to send 0 value, so the recipient receives no ether.",
+   "mutated_unit_code": "function sendMoney(address _target, uint _value)  public onlyOwner {\n\t{ (bool _s, bytes memory _d) = _target.call{value: 0}(\"\"); _d; if (! _s) {\n\trevert();} }\n}",
+   "kill": "bug_fail",
+   "kill_via": "esbmc",
+   "counts_toward_success": true
+  },
+  {
+   "difference_id": "D0006",
+   "property": "For any owner call to sendMoney, the ETH balance of the target must increase by the sent value; the mutant fails to tran",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Delete the sendMoney body entirely, so it does nothing and does not transfer ether.",
+   "mutated_unit_code": "function sendMoney(address _target, uint _value)  public onlyOwner {\n}",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "D0007",
+   "property": "After any call to sendMoney, the contract's ETH balance must decrease by exactly the amount sent if the call succeeds (n",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Replace the revert-on-failure with no action, so a failed call silently succeeds with no ether transfer.",
+   "mutated_unit_code": "function sendMoney(address _target, uint _value)  public onlyOwner {\n\t{ (bool _s, bytes memory _d) = _target.call{value: _value}(\"\"); _d; }\n}",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  }
+ ],
+ "tokens": {
+  "prompt": 104167,
+  "completion": 17388,
+  "reasoning": 0
+ },
+ "wallclock_s": 430.53954458236694,
+ "infra_error": null
+}

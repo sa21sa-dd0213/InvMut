@@ -1,0 +1,71 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant m34b801a6", function () {
+  it("should kill the mutant by detecting different randomness source", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = ethers.parseEther("10");
+    const FEE_AMOUNT = ethers.parseEther("1");
+
+    // Get initial balances
+    const initialBankBalance = await ethers.provider.getBalance(owner.address);
+    const initialPlayerBalance = await ethers.provider.getBalance(player.address);
+
+    // Send transaction and capture the block info
+    const tx = await instance.connect(player).play({ value: TICKET_AMOUNT });
+    const receipt = await tx.wait();
+    const block = await ethers.provider.getBlock(receipt.blockNumber);
+
+    // Calculate what the original contract would have produced
+    const originalRandom = BigInt(
+      ethers.keccak256(
+        ethers.AbiCoder.defaultAbiCoder().encode(
+          ["uint256", "uint256"],
+          [block.timestamp, block.difficulty]
+        )
+      )
+    ) % 2n;
+
+    // Calculate what the mutant would produce using prevrandao
+    const mutantRandom = BigInt(
+      ethers.keccak256(
+        ethers.AbiCoder.defaultAbiCoder().encode(
+          ["uint256", "uint256"],
+          [block.prevrandao, block.difficulty]
+        )
+      )
+    ) % 2n;
+
+    // Get post-transaction balances
+    const finalBankBalance = await ethers.provider.getBalance(owner.address);
+    const finalPlayerBalance = await ethers.provider.getBalance(player.address);
+
+    // If original random was 0 (player wins), the original contract transfers pot-FEE to player
+    // and FEE to bank. If original random was 1 (bank wins), no transfers happen.
+    if (originalRandom === 0n) {
+      // Player should have received pot - fee
+      expect(finalPlayerBalance).to.equal(
+        initialPlayerBalance - TICKET_AMOUNT + TICKET_AMOUNT - FEE_AMOUNT
+      );
+      expect(finalBankBalance).to.equal(initialBankBalance + FEE_AMOUNT);
+    } else {
+      // No transfers should have occurred
+      expect(finalPlayerBalance).to.equal(initialPlayerBalance - TICKET_AMOUNT);
+      expect(finalBankBalance).to.equal(initialBankBalance + TICKET_AMOUNT);
+    }
+
+    // Verify pot is reset after play
+    const pot = await instance.pot();
+    expect(pot).to.equal(0);
+
+    // The mutant would have used different randomness, so if originalRandom != mutantRandom,
+    // the mutant would have produced different behavior, killing it
+    // We assert that the actual behavior matches the original calculation
+    // (If mutantRandom is different from originalRandom, this test would fail on the mutant)
+    expect(originalRandom).to.equal(mutantRandom); // This will fail on mutant when randomness differs
+  });
+});

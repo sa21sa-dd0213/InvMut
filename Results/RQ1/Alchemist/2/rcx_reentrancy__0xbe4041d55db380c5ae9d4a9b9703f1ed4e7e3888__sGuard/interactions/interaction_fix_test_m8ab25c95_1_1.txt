@@ -1,0 +1,64 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MONEY_BOX mutant m8ab25c95 - reentrancy guard removed from Put", function () {   it("should detect missing nonReentrant_ modifier on Put via reentrancy attack", async function () {     const [owner, attacker] = await ethers.getSigners();          // Deploy MONEY_BOX (no constructor arguments)     const MoneyBoxFactory = await ethers.getContractFactory("MONEY_BOX");     const moneyBox = await MoneyBoxFactory.deploy();     await moneyBox.waitForDeployment();          // Deploy Log contract (no constructor arguments)     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();          // Initialize the contract and set up LogFile     await (await moneyBox.SetLogFile(await log.getAddress())).wait();     await (await moneyBox.Initialized()).wait();          // Deploy attacker contract that will attempt reentrancy     const AttackerFactory = await ethers.getContractFactory("ReentrancyAttacker");     const attackerContract = await AttackerFactory.deploy(await moneyBox.getAddress());     await attackerContract.waitForDeployment();          // Fund the attacker contract with ETH     await owner.sendTransaction({       to: await attackerContract.getAddress(),       value: ethers.parseEther("1.0")     });          // Set MinSum to a small value so collect is possible     await (await moneyBox.SetMinSum(1)).wait();          // Attempt reentrancy: attacker contract calls Put, which triggers fallback -> Put again     // In original contract this would revert due to nonReentrant_, in mutant it succeeds     const tx = attackerContract.attack({ value: ethers.parseEther("1.0") });          // The test should fail on the mutant because the attack succeeds (balance inflated)     // On original it reverts, so we expect revert     await expect(tx).to.be.reverted;          // Verify balance integrity - if attack succeeded, balance would be > 1 ETH     const attackerBalance = (await moneyBox.Acc(await attackerContract.getAddress())).balance;     expect(attackerBalance).to.equal(ethers.parseEther("1.0"));   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } } contract MONEY_BOX is sGuard { struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; uint public MinSum; Log LogFile; bool intitalized; function SetMinSum(uint _val)  public nonReentrant_ { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log)  public nonReentrant_ { if(intitalized)revert(); LogFile = Log(_log); } function Initialized()  public nonReentrant_ { intitalized = true; } function Put(uint _lockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); if(add_uint256(block.timestamp, _lockTime)>acc.unlockTime)acc.unlockTime=add_uint256(block.timestamp, _lockTime); LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); LogFile.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } } contract Log is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MONEY_BOX mutant m8ab25c95 - reentrancy guard removed from Put", function () {
+  it("should detect missing nonReentrant_ modifier on Put via reentrancy attack", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+
+    // Deploy MONEY_BOX (no constructor arguments)
+    const MoneyBoxFactory = await ethers.getContractFactory("MONEY_BOX");
+    const moneyBox = await MoneyBoxFactory.deploy();
+    await moneyBox.waitForDeployment();
+
+    // Deploy Log contract (no constructor arguments)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Initialize the contract and set up LogFile
+    await (await moneyBox.SetLogFile(await log.getAddress())).wait();
+    await (await moneyBox.Initialized()).wait();
+
+    // Deploy attacker contract that will attempt reentrancy
+    const AttackerFactory = await ethers.getContractFactory("ReentrancyAttacker");
+    const attackerContract = await AttackerFactory.deploy(await moneyBox.getAddress());
+    await attackerContract.waitForDeployment();
+
+    // Fund the attacker contract with ETH
+    await owner.sendTransaction({
+      to: await attackerContract.getAddress(),
+      value: ethers.parseEther("1.0")
+    });
+
+    // Set MinSum to a small value so collect is possible
+    await (await moneyBox.SetMinSum(1)).wait();
+
+    // Attempt reentrancy: attacker contract calls Put, which triggers fallback -> Put again
+    // In original contract this would revert due to nonReentrant_, in mutant it succeeds
+    const tx = attackerContract.attack({ value: ethers.parseEther("1.0") });
+
+    // The test should fail on the mutant because the attack succeeds (balance inflated)
+    // On original it reverts, so we expect revert
+    await expect(tx).to.be.reverted;
+
+    // Verify balance integrity - if attack succeeded, balance would be > 1 ETH
+    const attackerBalance = (await moneyBox.Acc(await attackerContract.getAddress())).balance;
+    expect(attackerBalance).to.equal(ethers.parseEther("1.0"));
+  });
+});
+```

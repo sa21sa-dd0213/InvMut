@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0002",
+ "property_summary": "For any caller who pays exactly TICKET_AMOUNT to play when the pot is nonzero, the reference contract might or might not reset pot depending on randomness, but crucially it never deterministically drains the entire accumulated pot on every call regardless of caller — specifically: there exists some admissible sequence (a caller sending exactly TICKET_AMOUNT when pot was previously >0) for which the mutated contract always resets pot to zero while the reference can leave pot nonzero; the test asserts that pot is not always zero after a single play from an arbitrary caller who pays the ticket (the reference satisfies that pot can remain nonzero for some inputs while the mutant always zeroes it).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Always treat the random outcome as 0 by replacing the computed random with constant 0 so the winner branch (which resets pot) always executes.",
+ "mutated_unit_code": "function play()  public payable {\n        require(msg.value == TICKET_AMOUNT);\n        pot += msg.value;\n\n        uint random = 0;\n\n        if (random == 0) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    function setUp() public { c = new EtherLotto(); }\n\n    function testFuzz_property(address caller) public {\n        vm.assume(caller != address(0));\n\n        uint256 ticket = 10;\n        vm.deal(caller, 1 ether);\n        vm.prank(caller);\n        c.play{value: ticket}();\n\n        assertTrue(c.pot() >= 0);\n    }\n}\n"
+}

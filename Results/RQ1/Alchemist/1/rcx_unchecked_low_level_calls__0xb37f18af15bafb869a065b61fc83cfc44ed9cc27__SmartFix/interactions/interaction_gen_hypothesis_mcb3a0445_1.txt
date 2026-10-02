@@ -1,0 +1,29 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract SimpleWallet:
+        Contract Code: pragma solidity ^0.8.0; contract SimpleWallet { address public owner = msg.sender; uint public depositsCount; modifier onlyOwner { require(msg.sender == owner); _; } receive() external payable { require(((depositsCount + 1) >= depositsCount)); depositsCount++; } function withdrawAll() public onlyOwner { withdraw(address(this).balance); } function withdraw(uint _value) public onlyOwner { payable(msg.sender).transfer(_value); } function sendMoney(address _target, uint _value) public onlyOwner { _target.call{value: _value}(""); } }
+
+    Consider the following mutant of SimpleWallet:
+        Mutant mcb3a0445 of function receive replaces >= with >
+        Mutant Diff: ---|         require(((depositsCount + 1) >= depositsCount)); +++|         require(((depositsCount + 1)  > depositsCount));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract uses `>=` to ensure that `depositsCount + 1` is always greater than or equal to `depositsCount`, which is always true (since adding 1 to any non-negative integer results in a strictly larger number, unless overflow occurs). The mutant changes this to `>`, which is also always true under normal arithmetic. However, the critical difference appears when `depositsCount` reaches its maximum value (type uint max). In the original, `depositsCount + 1` would overflow to 0, making `0 >= max` false, thus preventing overflow. In the mutant, `0 > max` would also be false, so both revert on overflow. The actual behavioral difference is more subtle: the mutant would revert one step earlier if `depositsCount` is at `type(uint).max` because the condition `(depositsCount + 1) > depositsCount` would check `0 > max` (false), while the original checks `0 >= max` (false) as well. Both revert.  
+
+The real distinction is that the mutant is slightly less restrictive in the non-overflow case? No, both are always true for non-overflow. The mutant is actually *weaker* in a different way: it would allow `depositsCount` to be incremented even if `depositsCount + 1` somehow equaled `depositsCount` (impossible in normal arithmetic), but the mutant's condition is logically equivalent to the original for all non-overflow cases.  
+
+Wait—re-examining: The original `>=` is always true (since `x+1 >= x` for all `x` except overflow). The mutant `>` is also always true (since `x+1 > x` for all `x` except overflow). So both are tautologies under normal arithmetic. The only scenario where they differ is if `depositsCount` is `type(uint).max`:  
+- Original: `(max + 1) >= max` → `0 >= max` → false → revert.  
+- Mutant: `(max + 1) > max` → `0 > max` → false → revert.  
+
+Both revert, so no difference.  
+
+The actual difference is that the mutant’s condition is *slightly stricter*? No, `>` is stricter than `>=` only when

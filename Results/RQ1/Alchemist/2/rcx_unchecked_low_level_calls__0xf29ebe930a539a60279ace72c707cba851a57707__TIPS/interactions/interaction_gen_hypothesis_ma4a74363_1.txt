@@ -1,0 +1,23 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract B:
+        Contract Code: pragma solidity ^0.8.0; contract B { address public owner = payable(msg.sender); function go()  public payable { address target = 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C; { (bool _s, bytes memory _d) = target.call{value: msg.value}(""); _d; if (! _s) { revert();} } payable(owner).transfer(address(this).balance); } fallback() external payable { } }
+
+    Consider the following mutant of B:
+        Mutant ma4a74363 of function go replaces 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C with address(this)
+        Mutant Diff: ---| 	address target = 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C; +++| 	address target = address(this);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract sends ETH to an external address (`0xC8A...`), then transfers the contract's remaining balance to `owner`. The mutant changes the target to `address(this)`, meaning the contract calls itself with ETH.  
+
+A test case that sends ETH to the contract via `go()` and then checks the balance of the external address (`0xC8A...`) should pass on the original (since that address receives ETH). On the mutant, that external address receives nothing, so the balance check will fail.  
+
+**Hypothesis**: A test that sends a specific amount of ETH to the contract via `go()` and then asserts that the external address `0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C` received exactly that amount should kill the mutant.

@@ -1,0 +1,52 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("demo mutant kill test - m4367cbc7", function () {   it("should revert when a nested call fails, but mutant silently continues", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy demo contract (no constructor arguments needed)     const Factory = await ethers.getContractFactory("demo");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Deploy a simple ERC20-like contract that will fail on transferFrom     const TokenFactory = await ethers.getContractFactory("MockToken");     const token = await TokenFactory.deploy();     await token.waitForDeployment();          // Setup: give addr1 some tokens and approve demo to spend them     await token.mint(addr1.address, ethers.parseEther("100"));     await token.connect(addr1).approve(await instance.getAddress(), ethers.parseEther("100"));          // Create recipients array with multiple addresses     const recipients = [addr2.address, addr2.address];          // Try to call transfer with a failing call - use a non-existent token address     const fakeTokenAddress = ethers.Wallet.createRandom().address;          // This should revert on original but succeed on mutant     await expect(       instance.transfer(addr1.address, fakeTokenAddress, recipients, ethers.parseEther("10"))     ).to.be.reverted;          // If we get here, the mutant is killed because it didn't revert     // (the test expects revert, so if it doesn't revert, the test fails)   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract demo { function transfer(address from, address caddress, address[] memory _tos, uint v)  public returns (bool) { require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); _d; if (! _s) { revert();} } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("demo mutant kill test - m4367cbc7", function () {
+  it("should revert when a nested call fails, but mutant silently continues", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy demo contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("demo");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy a simple ERC20-like contract that will fail on transferFrom
+    const TokenFactory = await ethers.getContractFactory("MockToken");
+    const token = await TokenFactory.deploy();
+    await token.waitForDeployment();
+
+    // Setup: give addr1 some tokens and approve demo to spend them
+    await token.mint(addr1.address, ethers.parseEther("100"));
+    await token.connect(addr1).approve(await instance.getAddress(), ethers.parseEther("100"));
+
+    // Create recipients array with multiple addresses
+    const recipients = [addr2.address, addr2.address];
+
+    // Try to call transfer with a failing call - use a non-existent token address
+    const fakeTokenAddress = ethers.Wallet.createRandom().address;
+
+    // This should revert on original but succeed on mutant
+    await expect(
+      instance.transfer(addr1.address, fakeTokenAddress, recipients, ethers.parseEther("10"))
+    ).to.be.reverted;
+
+    // If we get here, the mutant is killed because it didn't revert
+    // (the test expects revert, so if it doesn't revert, the test fails)
+  });
+});
+```

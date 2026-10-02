@@ -1,0 +1,79 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("StaxLPStaking mutant test - mcf92bc4f", function () {
+  it("should kill mutant by verifying reward accrual after multiple stakes", async function () {
+    const [owner, user] = await ethers.getSigners();
+    
+    // Deploy a mock ERC20 token for staking
+    const MockToken = await ethers.getContractFactory("ERC20Mock");
+    const stakingToken = await MockToken.deploy("Staking Token", "STK", 18);
+    await stakingToken.waitForDeployment();
+    
+    // Deploy a mock ERC20 token for rewards
+    const rewardToken = await MockToken.deploy("Reward Token", "RWD", 18);
+    await rewardToken.waitForDeployment();
+    
+    // Deploy StaxLPStaking
+    const Factory = await ethers.getContractFactory("StaxLPStaking");
+    const instance = await Factory.deploy(await stakingToken.getAddress(), owner.address);
+    await instance.waitForDeployment();
+    
+    // Add reward token
+    await instance.addReward(await rewardToken.getAddress());
+    
+    // Transfer staking tokens to user
+    const stakeAmount = ethers.parseEther("100");
+    const secondStakeAmount = ethers.parseEther("50");
+    const totalTransfer = stakeAmount + secondStakeAmount;
+    await stakingToken.transfer(user.address, totalTransfer);
+    
+    // User stakes first time
+    await stakingToken.connect(user).approve(await instance.getAddress(), totalTransfer);
+    await instance.connect(user).stake(stakeAmount);
+    
+    // Advance time to accrue rewards
+    const DURATION = 86400 * 7; // 1 week
+    const halfDuration = Math.floor(DURATION / 2);
+    await ethers.provider.send("evm_increaseTime", [halfDuration]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // Distribute rewards to the contract
+    const rewardAmount = ethers.parseEther("1000");
+    await rewardToken.transfer(owner.address, rewardAmount);
+    await rewardToken.connect(owner).approve(await instance.getAddress(), rewardAmount);
+    await instance.connect(owner).notifyRewardAmount(await rewardToken.getAddress(), rewardAmount);
+    
+    // User stakes second time (this should update rewards on original but NOT on mutant)
+    await instance.connect(user).stake(secondStakeAmount);
+    
+    // Get earned rewards before claiming
+    const earnedBeforeClaim = await instance.earned(user.address, await rewardToken.getAddress());
+    
+    // Claim rewards
+    await instance.connect(user).getRewards(user.address);
+    
+    // Get actual claimed amount
+    const userRewardBalance = await rewardToken.balanceOf(user.address);
+    
+    // On original contract, user should have earned rewards for half the duration on first stake
+    // Expected: rewardRate * halfDuration * firstStakeAmount / totalSupply
+    // rewardRate = rewardAmount / DURATION = 1000 / 604800
+    // Expected earnings = (1000 / 604800) * 302400 * 100 / 100 = 500 tokens (half of reward)
+    // After second stake, totalSupply becomes 150, but rewards already calculated
+    
+    // On mutant, the second stake doesn't update rewards, so user may lose previously earned rewards
+    // Assert that user received rewards (mutant would likely give 0 or wrong amount)
+    expect(userRewardBalance).to.be.gt(0);
+    
+    // Additionally, verify that earned() returns non-zero before claim
+    // On mutant, earned() may return incorrect value due to missing update
+    expect(earnedBeforeClaim).to.be.gt(0);
+    
+    // The key assertion: user should have earned at least some rewards
+    // On mutant, the reward calculation will be incorrect because
+    // _rewardPerToken and userRewardPerTokenPaid were not updated before second stake
+    // This will cause the user to lose rewards accrued during the first half of the duration
+    expect(userRewardBalance).to.be.gte(ethers.parseEther("400")); // Should have earned ~500 tokens
+  });
+});

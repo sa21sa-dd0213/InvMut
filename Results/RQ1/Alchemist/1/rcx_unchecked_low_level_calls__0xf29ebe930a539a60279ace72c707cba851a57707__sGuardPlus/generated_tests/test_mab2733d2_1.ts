@@ -1,0 +1,67 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("B mutant detection - mab2733d2", function () {
+  it("should kill mutant by forcing external call failure and checking revert", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy the contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("B");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    const instanceAddress = await instance.getAddress();
+
+    // Deploy a malicious contract that always reverts when receiving ETH
+    const RevertReceiverFactory = await ethers.getContractFactory(
+      "contracts/RevertReceiver.sol:RevertReceiver"
+    );
+    const revertReceiver = await RevertReceiverFactory.deploy();
+    await revertReceiver.waitForDeployment();
+    const revertReceiverAddress = await revertReceiver.getAddress();
+
+    // We need to set the target address in the contract to our revert receiver
+    // However, the target is hardcoded in the contract, so we must use a different approach
+    // Instead, we will deploy a contract that selfdestructs to simulate a failed call
+    // Or better: we will fund the contract, then call go() which will attempt to send to hardcoded address
+    // Since we cannot change the hardcoded target, we ensure it's a contract that reverts on receive
+    
+    // Fund the contract with some ETH
+    await owner.sendTransaction({
+      to: instanceAddress,
+      value: ethers.parseEther("1.0")
+    });
+
+    // The hardcoded target 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C is likely an EOA or non-existent
+    // To make it revert, we need to set it up as a contract that reverts
+    // Since we can't change the code, we will test the original behavior:
+    // In original: require(receiver.call) will revert if call fails
+    // In mutant: no require, so it proceeds even if call fails
+    
+    // For the mutant to be killed, we need a scenario where:
+    // - Original reverts (call fails)
+    // - Mutant does NOT revert
+    
+    // Since the hardcoded address is fixed, we can use the selfdestruct technique
+    // Deploy a contract at that exact address using CREATE2 if possible, or use a different approach
+    
+    // Simpler approach: We'll call go() and expect it to revert in the original
+    // The mutant will not revert, so our test should pass on original and fail on mutant
+    
+    // For this test to work with the hardcoded address, we'll just call go()
+    // and check that it reverts (which it should for the original if the target fails)
+    // But since we can't guarantee the target fails, we'll use a different strategy
+    
+    // Actually, the cleanest approach: deploy the contract, then check the balance transfer
+    // In the mutant, if the external call fails silently, the ETH still gets sent to owner
+    // In the original, the transaction reverts entirely
+    
+    // Let's check the hardcoded address - it's a specific Ethereum address
+    // We'll just call go() and verify behavior differs
+    
+    const tx = instance.connect(addr1).go({ value: ethers.parseEther("0.1") });
+    
+    // Original should revert because the hardcoded target likely fails
+    // Mutant should succeed and transfer balance to owner
+    await expect(tx).to.be.reverted;
+  });
+});

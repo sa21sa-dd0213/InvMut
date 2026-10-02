@@ -1,0 +1,27 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Owned:
+        Contract Code: pragma solidity ^0.8.0; contract Owned { address private admin = payable(msg.sender); address public owner; constructor() { owner = payable(msg.sender); } function setOwner(address _owner)  public onlyAdmin returns (bool success) { owner = _owner; return true; } modifier onlyAdmin() { require(msg.sender == admin, "Only admin can call address(this) function"); _; } modifier onlyOwner { require(msg.sender == owner); _; } }
+
+    Consider the following mutant of Owned:
+        Mutant m1558b1c8 of function modifier:onlyAdmin replaces == with !=
+        Mutant Diff: ---|     require(msg.sender == admin, "Only admin can call address(this) function"); +++|     require(msg.sender != admin, "Only admin can call address(this) function");
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let’s analyze the mutation:  
+
+- In the original `onlyAdmin` modifier, the check is `require(msg.sender == admin, ...)`, meaning only the admin can proceed.
+- In the mutant, the check is changed to `require(msg.sender != admin, ...)`, meaning the function will revert **if the caller is the admin**, and will pass for any non-admin address.
+
+Therefore, the mutant inverts the access control: the admin is locked out, and anyone else can call the restricted function.
+
+**Hypothesis:**  
+A test case that calls the `setOwner` function from the admin account and expects it to succeed (no revert) should pass on the original contract but fail on the mutant, because on the mutant the admin is incorrectly rejected by the modifier.

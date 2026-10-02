@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0003",
+ "property_summary": "After a successful call to withdrawAll, the recipient's balance must increase by the contract's entire balance; the bug breaks this by sending funds to a hardcoded address instead, so the intended recipient's balance never changes.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replace the recipient with a hardcoded address, changing who receives the withdrawn funds.",
+ "mutated_unit_code": "function withdrawAll(address _recipient) public {\n\n        require(msg.sender == owner);\n        payable(address(0x123)).transfer(address(this).balance);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Phishable} from \"../src/Phishable.sol\";\n\ncontract InvMutTest is Test {\n    Phishable c;\n    function setUp() public { c = new Phishable(address(this)); }\n    function testFuzz_property(address recipient, uint256 funding, uint256 amount) public {\n        vm.assume(recipient != address(this));\n        vm.assume(recipient != address(0));\n        funding = bound(funding, 1, 1000 ether);\n        amount = bound(amount, 1, funding);\n        vm.deal(address(c), funding);\n\n        uint256 recipientBefore = recipient.balance;\n        vm.prank(address(this));\n        c.withdrawAll(recipient);\n        uint256 recipientAfter = recipient.balance;\n\n        assertTrue(recipientAfter == recipientBefore + funding && address(c).balance == 0);\n    }\n}\n"
+}

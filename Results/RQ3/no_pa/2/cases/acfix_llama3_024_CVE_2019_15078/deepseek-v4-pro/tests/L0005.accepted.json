@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0005",
+ "property_summary": "After XBornID() sets balances[owner] to totalDistributed, calling transferFrom from the owner to another address results in balances[owner] increasing incorrectly in the mutant due to the addition bug, while the reference correctly decreases it.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Change the subtraction in balances[_from] update to addition: 'balances[_from] = (balances[_from] + (_amount));' so that the from address gains tokens instead of losing them.",
+ "mutated_unit_code": "    function transferFrom(address _from, address _to, uint256 _amount) onlyPayloadSize(3 * 32) public override virtual returns (bool success) {\n        require(_to != address(0));\n        require(_amount <= balances[_from]);\n        require(_amount <= allowed[_from][msg.sender]);\n\n        balances[_from] = (balances[_from] + (_amount));\n        allowed[_from][msg.sender] = (allowed[_from][msg.sender] - (_amount));\n        balances[_to] = (balances[_to] + (_amount));\n        emit Transfer(_from, _to, _amount);\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {XBORNID} from \"../src/XBORNID.sol\";\n\ncontract InvMutTest is Test {\n    XBORNID c;\n    function setUp() public { c = new XBORNID(); }\n    function testRegression_property() public {\n        c.XBornID();\n\n        address alice = address(0x1234);\n\n        c.approve(alice, 1000);\n\n        uint256 balanceBefore = c.balanceOf(address(this));\n\n        vm.prank(alice);\n        c.transferFrom(address(this), alice, 1000);\n\n        uint256 balanceAfter = c.balanceOf(address(this));\n\n        assertTrue(balanceAfter == balanceBefore - 1000);\n    }\n}\n"
+}

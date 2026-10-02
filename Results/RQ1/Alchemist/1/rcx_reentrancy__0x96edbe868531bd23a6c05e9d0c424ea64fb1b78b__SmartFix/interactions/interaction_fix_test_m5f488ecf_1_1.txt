@@ -1,0 +1,57 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PENNY_BY_PENNY mutant detection test", function () {   it("should detect mutant by testing Put with msg.value = 0 and checking that balance remains unchanged", async function () {     const [owner] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("PENNY_BY_PENNY");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Get initial balance     const initialBalance = (await instance.Acc(owner.address)).balance;      // Call Put with 0 value - this should succeed in original (balance unchanged)     // but mutant's require statement (acc.balance + msg.value + 1 >= acc.balance)     // will fail when msg.value = 0 because acc.balance + 1 > acc.balance is always true,     // HOWEVER the mutant actually changes the require to be more permissive, not restrictive.     // The real kill condition: test with msg.value = type(uint256).max - initialBalance to trigger overflow     // In original, overflow causes revert; in mutant, the +1 changes overflow behavior          // Actually, the correct kill: test with msg.value = 0 and check that the mutant's      // require (acc.balance + 0 + 1 >= acc.balance) is always true (no difference).     // The REAL difference: test with a large msg.value that causes overflow.     // In original: acc.balance + msg.value >= acc.balance -> overflow revert     // In mutant: acc.balance + msg.value + 1 >= acc.balance -> different overflow point          // Let's use a value that causes overflow in mutant but not in original     const maxUint = ethers.MaxUint256;     const largeValue = maxUint - BigInt(initialBalance);          // This should revert in mutant due to overflow (acc.balance + largeValue + 1 overflows)     // but succeed in original (acc.balance + largeValue = maxUint, no overflow)     await expect(       instance.Put(0, { value: largeValue })     ).to.be.reverted;          // Alternative kill: test with msg.value = 0 and verify no revert     // The mutant's require is always true for any input, so the only way to kill is     // via the overflow difference above   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PENNY_BY_PENNY { struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; uint public MinSum; LogFile Log; bool intitalized; function SetMinSum(uint _val) public { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log) public { if(intitalized)revert(); Log = LogFile(_log); } function Initialized() public { intitalized = true; } function Put(uint _lockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; require(((block.timestamp + _lockTime) >= block.timestamp)); if(block.timestamp+_lockTime>acc.unlockTime)acc.unlockTime=block.timestamp+_lockTime; Log.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { Log.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } } contract LogFile { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PENNY_BY_PENNY mutant detection test", function () {
+  it("should detect mutant by testing Put with msg.value = 0 and checking that balance remains unchanged", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("PENNY_BY_PENNY");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get initial balance
+    const initialBalance = (await instance.Acc(owner.address)).balance;
+
+    // Call Put with 0 value - should succeed in original (balance unchanged)
+    // but mutant's require statement (acc.balance + msg.value + 1 >= acc.balance)
+    // will fail when msg.value = 0 because acc.balance + 1 > acc.balance is always true,
+    // HOWEVER the mutant actually changes the require to be more permissive, not restrictive.
+    // The real kill condition: test with msg.value = type(uint256).max - initialBalance to trigger overflow
+    // In original, overflow causes revert; in mutant, the +1 changes overflow behavior
+    
+    // Actually, the correct kill: test with msg.value = 0 and check that the mutant's 
+    // require (acc.balance + 0 + 1 >= acc.balance) is always true (no difference).
+    // The REAL difference: test with a large msg.value that causes overflow.
+    // In original: acc.balance + msg.value >= acc.balance -> overflow revert
+    // In mutant: acc.balance + msg.value + 1 >= acc.balance -> different overflow point
+    
+    // Let's use a value that causes overflow in mutant but not in original
+    const maxUint = ethers.MaxUint256;
+    const largeValue = maxUint - BigInt(initialBalance);
+    
+    // This should revert in mutant due to overflow (acc.balance + largeValue + 1 overflows)
+    // but succeed in original (acc.balance + largeValue = maxUint, no overflow)
+    await expect(
+      instance.Put(0, { value: largeValue })
+    ).to.be.reverted;
+    
+    // Alternative kill: test with msg.value = 0 and verify no revert
+    // The mutant's require is always true for any input, so the only way to kill is
+    // via the overflow difference above
+  });
+});
+```

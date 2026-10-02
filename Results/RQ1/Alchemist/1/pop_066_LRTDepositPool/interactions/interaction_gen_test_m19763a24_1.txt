@@ -1,0 +1,62 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m19763a24 of LRTDepositPool.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test LRTDepositPool.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for LRTDepositPool:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("LRTDepositPool reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy LRTDepositPool by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("LRTDepositPool"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("LRTDepositPool - kill mutant m19763a24", function () {
+  it("should revert when adding more node delegators than maxNodeDelegatorCount", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy mock LRTConfig
+    const LRTConfigFactory = await ethers.getContractFactory("LRTConfig");
+    const lrtConfig = await LRTConfigFactory.deploy();
+    await lrtConfig.waitForDeployment();
+
+    // Deploy LRTDepositPool
+    const Factory = await ethers.getContractFactory("LRTDepositPool");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Initialize the contract
+    await instance.initialize(await lrtConfig.getAddress());
+
+    // Grant MANAGER role to owner for setup
+    const DEFAULT_ADMIN_ROLE = ethers.ZeroHash;
+    const MANAGER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("MANAGER"));
+    await lrtConfig.grantRole(MANAGER_ROLE, owner.address);
+    await lrtConfig.grantRole(DEFAULT_ADMIN_ROLE, owner.address);
+
+    // Set maxNodeDelegatorCount to 2
+    await instance.updateMaxNodeDelegatorCount(2);
+
+    // Add 2 node delegator contracts (should succeed)
+    const nodeDelegator1 = ethers.Wallet.createRandom().address;
+    const nodeDelegator2 = ethers.Wallet.createRandom().address;
+    await instance.addNodeDelegatorContractToQueue([nodeDelegator1]);
+    await instance.addNodeDelegatorContractToQueue([nodeDelegator2]);
+
+    // Attempt to add a third node delegator (should revert with MaximumNodeDelegatorCountReached)
+    const nodeDelegator3 = ethers.Wallet.createRandom().address;
+    await expect(
+      instance.addNodeDelegatorContractToQueue([nodeDelegator3])
+    ).to.be.revertedWithCustomError(instance, "MaximumNodeDelegatorCountReached");
+  });
+});
+```

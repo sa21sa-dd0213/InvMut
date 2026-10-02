@@ -1,0 +1,79 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EBU mutant m4056f5f9 test", function () {   it("should detect keccak256 replaced by sha256 in transfer function selector calculation", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy the EBU contract     const Factory = await ethers.getContractFactory("EBU");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Deploy a simple ERC20-like token to act as the caddress target     // This token will help us verify if transferFrom was actually called correctly     const TokenFactory = await ethers.getContractFactory("ERC20");     const token = await TokenFactory.deploy("Test", "TST", 18);     await token.waitForDeployment();          // Get the deployed addresses     const ebuAddress = await instance.getAddress();     const tokenAddress = await token.getAddress();          // The EBU contract has a hardcoded from address and caddress     // We need to verify the actual values from the deployed contract     const fromAddress = await instance.from();     const caddress = await instance.caddress();          // Mint tokens to the from address so transferFrom can work     const mintAmount = ethers.parseEther("100");     await token.mint(fromAddress, mintAmount);          // Approve the EBU contract to spend tokens from the from address     // Note: In the actual test scenario, the from address is hardcoded     // We need to impersonate or use the actual from address to approve     await token.connect(owner).approve(ebuAddress, ethers.parseEther("100"));          // Prepare test data     const recipients = [addr1.address];     const amounts = [1]; // 1 token (will be multiplied by 1e18 in the contract)          // Call transfer function from the authorized address (hardcoded from)     // The contract requires msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9     // We need to use impersonation or the actual signer for that address     // For testing, we'll use hardhat's ability to impersonate accounts     await hre.network.provider.request({       method: "hardhat_impersonateAccount",       params: ["0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9"],     });          const impersonatedSigner = await ethers.getSigner("0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9");          // Send some ETH to the impersonated account for gas     await owner.sendTransaction({       to: "0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9",       value: ethers.parseEther("1"),     });          // Get balance before     const balanceBefore = await token.balanceOf(addr1.address);          // Execute the transfer     const tx = await instance.connect(impersonatedSigner).transfer(recipients, amounts);     await tx.wait();          // Get balance after     const balanceAfter = await token.balanceOf(addr1.address);          // For the original contract (using keccak256), the balance should increase     // For the mutant (using sha256), the balance should remain the same because     // the wrong function selector is used     expect(balanceAfter).to.equal(balanceBefore + ethers.parseEther("1"));   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function mul_uint256(uint256 a, uint256 b) internal pure returns (uint256) { if (a == 0) { return 0; } uint256 c = a * b; assert(c / a == b); return c; } } contract EBU is sGuard { address public from = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9; address public caddress = 0x1f844685f7Bf86eFcc0e74D8642c54A257111923; function transfer( address[] memory _tos, uint[] memory v)public returns (bool){ require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9); require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ caddress.call(abi.encodeWithSelector(id,from,_tos[i],mul_uint256(v[i], 1000000000000000000))); } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant m4056f5f9 test", function () {
+  it("should detect keccak256 replaced by sha256 in transfer function selector calculation", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy the EBU contract
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy a simple ERC20-like token to act as the caddress target
+    const TokenFactory = await ethers.getContractFactory("ERC20");
+    const token = await TokenFactory.deploy("Test", "TST", 18);
+    await token.waitForDeployment();
+
+    // Get the deployed addresses
+    const ebuAddress = await instance.getAddress();
+    const tokenAddress = await token.getAddress();
+
+    // The EBU contract has a hardcoded from address and caddress
+    const fromAddress = await instance.from();
+    const caddress = await instance.caddress();
+
+    // Mint tokens to the from address so transferFrom can work
+    const mintAmount = ethers.parseEther("100");
+    await token.mint(fromAddress, mintAmount);
+
+    // Approve the EBU contract to spend tokens from the from address
+    await token.connect(owner).approve(ebuAddress, ethers.parseEther("100"));
+
+    // Prepare test data
+    const recipients = [addr1.address];
+    const amounts = [1]; // 1 token (will be multiplied by 1e18 in the contract)
+
+    // Impersonate the hardcoded from address
+    await ethers.provider.send("hardhat_impersonateAccount", ["0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9"]);
+
+    const impersonatedSigner = await ethers.getSigner("0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9");
+
+    // Send some ETH to the impersonated account for gas
+    await owner.sendTransaction({
+      to: "0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9",
+      value: ethers.parseEther("1"),
+    });
+
+    // Get balance before
+    const balanceBefore = await token.balanceOf(addr1.address);
+
+    // Execute the transfer
+    const tx = await instance.connect(impersonatedSigner).transfer(recipients, amounts);
+    await tx.wait();
+
+    // Get balance after
+    const balanceAfter = await token.balanceOf(addr1.address);
+
+    // For the original contract (using keccak256), the balance should increase
+    // For the mutant (using sha256), the balance should remain the same because
+    // the wrong function selector is used
+    expect(balanceAfter).to.equal(balanceBefore + ethers.parseEther("1"));
+  });
+});
+```

@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract ReentrancyDAO:
+        Contract Code: pragma solidity ^0.8.0; contract sGuardPlus { constructor() { __lock_modifier0_lock = false; } bool private __lock_modifier0_lock; modifier __lock_modifier0() { require(!__lock_modifier0_lock); __lock_modifier0_lock = true; _; __lock_modifier0_lock = false; } } contract ReentrancyDAO is sGuardPlus { mapping (address  => uint )    credit; uint     balance; function withdrawAll () public __lock_modifier0  { uint     oCredit = credit[msg.sender]; if (oCredit>0) { balance-=oCredit; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); credit[msg.sender]=0; } } function deposit () public payable { credit[msg.sender]+=msg.value; balance+=msg.value; } }
+
+    Consider the following mutant of ReentrancyDAO:
+        Mutant m12591652 of function withdrawAll replaces function withdrawAll () public __lock_modifier0 with function withdrawAll () public
+        Mutant Diff: ---| function withdrawAll () public __lock_modifier0  { +++| function withdrawAll () public   {
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original function `withdrawAll` uses the `__lock_modifier0` modifier, which implements a reentrancy guard (a boolean lock that prevents reentrant calls). The mutant removes this modifier entirely, making the function vulnerable to reentrancy attacks.
+
+**Hypothesis**: "The mutant removes the reentrancy guard modifier. Therefore, a test case that performs a reentrancy attack—where a malicious contract calls `withdrawAll` recursively within the fallback function before the sender's credit is set to zero—should succeed on the mutant (allowing multiple withdrawals) but fail on the original contract due to the lock preventing reentrancy. The test should verify that the attacker’s contract cannot drain more funds than its initial credit in the original, while in the mutant it can."

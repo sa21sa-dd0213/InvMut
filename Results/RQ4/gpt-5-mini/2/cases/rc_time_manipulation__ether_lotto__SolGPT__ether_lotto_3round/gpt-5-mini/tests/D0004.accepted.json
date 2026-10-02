@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0004",
+ "property_summary": "For any call to play() with any sender and any msg.value, the reference contract C always leaves pot either increased by exactly TICKET_AMOUNT (10) when no payout occurs or reset to 0 after a payout; the mutant that removes the require can leave pot at other values (not equal to 0 or not a multiple of TICKET_AMOUNT increment), so there exist inputs (msg.value not equal to 10) where pot differs between C and the mutant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change the require to accept any msg.value so pot may accumulate different amounts and observed pot after play can differ when callers send non-standard amounts.",
+ "mutated_unit_code": "function play()  public payable {\n        // require(msg.value == TICKET_AMOUNT);\n        pot += msg.value;\n\n        uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;\n\n        if (random == 0) {\n            payable(bank).transfer(FEE_AMOUNT);\n            payable(msg.sender).transfer(pot - FEE_AMOUNT);\n            pot = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherLotto} from \"../src/EtherLotto.sol\";\n\ncontract InvMutTest is Test {\n    EtherLotto c;\n    function setUp() public { c = new EtherLotto(); }\n\n    function testFuzz_property(address sender, uint256 payAmount) public {\n        vm.assume(sender != address(0));\n        payAmount = bound(payAmount, 0, 1e27);\n\n        vm.deal(sender, payAmount);\n        vm.prank(sender);\n        bool ok;\n        try c.play{value: payAmount}() {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        uint pot = c.pot();\n\n        assertTrue(pot % 10 == 0);\n    }\n}\n"
+}

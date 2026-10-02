@@ -1,0 +1,67 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m814e6338 of demo.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test demo.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for demo:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("demo reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy demo by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("demo"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("demo mutant m814e6338 - loop condition change", function () {
+  it("should detect mutant by verifying loop execution with multiple recipients", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("demo");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy a simple token contract that implements transferFrom
+    const TokenFactory = await ethers.getContractFactory("SimpleToken");
+    const token = await TokenFactory.deploy("Test", "TST", 18);
+    await token.waitForDeployment();
+
+    // Mint tokens to addr1 so transferFrom can succeed
+    await token.mint(addr1.address, ethers.parseEther("100"));
+    
+    // Approve the demo contract to spend tokens from addr1
+    await token.connect(addr1).approve(await instance.getAddress(), ethers.parseEther("100"));
+
+    // Create an array of recipients (more than one to ensure loop matters)
+    const recipients = [owner.address, addr2.address];
+    const amount = ethers.parseEther("10");
+
+    // Call transfer on the demo contract with valid parameters
+    const tx = await instance.transfer(
+      addr1.address,
+      await token.getAddress(),
+      recipients,
+      amount
+    );
+    const receipt = await tx.wait();
+
+    // Check that the token transfer actually occurred for both recipients
+    // If the loop didn't execute (mutant), only the first transfer would happen or none
+    const balanceOwner = await token.balanceOf(owner.address);
+    const balanceAddr2 = await token.balanceOf(addr2.address);
+    
+    expect(balanceOwner).to.equal(ethers.parseEther("10"));
+    expect(balanceAddr2).to.equal(ethers.parseEther("10"));
+    
+    // Also verify the sender's balance decreased appropriately
+    const balanceAddr1 = await token.balanceOf(addr1.address);
+    expect(balanceAddr1).to.equal(ethers.parseEther("80"));
+  });
+});
+```

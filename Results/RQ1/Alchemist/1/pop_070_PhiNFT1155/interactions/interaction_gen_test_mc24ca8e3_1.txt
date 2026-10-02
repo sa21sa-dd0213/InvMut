@@ -1,0 +1,73 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mc24ca8e3 of PhiNFT1155.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PhiNFT1155.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PhiNFT1155:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PhiNFT1155 reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PhiNFT1155 by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PhiNFT1155"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PhiNFT1155 - onlyArtCreator modifier test", function () {
+  it("should allow the owner to call updateRoyalties, but the mutant should revert", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy PhiNFT1155
+    const Factory = await ethers.getContractFactory("PhiNFT1155");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Initialize the contract with required parameters
+    const credChainId = 1;
+    const credId = 1;
+    const verificationType = "SIGNATURE";
+    const protocolFeeDestination = owner.address;
+    
+    await instance.initialize(
+      credChainId,
+      credId,
+      verificationType,
+      protocolFeeDestination
+    );
+    
+    // First, we need to create an art through the factory to have a tokenId
+    // Since we're testing the onlyArtCreator modifier, we need to understand the flow:
+    // The onlyArtCreator modifier checks if msg.sender is the artist or the owner
+    // We need to simulate the factory creating art first
+    
+    // Get the phiFactoryContract address (it's set to msg.sender during initialize)
+    // For testing, we'll directly test the modifier logic by calling updateRoyalties
+    // on a token that exists
+    
+    // Create a simple RoyaltyConfiguration
+    const royaltyConfig = {
+      royaltyBPS: 500,
+      royaltyRecipient: owner.address
+    };
+    
+    // The owner should be able to call updateRoyalties since they are the owner
+    // In the mutant, msg.sender >= owner() would revert for the owner
+    // because the owner's address is >= itself
+    await expect(
+      instance.connect(owner).updateRoyalties(1, royaltyConfig)
+    ).to.not.be.reverted;
+    
+    // Additionally, verify that a non-owner, non-artist address is still rejected
+    await expect(
+      instance.connect(addr1).updateRoyalties(1, royaltyConfig)
+    ).to.be.revertedWithCustomError(instance, "NotArtCreator");
+  });
+});
+```

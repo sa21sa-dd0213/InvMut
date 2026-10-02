@@ -1,0 +1,12 @@
+{
+ "difference_id": "T2bd3771f",
+ "property_summary": "For any successful call to the fallback function, the resulting pastBlockTime must be strictly greater than the pastBlockTime before the call; the mutant can make two calls in the same block timestamp, and after the second succeeds, the stored pastBlockTime equals the value from after the first call, violating the strictly-increasing invariant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace `require(block.timestamp > pastBlockTime);` with `require(block.timestamp >= pastBlockTime);` to allow a call in the same block timestamp, changing revert conditions and thus externally observable behavior.",
+ "mutated_unit_code": "    fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp >= pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 timestampDelta, uint128 blockNum1, uint128 blockNum2) public {\n        vm.assume(timestampDelta > 0 && timestampDelta < 365 days);\n        uint256 t1 = 1_000_000 + timestampDelta;\n        uint256 t2 = t1;\n        vm.assume(blockNum1 != blockNum2);\n\n        address actor = address(0x123);\n        vm.deal(actor, 100 ether);\n\n        vm.roll(blockNum1);\n        vm.warp(t1);\n        vm.prank(actor);\n        (bool ok1, ) = address(c).call{value: 10 ether}(\"\");\n        require(ok1, \"first call failed\");\n        uint256 pastAfterFirst = c.pastBlockTime();\n\n        vm.roll(blockNum2);\n        vm.warp(t2);\n        vm.prank(actor);\n        (bool ok2, ) = address(c).call{value: 10 ether}(\"\");\n\n        if (ok2) {\n            uint256 pastAfterSecond = c.pastBlockTime();\n            assertTrue(pastAfterSecond > pastAfterFirst);\n        } else {\n            assertTrue(true);\n        }\n    }\n}"
+}

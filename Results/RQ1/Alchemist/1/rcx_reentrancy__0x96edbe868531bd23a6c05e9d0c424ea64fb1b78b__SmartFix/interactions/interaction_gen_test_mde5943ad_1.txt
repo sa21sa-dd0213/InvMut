@@ -1,0 +1,54 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mde5943ad of PENNY_BY_PENNY.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PENNY_BY_PENNY.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PENNY_BY_PENNY:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PENNY_BY_PENNY reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PENNY_BY_PENNY by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PENNY_BY_PENNY"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PENNY_BY_PENNY - kill mutant mde5943ad", function () {
+  it("should revert when Put is called with non-zero _lockTime due to mutant bug", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("PENNY_BY_PENNY");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Call Initialized to set intitalized to true (required for Put to work)
+    await (await instance.Initialized()).wait();
+
+    // Set MinSum to 0 to avoid interference
+    await (await instance.SetMinSum(0)).wait();
+
+    // Deploy and set LogFile (required for Put to work)
+    const LogFactory = await ethers.getContractFactory("LogFile");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+    await (await instance.SetLogFile(await logInstance.getAddress())).wait();
+
+    // Call Put with non-zero _lockTime - should succeed in original but revert in mutant
+    // The mutant's condition block.timestamp + _lockTime <= block.timestamp
+    // will fail for any positive _lockTime, causing revert
+    const lockTime = 100;
+    const value = ethers.parseEther("1");
+    
+    // In the original, this should succeed. In the mutant, it will revert.
+    // We expect it to succeed (original behavior), so if it reverts, the mutant is detected
+    const tx = instance.Put(lockTime, { value: value });
+    await expect(tx).to.not.be.reverted;
+  });
+});
+```

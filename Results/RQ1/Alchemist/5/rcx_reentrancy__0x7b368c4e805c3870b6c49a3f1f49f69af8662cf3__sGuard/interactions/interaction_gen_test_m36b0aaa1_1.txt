@@ -1,0 +1,69 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m36b0aaa1 of W_WALLET.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test W_WALLET.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for W_WALLET:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("W_WALLET reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy W_WALLET by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("W_WALLET"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("W_WALLET mutant m36b0aaa1 test", function () {
+  it("should kill the mutant by allowing withdrawal when balance < MinSum but time condition is met", async function () {
+    const [owner, user] = await ethers.getSigners();
+    
+    // Deploy Log contract first (required constructor argument for W_WALLET)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy W_WALLET with Log address
+    const Factory = await ethers.getContractFactory("W_WALLET");
+    const instance = await Factory.deploy(await log.getAddress());
+    await instance.waitForDeployment();
+    
+    // Set up: user sends 0.5 ether (less than MinSum which is 1 ether)
+    const depositAmount = ethers.parseEther("0.5");
+    const tx = await user.sendTransaction({
+      to: await instance.getAddress(),
+      value: depositAmount
+    });
+    await tx.wait();
+    
+    // Verify balance is less than MinSum
+    const holder = await instance.Acc(user.address);
+    expect(holder.balance).to.equal(depositAmount);
+    expect(holder.balance).to.be.lessThan(ethers.parseEther("1")); // MinSum = 1 ether
+    
+    // Fast forward time past unlockTime (unlockTime was set to block.timestamp on deposit via Put(0))
+    await ethers.provider.send("evm_increaseTime", [100]);
+    await ethers.provider.send("evm_mine");
+    
+    // Attempt to collect 0.1 ether - should revert on original but succeed on mutant
+    const collectAmount = ethers.parseEther("0.1");
+    
+    // On the original contract this would revert because balance < MinSum
+    // On the mutant it succeeds because block.timestamp > unlockTime is true
+    // We expect it to NOT revert (kill the mutant)
+    await expect(
+      instance.connect(user).Collect(collectAmount)
+    ).to.not.be.reverted;
+    
+    // Verify the balance decreased (mutant allowed the withdrawal)
+    const holderAfter = await instance.Acc(user.address);
+    expect(holderAfter.balance).to.equal(depositAmount - collectAmount);
+  });
+});
+```

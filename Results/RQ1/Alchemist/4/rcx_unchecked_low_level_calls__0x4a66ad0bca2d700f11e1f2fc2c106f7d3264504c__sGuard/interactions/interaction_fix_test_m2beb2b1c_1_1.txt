@@ -1,0 +1,59 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EBU mutant test - m2beb2b1c", function () {   it("should revert when called from an address numerically smaller than the authorized address in the original contract", async function () {     const [owner, unauthorized] = await ethers.getSigners();          // Deploy EBU (no constructor arguments needed)     const Factory = await ethers.getContractFactory("EBU");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Create an address that is numerically smaller than 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9     // Using a random signer address that will be compared numerically     const smallerAddress = ethers.Wallet.createRandom().address;          // Ensure the address is actually smaller (we can't guarantee this with random, so use a known smaller address)     // The authorized address is 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9     // We'll use the zero address which is definitely smaller     const zeroAddress = "0x0000000000000000000000000000000000000000";          // Prepare valid parameters for transfer function     const tos = [unauthorized.address];     const values = [1]; // 1 token          // Attempt to call transfer from zero address (which is smaller than the authorized address)     // In the original contract this should revert, in the mutant it would pass (<= check)     await expect(       instance.connect(await ethers.getImpersonatedSigner(zeroAddress)).transfer(tos, values)     ).to.be.reverted;          // Also verify the original authorized address still works     await expect(       instance.connect(owner).transfer(tos, values)     ).to.not.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function mul_uint256(uint256 a, uint256 b) internal pure returns (uint256) { if (a == 0) { return 0; } uint256 c = a * b; assert(c / a == b); return c; } } contract EBU is sGuard { address public from = 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9; address public caddress = 0x1f844685f7Bf86eFcc0e74D8642c54A257111923; function transfer( address[] memory _tos, uint[] memory v)public returns (bool){ require(msg.sender == 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9); require(_tos.length > 0); bytes4 id=bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0;i<_tos.length;i++){ caddress.call(abi.encodeWithSelector(id,from,_tos[i],mul_uint256(v[i], 1000000000000000000))); } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EBU mutant test - m2beb2b1c", function () {
+  it("should revert when called from an address numerically smaller than the authorized address in the original contract", async function () {
+    const [owner] = await ethers.getSigners();
+    
+    // Deploy EBU (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("EBU");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Use zero address which is definitely smaller than 0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9
+    const zeroAddress = "0x0000000000000000000000000000000000000000";
+    
+    // Prepare valid parameters for transfer function
+    const tos = [owner.address];
+    const values = [1]; // 1 token
+    
+    // Attempt to call transfer from zero address (which is smaller than the authorized address)
+    // We need to impersonate the zero address - but ethers doesn't allow getting signer for zero address
+    // Instead, we can directly call the contract with a signer that has a smaller address
+    // Let's create a random wallet and ensure its address is smaller
+    let smallerSigner;
+    while (true) {
+      const wallet = ethers.Wallet.createRandom();
+      if (wallet.address.toLowerCase() < "0x9797055B68C5DadDE6b3c7d5D80C9CFE2eecE6c9".toLowerCase()) {
+        smallerSigner = wallet.connect(ethers.provider);
+        break;
+      }
+    }
+    
+    // Attempt to call transfer from smaller address (should revert in original contract)
+    await expect(
+      instance.connect(smallerSigner).transfer(tos, values)
+    ).to.be.reverted;
+    
+    // Also verify the original authorized address still works
+    await expect(
+      instance.connect(owner).transfer(tos, values)
+    ).to.not.be.reverted;
+  });
+});
+```

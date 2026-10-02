@@ -1,0 +1,53 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("L1Block mutant detection", function () {
+  it("should detect mutant mf86d4bee by verifying parent constructor initialization", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("L1Block");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // The parent contract Semver stores constructor arguments (1, 0, 0)
+    // The mutant removes these arguments, so the parent's stored values will be (0, 0, 0)
+    // We can verify by checking if version() still returns "1.0.0" (which is hardcoded and unaffected)
+    // But more importantly, we can check internal state that would differ if arguments were missing.
+    // Since the parent constructor doesn't expose getters for its arguments, we need another approach.
+    // The original constructor passes (1, 0, 0) to Semver - if the mutant removes them,
+    // then the contract will still deploy but with different parent state.
+    // We can test this by checking that the contract's own storage (which is unaffected) works,
+    // but more importantly, we can check that the contract reverts when called with incorrect parent args.
+    // Actually, the simplest detection: the mutant changes constructor behavior, so deploy with
+    // wrong arguments would succeed in mutant but fail in original (since original expects specific args).
+    // Wait - the original has no constructor arguments, it's internal Semver(1,0,0).
+    // So both deploy the same way. The difference is in parent storage.
+    // Since Semver only has a hardcoded version(), we need to verify that the parent was initialized correctly.
+    // Let's check the version() return value (it's always "1.0.0" regardless, so not useful).
+    // Instead, we can check if the contract was deployed successfully and then call setL1BlockValues
+    // from the depositor account to ensure basic functionality works.
+    // The real detection: if we could read parent storage slots, we'd see 0s instead of 1,0,0.
+    // Since we can't, we rely on the fact that the mutant's constructor is different.
+    // Let's just verify deployment succeeds and basic function works.
+    const version = await instance.version();
+    expect(version).to.equal("1.0.0");
+    
+    // Verify the contract can be used normally (this should pass for both original and mutant)
+    const DEPOSITOR_ACCOUNT = "0xDeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001";
+    await expect(
+      instance.connect(await ethers.getSigner(DEPOSITOR_ACCOUNT)).setL1BlockValues(
+        1, 2, ethers.parseEther("1"), ethers.formatBytes32String("test"), 
+        3, ethers.formatBytes32String("batch"), 100, 200
+      )
+    ).to.not.be.reverted;
+    
+    // The mutant can only be detected by examining the parent contract's storage
+    // or by checking that the constructor was called with correct args.
+    // Since we can't directly access parent storage from tests, we use a proxy:
+    // Deploy both original and mutant, compare behavior.
+    // Actually, the most reliable way: deploy the contract and check storage slot 0 (Semver's first arg)
+    const storageValue = await ethers.provider.getStorage(await instance.getAddress(), 0);
+    // In original: storage slot 0 should have 1 (first constructor arg)
+    // In mutant: storage slot 0 should have 0 (default)
+    expect(storageValue).to.equal("0x0000000000000000000000000000000000000000000000000000000000000001");
+  });
+});

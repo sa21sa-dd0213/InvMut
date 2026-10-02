@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0004",
+ "property_summary": "After the owner sends the contract 1 ether, a non-owner calls Command(address,bytes) with 1 wei; the correct contract reverts (since msg.sender != Owner), while the buggy contract succeeds, making c.Command() return the 1 wei recipient address, which the reference does not execute.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Remove the require guard so anyone can call Command.",
+ "mutated_unit_code": "    function Command(address adr,bytes memory data)\n    payable\n    public\n    {\n        adr.call{value: msg.value}(data);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {MultiplicatorX4} from \"../src/MultiplicatorX4.sol\";\n\ncontract InvMutTest is Test {\n    MultiplicatorX4 c;\n    function setUp() public { c = new MultiplicatorX4(); }\n    function testRegression_property() public {\n        address owner = address(this);\n        vm.deal(owner, 1 ether);\n        vm.prank(owner);\n        (bool ok,) = address(c).call{value: 1 ether}(\"\");\n        require(ok, \"send failed\");\n\n        address nonOwner = address(0x1234);\n        vm.deal(nonOwner, 1 wei);\n        vm.prank(nonOwner);\n        bytes memory data = \"\";\n        bool success;\n        try c.Command(address(0x5678), data) {\n            success = true;\n        } catch {\n            success = false;\n        }\n        assertTrue(success == false);\n    }\n}\n"
+}

@@ -1,0 +1,85 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PENNY_BY_PENNY mutant test - me80c04a1", function () {   it("should detect reversed comparison operator in Put function", async function () {     const [owner, addr1] = await ethers.getSigners();          // Deploy LogFile first (required by PENNY_BY_PENNY)     const LogFileFactory = await ethers.getContractFactory("LogFile");     const logFile = await LogFileFactory.deploy();     await logFile.waitForDeployment();          // Deploy PENNY_BY_PENNY (no constructor arguments)     const Factory = await ethers.getContractFactory("PENNY_BY_PENNY");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Initialize the contract     await instance.connect(owner).SetLogFile(await logFile.getAddress());     await instance.connect(owner).SetMinSum(ethers.parseEther("0.1"));     await instance.connect(owner).Initialized();          // First deposit: short lock time (100 seconds)     const shortLockTime = 100;     const deposit1 = ethers.parseEther("1");     await instance.connect(addr1).Put(shortLockTime, { value: deposit1 });          // Get the unlock time after first deposit     let holderInfo = await instance.Acc(addr1.address);     const unlockTimeAfterFirstDeposit = holderInfo.unlockTime;          // Second deposit: longer lock time (200 seconds) - should extend unlock time     const longLockTime = 200;     const deposit2 = ethers.parseEther("1");     await instance.connect(addr1).Put(longLockTime, { value: deposit2 });          // Get the unlock time after second deposit     holderInfo = await instance.Acc(addr1.address);     const unlockTimeAfterSecondDeposit = holderInfo.unlockTime;          // In the original contract, the unlock time should be extended     // In the mutant, the unlock time would NOT be extended (stays at first deposit's unlock time)     const expectedUnlockTime = BigInt(await ethers.provider.getBlock("latest").then(b => b!.timestamp)) + BigInt(longLockTime);          // If mutant is active, unlock time would be shorter (from first deposit only)     // Wait until after first unlock time but before second unlock time     const shortUnlockTime = BigInt(await ethers.provider.getBlock("latest").then(b => b!.timestamp)) + BigInt(shortLockTime);          // Mine blocks to advance time past the short lock time     await ethers.provider.send("evm_setNextBlockTimestamp", [Number(shortUnlockTime) + 1]);     await ethers.provider.send("evm_mine", []);          // Try to collect - should succeed in mutant (unlock time not extended)     // Should fail in original (unlock time was extended)     await expect(       instance.connect(addr1).Collect(ethers.parseEther("0.5"))     ).to.be.reverted;          // Now advance time past the long lock time     await ethers.provider.send("evm_setNextBlockTimestamp", [Number(expectedUnlockTime) + 1]);     await ethers.provider.send("evm_mine", []);          // Now collection should succeed in both versions     await expect(       instance.connect(addr1).Collect(ethers.parseEther("0.5"))     ).to.not.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PENNY_BY_PENNY { struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; uint public MinSum; LogFile Log; bool intitalized; function SetMinSum(uint _val) public { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log) public { if(intitalized)revert(); Log = LogFile(_log); } function Initialized() public { intitalized = true; } function Put(uint _lockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; require(((block.timestamp + _lockTime) >= block.timestamp)); if(block.timestamp+_lockTime>acc.unlockTime)acc.unlockTime=block.timestamp+_lockTime; Log.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { Log.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } } contract LogFile { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PENNY_BY_PENNY mutant test - me80c04a1", function () {
+  it("should detect reversed comparison operator in Put function", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy LogFile first (required by PENNY_BY_PENNY)
+    const LogFileFactory = await ethers.getContractFactory("LogFile");
+    const logFile = await LogFileFactory.deploy();
+    await logFile.waitForDeployment();
+
+    // Deploy PENNY_BY_PENNY (no constructor arguments)
+    const Factory = await ethers.getContractFactory("PENNY_BY_PENNY");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Initialize the contract
+    await instance.connect(owner).SetLogFile(await logFile.getAddress());
+    await instance.connect(owner).SetMinSum(ethers.parseEther("0.1"));
+    await instance.connect(owner).Initialized();
+
+    // First deposit: short lock time (100 seconds)
+    const shortLockTime = 100;
+    const deposit1 = ethers.parseEther("1");
+    await instance.connect(addr1).Put(shortLockTime, { value: deposit1 });
+
+    // Get the unlock time after first deposit
+    let holderInfo = await instance.Acc(addr1.address);
+    const unlockTimeAfterFirstDeposit = holderInfo.unlockTime;
+
+    // Second deposit: longer lock time (200 seconds) - should extend unlock time
+    const longLockTime = 200;
+    const deposit2 = ethers.parseEther("1");
+    await instance.connect(addr1).Put(longLockTime, { value: deposit2 });
+
+    // Get the unlock time after second deposit
+    holderInfo = await instance.Acc(addr1.address);
+    const unlockTimeAfterSecondDeposit = holderInfo.unlockTime;
+
+    // In the original contract, the unlock time should be extended
+    // In the mutant, the unlock time would NOT be extended (stays at first deposit's unlock time)
+    const block = await ethers.provider.getBlock("latest");
+    const expectedUnlockTime = BigInt(block!.timestamp) + BigInt(longLockTime);
+
+    // If mutant is active, unlock time would be shorter (from first deposit only)
+    // Wait until after first unlock time but before second unlock time
+    const shortUnlockTime = BigInt(block!.timestamp) + BigInt(shortLockTime);
+
+    // Mine blocks to advance time past the short lock time
+    await ethers.provider.send("evm_setNextBlockTimestamp", [Number(shortUnlockTime) + 1]);
+    await ethers.provider.send("evm_mine", []);
+
+    // Try to collect - should succeed in mutant (unlock time not extended)
+    // Should fail in original (unlock time was extended)
+    await expect(
+      instance.connect(addr1).Collect(ethers.parseEther("0.5"))
+    ).to.be.reverted;
+
+    // Now advance time past the long lock time
+    await ethers.provider.send("evm_setNextBlockTimestamp", [Number(expectedUnlockTime) + 1]);
+    await ethers.provider.send("evm_mine", []);
+
+    // Now collection should succeed in both versions
+    await expect(
+      instance.connect(addr1).Collect(ethers.parseEther("0.5"))
+    ).to.not.be.reverted;
+  });
+});
+```

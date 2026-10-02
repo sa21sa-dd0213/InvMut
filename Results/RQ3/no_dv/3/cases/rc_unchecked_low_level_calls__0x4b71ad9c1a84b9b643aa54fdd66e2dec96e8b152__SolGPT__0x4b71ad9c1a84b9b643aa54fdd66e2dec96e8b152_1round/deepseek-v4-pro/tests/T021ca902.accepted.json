@@ -1,0 +1,12 @@
+{
+ "difference_id": "T021ca902",
+ "property_summary": "The transfer function must return false or revert when any internal call fails; the buggy version always returns true even if a sub-call fails.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Replace `{ (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); require(_s); }` with `{ (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); }` (remove require(_s)) so that transfer returns true even when a sub-call fails.",
+ "mutated_unit_code": "    function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0; i<_tos.length; i++){\n            { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); }\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airPort} from \"../src/airPort.sol\";\n\ncontract InvMutTest is Test {\n    airPort c;\n    function setUp() public { c = new airPort(); }\n    function testFuzz_property(address from, address caddress, address[] memory _tos, uint v) public {\n        vm.assume(_tos.length > 0);\n        Reverter reverter = new Reverter();\n        bool ok = false;\n        try c.transfer(from, address(reverter), _tos, v) returns (bool res) {\n            ok = res;\n        } catch {\n            ok = false;\n        }\n        assertTrue(!ok);\n    }\n}\n\ncontract Reverter {\n    fallback() external payable { revert(); }\n}"
+}

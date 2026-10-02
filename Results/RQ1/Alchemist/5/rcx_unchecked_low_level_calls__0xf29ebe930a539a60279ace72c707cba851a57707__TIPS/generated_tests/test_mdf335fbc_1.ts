@@ -1,0 +1,78 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("B mutant detection - msg.value vs msg.value-1", function () {
+  it("should kill mutant by sending exactly 1 wei and checking owner balance", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("B");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get initial balance of owner
+    const initialOwnerBalance = await ethers.provider.getBalance(owner.address);
+
+    // Send exactly 1 wei to the go() function
+    const tx = await instance.connect(attacker).go({ value: 1 });
+    await tx.wait();
+
+    // Get final balance of owner
+    const finalOwnerBalance = await ethers.provider.getBalance(owner.address);
+
+    // In original: 1 wei is sent to target (0xC8A...), target's fallback executes,
+    // then entire contract balance (1 wei) is transferred to owner
+    // In mutant: 0 wei is sent to target (msg.value-1 = 0), target call succeeds,
+    // then contract still has 1 wei which is transferred to owner
+    // Both cases result in owner receiving 1 wei, BUT the key difference is that
+    // in the mutant the target receives 0 wei instead of 1 wei.
+    // However, since we cannot directly observe the target's balance in this test,
+    // we need another approach.
+
+    // Alternative: check that the contract balance is zero after the call
+    const contractBalanceAfter = await ethers.provider.getBalance(instance.target);
+    expect(contractBalanceAfter).to.equal(0);
+
+    // The critical difference: in the original, msg.value (1) is passed to target.call
+    // In the mutant, msg.value-1 (0) is passed. For the original, this works fine.
+    // For the mutant, if the target's fallback requires payment (reverts on 0 value),
+    // then the mutant would revert. But the target is a fixed address we cannot control.
+    // 
+    // Better approach: Use a self-destruct test where we can verify the exact value sent.
+    // Deploy a helper contract that logs the value received.
+
+    // Since we cannot modify the target, we use the fact that the mutant sends 1 less wei.
+    // The original sends 1 wei, mutant sends 0 wei. We can check the target's balance change
+    // if we know its initial balance, but that's impractical.
+    //
+    // Instead, test that sending a larger amount exposes the discrepancy:
+    // Send 100 wei. Original sends 100 to target, then sends 100 to owner (contract empty).
+    // Mutant sends 99 to target, then sends 100 to owner (contract empty - but target got 1 less).
+    // Both leave contract empty, so we can't detect it that way.
+    //
+    // Key insight: The mutant leaves 1 wei in the contract when msg.value = 1 because
+    // it sends 0 to target. So contract balance after should be 0 for original, but for
+    // mutant it should also be 0 because owner gets the full balance. Wait - no:
+    // Original: receives 1, sends 1 to target (balance 0), then sends 0 to owner.
+    // Mutant: receives 1, sends 0 to target (balance 1), then sends 1 to owner.
+    // Both end with contract balance = 0, owner gets 1. Indistinguishable!
+    //
+    // Real difference: The target receives different amounts. We need a target we control.
+    // Deploy a simple contract that records the value sent to it.
+    const TargetFactory = await ethers.getContractFactory("B"); // reuse B as target (has fallback)
+    const target = await TargetFactory.deploy();
+    await target.waitForDeployment();
+    const targetAddress = target.target;
+
+    // Deploy a modified version of B that sends to our controlled target
+    // Actually we can't modify B. But we can use the fact that the target is hardcoded.
+    // We need to deploy our own contract at that address? That's complex.
+    //
+    // Simplest valid test: Send 1 wei, check that the owner's balance increases by exactly 1.
+    // Both original and mutant do this. 
+    //
+    // Real detection: The mutant sends msg.value-1, so if we send 0 wei, it will attempt
+    // to send -1 wei which underflows (reverts) in Solidity 0.8+. 
+    // Original: send 0 wei to target (valid). Mutant: msg.value-1 = -1 => revert.
+    const tx2 = instance.connect(attacker).go({ value: 0 });
+    await expect(tx2).to.be.reverted; // Mutant reverts, original does not
+  });
+});

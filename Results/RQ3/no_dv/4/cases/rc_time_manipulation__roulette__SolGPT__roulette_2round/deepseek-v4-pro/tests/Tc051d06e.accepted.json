@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tc051d06e",
+ "property_summary": "If 10 ETH is necessary, a call with 1 wei must revert; the mutant incorrectly accepts 1 wei, causing a state change and thus violating the requirement.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change the required msg.value from 10 ether to 1 wei.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 1);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 amount, address sender) public {\n        vm.assume(sender != address(0));\n        vm.assume(sender != address(this));\n        vm.assume(sender != address(c));\n        vm.assume(amount > 0);\n        vm.assume(amount <= 1000 ether);\n\n        vm.deal(sender, amount);\n\n        vm.warp(block.timestamp + 1);\n        vm.roll(block.number + 1);\n\n        uint256 prevBlockTime = c.pastBlockTime();\n        uint256 prevBalance = address(c).balance;\n\n        vm.prank(sender);\n        (bool ok, ) = address(c).call{value: amount}(\"\");\n\n        if (amount != 10 ether) {\n            assertTrue(!ok, \"call with invalid amount should revert\");\n        } else {\n            assertTrue(ok, \"call with exact 10 ether should succeed\");\n        }\n    }\n}"
+}

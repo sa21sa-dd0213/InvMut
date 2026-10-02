@@ -1,0 +1,12 @@
+{
+ "difference_id": "T29c8d41e",
+ "property_summary": "For any call to transfer that does not revert, the external call to caddress with the transferFrom selector must use from as sender and _tos[i] as recipient; the mutant swaps them, causing a revert when a helper contract enforces correct argument order, so the function's return success flag differs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace 'caddress.call(abi.encodeWithSelector(id, from, _tos[i], v))' with 'caddress.call(abi.encodeWithSelector(id, _tos[i], from, v))' to swap sender and recipient.",
+ "mutated_unit_code": "function transfer(address from, address caddress, address[] memory _tos, uint v) public returns (bool){\n        require(_tos.length > 0);\n        bytes4 id = bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\n        for(uint i=0; i<_tos.length; i++){\n            { (bool _s,) = caddress.call(abi.encodeWithSelector(id, _tos[i], from, v)); require(_s); }\n        }\n        return true;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airPort} from \"../src/airPort.sol\";\n\ncontract InvMutTest is Test {\n    airPort c;\n    function setUp() public { c = new airPort(); }\n    function testFuzz_property(address from, address[] memory _tos, uint256 v) public {\n        vm.assume(_tos.length > 0);\n        vm.assume(from != address(0));\n        StrictTransferFromValidator validator = new StrictTransferFromValidator();\n        validator.setApprovalForAll(from, true);\n        bool ok;\n        try c.transfer(from, address(validator), _tos, v) returns (bool result) { ok = result; } catch { ok = false; }\n        assertTrue(ok);\n    }\n}\n\ncontract StrictTransferFromValidator {\n    mapping(address => bool) public approved;\n    function setApprovalForAll(address sender, bool status) external {\n        approved[sender] = status;\n    }\n    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool) {\n        require(approved[sender], \"sender not approved\");\n        return true;\n    }\n}"
+}

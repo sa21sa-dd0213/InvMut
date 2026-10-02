@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0003",
+ "property_summary": "After a non-owner calls sendMoney, the original onlyOwner modifier (with correct require) reverts, leaving owner unchanged, while the buggy modifier (require(true)) allows anyone to succeed, so checking that owner remains the original deployer fails in the mutant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Replace the require with a condition that always passes (true), making onlyOwner allow any caller, thus changing who can succeed in withdraw.",
+ "mutated_unit_code": "modifier onlyOwner {\n        require(true);\n        _;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    address originalOwner;\n\n    function setUp() public {\n        c = new SimpleWallet();\n        originalOwner = c.owner();\n    }\n\n    function testFuzz_property(address caller, address target, uint256 amount) public {\n        vm.assume(caller != originalOwner);\n        vm.assume(target != address(c));\n        amount = bound(amount, 0, type(uint128).max);\n        vm.deal(caller, amount);\n\n        Reverter reverter = new Reverter();\n        address adversarialTarget = address(reverter);\n\n        vm.prank(caller);\n        bool ok;\n        try c.sendMoney(adversarialTarget, amount) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(!ok);\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert();\n    }\n}"
+}

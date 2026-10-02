@@ -1,0 +1,12 @@
+{
+ "difference_id": "T5a33e535",
+ "property_summary": "After two successful fallback invocations, pastBlockTime must equal the block.timestamp of the second call plus 1; the buggy version fails to update pastBlockTime on the second call, so it remains equal to the first call's block.timestamp plus 1, breaking the invariant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Delete the pastBlockTime = block.timestamp + 1 assignment",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        \n\n        if(block.number % 15 == 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 secondTimestamp, uint256 secondBlockNumber) public {\n        uint256 firstTimestamp = 1000;\n        uint256 firstBlockNumber = 123;\n        vm.assume(secondTimestamp > firstTimestamp && secondTimestamp < type(uint64).max);\n        vm.assume(secondBlockNumber > firstBlockNumber && secondBlockNumber % 15 != 0);\n\n        address actor = address(0x1234);\n        vm.deal(actor, 20 ether);\n\n        vm.warp(firstTimestamp);\n        vm.roll(firstBlockNumber);\n        vm.prank(actor);\n        (bool ok1,) = address(c).call{value: 10 ether}(\"\");\n        require(ok1, \"first call must succeed\");\n\n        vm.warp(secondTimestamp);\n        vm.roll(secondBlockNumber);\n        vm.prank(actor);\n        (bool ok2,) = address(c).call{value: 10 ether}(\"\");\n        require(ok2, \"second call must succeed\");\n\n        assertTrue(c.pastBlockTime() == secondTimestamp + 1);\n    }\n}"
+}

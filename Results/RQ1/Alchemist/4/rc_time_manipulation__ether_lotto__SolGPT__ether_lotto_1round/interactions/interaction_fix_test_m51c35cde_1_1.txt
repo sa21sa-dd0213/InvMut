@@ -1,0 +1,58 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("EtherLotto mutant detection - m51c35cde", function () {   it("should detect mutant by verifying that pot never resets and no fee is paid when random would be 0", async function () {     const [owner, player] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("EtherLotto");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const ticketAmount = ethers.parseEther("10");     const feeAmount = ethers.parseEther("1");      // Play multiple times to increase probability of hitting the random == 0 case     for (let i = 0; i < 10; i++) {       // Get initial balances       const initialBankBalance = await ethers.provider.getBalance(owner.address);       const initialPlayerBalance = await ethers.provider.getBalance(player.address);       const initialPot = await instance.pot();        // Play the game       const tx = await instance.connect(player).play({ value: ticketAmount });       await tx.wait();        // After each play, verify the pot never resets to 0 (mutant behavior)       const currentPot = await instance.pot();       expect(currentPot).to.equal(initialPot + ticketAmount);        // Verify bank never receives the fee (mutant never executes transfer)       const currentBankBalance = await ethers.provider.getBalance(owner.address);       expect(currentBankBalance).to.equal(initialBankBalance);        // Verify player never receives pot minus fee (mutant never executes transfer)       const currentPlayerBalance = await ethers.provider.getBalance(player.address);       expect(currentPlayerBalance).to.equal(initialPlayerBalance - ticketAmount);     }      // Final verification: pot should have accumulated all ticket amounts (no payout)     const finalPot = await instance.pot();     expect(finalPot).to.equal(ticketAmount * 10n);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant detection - m51c35cde", function () {
+  it("should detect mutant by verifying that pot never resets and no fee is paid when random would be 0", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const ticketAmount = ethers.parseEther("10");
+    const feeAmount = ethers.parseEther("1");
+
+    // Play multiple times to increase probability of hitting the random == 0 case
+    for (let i = 0; i < 10; i++) {
+      // Get initial balances
+      const initialBankBalance = await ethers.provider.getBalance(owner.address);
+      const initialPlayerBalance = await ethers.provider.getBalance(player.address);
+      const initialPot = await instance.pot();
+
+      // Play the game
+      const tx = await instance.connect(player).play({ value: ticketAmount });
+      await tx.wait();
+
+      // After each play, verify the pot never resets to 0 (mutant behavior)
+      const currentPot = await instance.pot();
+      expect(currentPot).to.equal(initialPot + ticketAmount);
+
+      // Verify bank never receives the fee (mutant never executes transfer)
+      const currentBankBalance = await ethers.provider.getBalance(owner.address);
+      expect(currentBankBalance).to.equal(initialBankBalance);
+
+      // Verify player never receives pot minus fee (mutant never executes transfer)
+      const currentPlayerBalance = await ethers.provider.getBalance(player.address);
+      expect(currentPlayerBalance).to.equal(initialPlayerBalance - ticketAmount);
+    }
+
+    // Final verification: pot should have accumulated all ticket amounts (no payout)
+    const finalPot = await instance.pot();
+    expect(finalPot).to.equal(ticketAmount * 10n);
+  });
+});
+```

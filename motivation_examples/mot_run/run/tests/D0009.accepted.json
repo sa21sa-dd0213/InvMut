@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0009",
+ "property_summary": "After a deposit, the caller's balance is exactly the Ether received by the contract from this transaction.",
+ "render_status": "rendered",
+ "validation_status": "skipped",
+ "validation_error": null,
+ "kill": "bug_no_kill:spurious_callback",
+ "origin": "primary",
+ "change_summary": "Replace the balance update with a fixed constant assignment, so the stored balance does not reflect the deposited value.",
+ "mutated_unit_code": "function deposit() external payable {\n        balance[msg.sender] = 1;\n        rateSnapshot[msg.sender] = rewardRate;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {RewardVault} from \"../src/RewardVault.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    RewardVault c;\n\n    function setUp() public {\n        c = new RewardVault();\n    }\n\n    function _run(uint256 amount) internal {\n        amount = bound(amount, 0, 1000000000000000000000000000000);\n        vm.deal(address(this), VALUE_CAP);\n        vm.deal(address(c), VALUE_CAP);\n        vm.assume(amount > 0);\n        vm.assume(address(this).balance >= amount);\n        uint256 balBefore = address(c).balance;\n        try c.setRewardRate(1) {} catch { return; }\n        try c.deposit{value: amount}() {} catch { return; }\n        assertTrue(c.balance(address(this)) == address(c).balance - balBefore);\n    }\n\n    function testFuzz_run(uint256 amount) public {\n        _run(amount);\n    }\n\n    receive() external payable {}\n}\n"
+}

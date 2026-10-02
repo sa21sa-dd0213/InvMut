@@ -1,0 +1,92 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m3b2c21d6 of MY_BANK.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test MY_BANK.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for MY_BANK:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("MY_BANK reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy MY_BANK by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("MY_BANK"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Kill mutant m3b2c21d6 - reentrancy guard removed from Put", function () {
+  it("should prevent reentrancy in original but allow it in mutant (test fails on mutant)", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy Log contract first (required constructor argument for MY_BANK)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy MY_BANK with Log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+    
+    // Deploy attacker contract that will attempt reentrancy
+    const AttackerFactory = await ethers.getContractFactory("ReentrancyAttacker");
+    const attackerContract = await AttackerFactory.deploy(await bank.getAddress());
+    await attackerContract.waitForDeployment();
+    
+    // Fund attacker contract with 2 ether
+    await owner.sendTransaction({
+      to: await attackerContract.getAddress(),
+      value: ethers.parseEther("2")
+    });
+    
+    // Set unlock time to allow withdrawal
+    const currentBlock = await ethers.provider.getBlock("latest");
+    const futureTime = currentBlock!.timestamp + 1000;
+    
+    // Attacker calls Put through the bank to set balance and unlock time
+    await attackerContract.connect(attacker).attackPut(futureTime, { value: ethers.parseEther("1") });
+    
+    // Now attempt to exploit - call Collect which triggers fallback -> reentrant Put
+    // In original (with guard) this should revert; in mutant (without guard) it succeeds
+    const tx = attackerContract.connect(attacker).attackCollect(ethers.parseEther("1"));
+    
+    // The test expects the transaction to revert (original behavior)
+    // If the mutant removes the guard, the transaction will succeed and the test will fail
+    await expect(tx).to.be.reverted;
+  });
+});
+
+// Helper attacker contract (deployed as separate contract for testing)
+// This must be compiled alongside the test
+contract ReentrancyAttacker {
+    address payable public bank;
+    
+    constructor(address payable _bank) {
+        bank = _bank;
+    }
+    
+    function attackPut(uint _unlockTime) external payable {
+        (bool success, ) = bank.call{value: msg.value}(abi.encodeWithSignature("Put(uint256)", _unlockTime));
+        require(success, "Put failed");
+    }
+    
+    function attackCollect(uint _amount) external {
+        (bool success, ) = bank.call(abi.encodeWithSignature("Collect(uint256)", _amount));
+        require(success, "Collect failed");
+    }
+    
+    receive() external payable {
+        // Reentrancy: call Put again when receiving ETH from Collect
+        if (address(this).balance > 0) {
+            (bool success, ) = bank.call{value: 0}(abi.encodeWithSignature("Put(uint256)", 0));
+            require(success, "Reentrant Put failed");
+        }
+    }
+}
+```

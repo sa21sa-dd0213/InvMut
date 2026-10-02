@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0005",
+ "property_summary": "Only the depositor account can change the stored hash via setL1BlockValues (i.e., hash after call equals provided _hash only when caller is the depositor).",
+ "render_status": "rendered",
+ "validation_status": "skipped",
+ "validation_error": null,
+ "kill": "bug_no_kill:m_no_cex_within_bound",
+ "origin": "primary",
+ "change_summary": "Replace the require in onlyDepositor to allow any caller (remove the restriction), so setL1BlockValues can be called by others, potentially changing hash observed in scenarios where caller differed.",
+ "mutated_unit_code": "modifier onlyDepositor() {\n    // mutated: no check, allow any caller\n    _;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {L1Block} from \"../src/L1Block.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    L1Block c;\n\n    function setUp() public {\n        c = new L1Block();\n    }\n\n    function _test_setL1BlockValues_changes_hash_only_for_depositor(uint64 _number, uint64 _timestamp, uint256 _basefee, bytes32 _hashNew, uint64 _sequenceNumber, bytes32 _batcherHash, uint256 _l1FeeOverhead, uint256 _l1FeeScalar) internal {\n        bytes32 h0;\n        try c.hash() returns (bytes32 __r) { h0 = __r; } catch { return; }\n        vm.assume(h0 != _hashNew);\n        try c.setL1BlockValues(\n            _number,\n            _timestamp,\n            _basefee,\n            _hashNew,\n            _sequenceNumber,\n            _batcherHash,\n            _l1FeeOverhead,\n            _l1FeeScalar\n        ) {} catch { return; }\n        bytes32 h1;\n        try c.hash() returns (bytes32 __r) { h1 = __r; } catch { return; }\n        assertTrue(h1 == h0);\n    }\n\n    function testFuzz_test_setL1BlockValues_changes_hash_only_for_depositor(uint64 _number, uint64 _timestamp, uint256 _basefee, bytes32 _hashNew, uint64 _sequenceNumber, bytes32 _batcherHash, uint256 _l1FeeOverhead, uint256 _l1FeeScalar) public {\n        _test_setL1BlockValues_changes_hash_only_for_depositor(_number, _timestamp, _basefee, _hashNew, _sequenceNumber, _batcherHash, _l1FeeOverhead, _l1FeeScalar);\n    }\n\n    receive() external payable {}\n\n    fallback() external payable {}\n}\n"
+}

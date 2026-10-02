@@ -1,0 +1,23 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EtherLotto:
+        Contract Code: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+
+    Consider the following mutant of EtherLotto:
+        Mutant m8680f503 of function play replaces == with !=
+        Mutant Diff: ---|         if (random == 0) { +++|         if (random != 0) {
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the condition from `if (random == 0)` to `if (random != 0)`, which inverts the logic for when the bank receives the fee and the player receives the pot minus the fee. In the original, the payout happens when `random == 0` (50% chance). In the mutant, the payout happens when `random != 0` (the other 50% chance).  
+
+A test case that should detect this mutant would be one where, after a player plays and the random result is 0 (e.g., by controlling block properties in a testing environment), the original contract transfers the fee to the bank and the remaining pot to the player, while the mutant would instead not execute the transfer, leaving the pot unchanged and the player with no payout.  
+
+**Hypothesis**: "A test case that sets the block timestamp and difficulty such that `keccak256` produces a value where `random == 0`, then calls `play()` with exactly 10 wei, and subsequently checks that the player's balance increased by 9 wei (the pot minus fee) and the bank's balance increased by 1 wei should kill the mutant, because under the mutant's inverted condition the transfer will not occur, leaving balances unchanged."

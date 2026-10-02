@@ -1,0 +1,31 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EtherLotto:
+        Contract Code: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+
+    Consider the following mutant of EtherLotto:
+        Mutant m1f71002b of function play replaces block.difficulty with block.prevrandao
+        Mutant Diff: ---|         uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 2; +++|         uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.prevrandao, msg.sender))) % 2;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's think through this step-by-step:
+
+1. The original contract uses `block.difficulty` as part of the random number generation.
+2. The mutant changes `block.difficulty` to `block.prevrandao`.
+3. These two values are different on different Ethereum versions:
+   - `block.difficulty` existed pre-Merge (proof-of-work).
+   - `block.prevrandao` was introduced post-Merge (proof-of-stake) and replaced `block.difficulty`.
+4. On Ethereum post-Merge, `block.difficulty` is always 0, while `block.prevrandao` returns the previous block's random number from the beacon chain.
+5. Because these values differ, the computed `random` value (0 or 1) will be different for the same transaction inputs, leading to different outcomes (winner vs. loser).
+6. A test that replays the same exact transaction (same `block.timestamp`, same sender) on the same block should produce different results between original and mutant.
+
+**Hypothesis**:  
+The mutant changes the source of randomness from `block.difficulty` to `block.prevrandao`, which produces different values on post-Merge Ethereum. Therefore, a test case that executes the `play` function with identical inputs (same sender, same block timestamp) on both the original and the mutated contract, and then asserts that the pot and balances change in the same way, should kill the mutant because the outcomes will diverge (e.g., one contract pays the player, the other pays the bank).

@@ -1,0 +1,51 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("AirDropContract mutant kill test", function () {   it("should revert when transferFrom call fails (mutant missing require(_s))", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();          // Deploy a simple ERC20 token that always fails on transferFrom     const TokenFactory = await ethers.getContractFactory("SimpleFailingToken");     const failingToken = await TokenFactory.deploy();     await failingToken.waitForDeployment();          // Deploy the AirDropContract     const Factory = await ethers.getContractFactory("AirDropContract");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Setup: Owner approves AirDropContract to spend tokens (but token will still fail)     const tos = [addr1.address, addr2.address];     const vs = [100, 200];          // The token's transferFrom will revert, so the original contract would revert     // The mutant would silently return true - we expect a revert     await expect(       instance.connect(owner).transfer(failingToken.target, tos, vs)     ).to.be.reverted;   }); });  // Helper contract that always reverts on transferFrom contract SimpleFailingToken {     function transferFrom(address, address, uint256) external pure returns (bool) {         revert("transferFrom always fails");     } }
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract AirDropContract{ constructor() public { } modifier validAddress( address addr ) { require(addr != address(0x0)); require(addr != address(this)); _; } function transfer(address contract_address, address[] memory tos, uint[] memory vs) public validAddress(contract_address) returns (bool) { require(tos.length > 0); require(vs.length > 0); require(tos.length == vs.length); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0 ; i < tos.length; i++){ { (bool _s,) = contract_address.call(abi.encodeWithSelector(id, msg.sender, tos[i], vs[i])); require(_s); } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("AirDropContract mutant kill test", function () {
+  it("should revert when transferFrom call fails (mutant missing require(_s))", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy a simple ERC20 token that always fails on transferFrom
+    const TokenFactory = await ethers.getContractFactory("SimpleFailingToken");
+    const failingToken = await TokenFactory.deploy();
+    await failingToken.waitForDeployment();
+    
+    // Deploy the AirDropContract
+    const Factory = await ethers.getContractFactory("AirDropContract");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Setup: Owner approves AirDropContract to spend tokens (but token will still fail)
+    const tos = [addr1.address, addr2.address];
+    const vs = [100, 200];
+    
+    // The token's transferFrom will revert, so the original contract would revert
+    // The mutant would silently return true - we expect a revert
+    await expect(
+      instance.connect(owner).transfer(failingToken.target, tos, vs)
+    ).to.be.reverted;
+  });
+});
+
+// Helper contract that always reverts on transferFrom
+contract SimpleFailingToken {
+    function transferFrom(address, address, uint256) external pure returns (bool) {
+        revert("transferFrom always fails");
+    }
+}
+```

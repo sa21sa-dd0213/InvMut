@@ -1,0 +1,62 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m90b5ca14 of EtherLotto.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EtherLotto.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EtherLotto:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EtherLotto reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EtherLotto by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EtherLotto"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant m90b5ca14 test", function () {
+  it("should detect the mutant that adds 1 extra wei to pot when random != 0", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const ticketAmount = 10n; // TICKET_AMOUNT = 10 wei
+    const feeAmount = 1n; // FEE_AMOUNT = 1 wei
+
+    // Play with exactly 10 wei - we need the random result to be 1 (no payout)
+    // Since we can't control randomness, we play multiple times until we get a losing round
+    for (let i = 0; i < 20; i++) {
+      const potBefore = await instance.pot();
+      
+      await player.sendTransaction({
+        to: await instance.getAddress(),
+        value: ticketAmount
+      });
+      
+      // Wait for the transaction to be mined
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const potAfter = await instance.pot();
+      
+      // If random was 1 (no winner), pot should be reset to 0 in both original and mutant
+      // But in the mutant, the pot was increased by 11 instead of 10 before the check
+      if (potAfter === 0n) {
+        // This means random was 0 (winner paid out) - skip this iteration
+        continue;
+      }
+      
+      // Random was 1 (no winner) - pot should be ticketAmount (10) in original
+      // In mutant it would be 11 (10 + 1 extra from the mutation)
+      expect(potAfter).to.equal(ticketAmount);
+      break;
+    }
+  });
+});
+```

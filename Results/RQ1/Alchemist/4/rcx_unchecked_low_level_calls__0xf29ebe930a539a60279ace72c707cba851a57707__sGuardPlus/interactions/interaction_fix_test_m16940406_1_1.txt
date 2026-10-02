@@ -1,0 +1,55 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("B mutant m16940406 test", function () {   it("should detect that sending ether to address(0) burns funds instead of transferring to owner", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("B");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const contractAddress = await instance.getAddress();     const initialOwnerBalance = await ethers.provider.getBalance(owner.address);     const sendAmount = ethers.parseEther("1.0");      // Send ether to the contract first (fallback)     const tx1 = await addr1.sendTransaction({       to: contractAddress,       value: sendAmount     });     await tx1.wait();      // Check contract has the balance     const contractBalanceBefore = await ethers.provider.getBalance(contractAddress);     expect(contractBalanceBefore).to.equal(sendAmount);      // Call go() - this will try to send the contract balance to address(0) then to owner     const tx2 = await instance.connect(owner).go();     await tx2.wait();      // After go(), the contract should have zero balance (all ether sent to address(0) and burned)     const contractBalanceAfter = await ethers.provider.getBalance(contractAddress);     expect(contractBalanceAfter).to.equal(0);      // Owner should NOT have received the funds (they were burned to address(0))     const finalOwnerBalance = await ethers.provider.getBalance(owner.address);     // Owner only pays gas fees, but does not receive the ether     expect(finalOwnerBalance).to.be.lessThan(initialOwnerBalance);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract B  { address  public   owner = payable(msg.sender); function go () public payable { address     target = 0xC8A60C51967F4022BF9424C337e9c6F0bD220E1C; (bool __sent_result100, ) = target.call{value: msg.value}(""); require(__sent_result100); payable(owner).transfer(address(this).balance); } fallback() external payable { } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("B mutant m16940406 test", function () {
+  it("should detect that sending ether to address(0) burns funds instead of transferring to owner", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("B");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const contractAddress = await instance.getAddress();
+    const initialOwnerBalance = await ethers.provider.getBalance(owner.address);
+    const sendAmount = ethers.parseEther("1.0");
+
+    // Send ether to the contract first (fallback)
+    const tx1 = await addr1.sendTransaction({
+      to: contractAddress,
+      value: sendAmount
+    });
+    await tx1.wait();
+
+    // Check contract has the balance
+    const contractBalanceBefore = await ethers.provider.getBalance(contractAddress);
+    expect(contractBalanceBefore).to.equal(sendAmount);
+
+    // Call go() - this will try to send the contract balance to address(0) then to owner
+    const tx2 = await instance.connect(owner).go();
+    await tx2.wait();
+
+    // After go(), the contract should have zero balance (all ether sent to address(0) and burned)
+    const contractBalanceAfter = await ethers.provider.getBalance(contractAddress);
+    expect(contractBalanceAfter).to.equal(0);
+
+    // Owner should NOT have received the funds (they were burned to address(0))
+    const finalOwnerBalance = await ethers.provider.getBalance(owner.address);
+    // Owner only pays gas fees, but does not receive the ether
+    expect(finalOwnerBalance).to.be.lessThan(initialOwnerBalance);
+  });
+});
+```

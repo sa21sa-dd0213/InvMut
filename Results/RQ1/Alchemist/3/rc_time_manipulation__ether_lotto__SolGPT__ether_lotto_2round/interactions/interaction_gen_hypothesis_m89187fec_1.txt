@@ -1,0 +1,37 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EtherLotto:
+        Contract Code: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+
+    Consider the following mutant of EtherLotto:
+        Mutant m89187fec of function play replaces - with /
+        Mutant Diff: ---|             payable(msg.sender).transfer(pot - FEE_AMOUNT); +++|             payable(msg.sender).transfer(pot / FEE_AMOUNT);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's think through this step-by-step.
+
+The original code uses:
+```solidity
+payable(msg.sender).transfer(pot - FEE_AMOUNT);
+```
+This subtracts the fee (1 wei) from the pot and sends the remainder to the player.
+
+The mutant changes it to:
+```solidity
+payable(msg.sender).transfer(pot / FEE_AMOUNT);
+```
+This divides the pot by the fee (1) instead of subtracting.
+
+Since `FEE_AMOUNT` is 1, mathematically `pot - 1` is very different from `pot / 1` (which equals `pot`).
+
+The key difference: In the original, the bank receives exactly 1 wei as a fee, and the player gets `pot - 1`. In the mutant, the player gets the entire pot (`pot / 1 = pot`), and the bank still gets 1 wei — so the total payout exceeds what was in the pot by 1 wei. This would cause the bank's transfer to fail (or the contract would have insufficient balance).
+
+**Hypothesis:** The mutant changes the arithmetic operator from subtraction to division, causing the player to receive the full pot amount instead of the pot minus the fee. A test case that calls `play()` with exactly 10 wei when the pot is empty, then checks the bank's balance after the transaction — expecting it to have increased by exactly 1 wei (the fee) — should detect the mutant. In the original, the bank receives 1 wei; in the mutant, the player receives all 10 wei and the bank's transfer of 1 wei would fail due to insufficient contract balance, reverting the transaction.

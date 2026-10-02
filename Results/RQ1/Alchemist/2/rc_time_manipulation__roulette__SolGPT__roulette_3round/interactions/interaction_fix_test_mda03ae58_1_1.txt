@@ -1,0 +1,57 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Roulette mutant mda03ae58", function () {   it("should transfer balance when block.number % 15 == 0, mutant with false never transfers", async function () {     const [owner] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Roulette");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Send 10 ether to trigger fallback     const tx = await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10")     });     await tx.wait();      // Mine blocks until block.number % 15 == 0     const currentBlock = await ethers.provider.getBlockNumber();     const blocksToMine = (15 - (currentBlock % 15)) % 15;     for (let i = 0; i < blocksToMine; i++) {       await ethers.provider.send("evm_mine", []);     }      // Get balance before second call     const balanceBefore = await ethers.provider.getBalance(await instance.getAddress());          // Second call at block where block.number % 15 == 0     const tx2 = await owner.sendTransaction({       to: await instance.getAddress(),       value: ethers.parseEther("10")     });     await tx2.wait();      const balanceAfter = await ethers.provider.getBalance(await instance.getAddress());          // In original contract, balance should be transferred out (balanceAfter = 0)     // In mutant, transfer never happens, so balanceAfter = balanceBefore + 10 ether     expect(balanceAfter).to.equal(0);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Roulette { uint public pastBlockTime; constructor() public payable {} fallback() external payable { require(msg.value == 10 ether); require(block.timestamp > pastBlockTime); pastBlockTime = block.timestamp + 1; if(block.number % 15 == 0) { payable(msg.sender).transfer(address(this).balance); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Roulette mutant mda03ae58", function () {
+  it("should transfer balance when block.number % 15 == 0, mutant with false never transfers", async function () {
+    const [owner] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Roulette");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Send 10 ether to trigger fallback
+    const tx = await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    await tx.wait();
+
+    // Mine blocks until block.number % 15 == 0
+    const currentBlock = await ethers.provider.getBlockNumber();
+    const blocksToMine = (15 - (currentBlock % 15)) % 15;
+    for (let i = 0; i < blocksToMine; i++) {
+      await ethers.provider.send("evm_mine", []);
+    }
+
+    // Get balance before second call
+    const balanceBefore = await ethers.provider.getBalance(await instance.getAddress());
+    
+    // Second call at block where block.number % 15 == 0
+    const tx2 = await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: ethers.parseEther("10")
+    });
+    await tx2.wait();
+
+    const balanceAfter = await ethers.provider.getBalance(await instance.getAddress());
+    
+    // In original contract, balance should be transferred out (balanceAfter = 0)
+    // In mutant, transfer never happens, so balanceAfter = balanceBefore + 10 ether
+    expect(balanceAfter).to.equal(0);
+  });
+});
+```

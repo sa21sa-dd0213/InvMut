@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0007",
+ "property_summary": "Calling transfer with two recipients: the reference version calls transferFrom on each, while the buggy version breaks after the first call, so only the first transfer succeeds.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "+break;",
+ "mutated_unit_code": "function transfer(address from,address caddress, address[] memory _tos,uint v)public returns (bool){\nrequire(_tos.length > 0);\nbytes4 id=bytes4(keccak256(\"transferFrom(address,address,uint256)\"));\nfor(uint i=0;i<_tos.length;i++){\n\n{ (bool _s,) = caddress.call(abi.encodeWithSelector(id,from,_tos[i],v)); require(_s); }\nbreak;\n}\nreturn true;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {airdrop} from \"../src/airdrop.sol\";\n\ncontract InvMutTest is Test {\n    airdrop c;\n    function setUp() public { c = new airdrop(); }\n    function testRegression_property() public {\n        address token = address(new Token());\n        address from = address(0x123);\n        address to1 = address(0x456);\n        address to2 = address(0x789);\n        uint value = 100;\n        vm.deal(from, 1 ether);\n        vm.prank(from);\n        address[] memory tos = new address[](2);\n        tos[0] = to1;\n        tos[1] = to2;\n        bool success;\n        try c.transfer(from, token, tos, value) returns (bool) {\n            success = true;\n        } catch {\n            success = false;\n        }\n        assertEq(IToken(token).balanceOf(to1), value);\n        assertEq(IToken(token).balanceOf(to2), value);\n    }\n}\n\ninterface IToken {\n    function balanceOf(address) external view returns (uint256);\n}\n\ncontract Token {\n    mapping(address => uint256) public balanceOf;\n    function transferFrom(address from, address to, uint256 amount) external returns (bool) {\n        balanceOf[to] += amount;\n        return true;\n    }\n}"
+}

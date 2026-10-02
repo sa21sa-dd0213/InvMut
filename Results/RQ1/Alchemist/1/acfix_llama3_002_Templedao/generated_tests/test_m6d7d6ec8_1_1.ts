@@ -1,0 +1,93 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("StaxLPStaking mutant detection - _notifyReward else block removal", function () {
+  it("should detect mutant that ignores reward rate recalculation during active period", async function () {
+    const [owner, distributor, staker] = await ethers.getSigners();
+
+    // Deploy mock ERC20 for staking token and reward token
+    const ERC20Factory = await ethers.getContractFactory("MockERC20");
+    const stakingToken = await ERC20Factory.deploy("Staking Token", "STK", ethers.parseEther("1000000"));
+    await stakingToken.waitForDeployment();
+
+    const rewardToken = await ERC20Factory.deploy("Reward Token", "RWD", ethers.parseEther("1000000"));
+    await rewardToken.waitForDeployment();
+
+    // Deploy StaxLPStaking
+    const StaxLPStakingFactory = await ethers.getContractFactory("StaxLPStaking");
+    const instance = await StaxLPStakingFactory.deploy(await stakingToken.getAddress(), distributor.address);
+    await instance.waitForDeployment();
+
+    const stakingAddress = await instance.getAddress();
+    const rewardTokenAddress = await rewardToken.getAddress();
+
+    // Setup: Add reward token and set reward distributor
+    await instance.connect(owner).addReward(rewardTokenAddress);
+    await instance.connect(owner).setRewardDistributor(distributor.address);
+
+    // Transfer reward tokens to distributor
+    await rewardToken.connect(owner).transfer(distributor.address, ethers.parseEther("2000"));
+
+    // First notification: 1000 tokens over 1 week
+    const rewardAmount1 = ethers.parseEther("1000");
+    await rewardToken.connect(distributor).approve(stakingAddress, rewardAmount1);
+    await instance.connect(distributor).notifyRewardAmount(rewardTokenAddress, rewardAmount1);
+
+    // Get initial reward rate
+    const rewardData1 = await instance.rewardData(rewardTokenAddress);
+    const initialRewardRate = rewardData1.rewardRate;
+
+    // Wait 3 days into the first period (simulate time passing)
+    await ethers.provider.send("evm_increaseTime", [3 * 86400]);
+    await ethers.provider.send("evm_mine", []);
+
+    // Second notification: 1000 more tokens while first period is still active
+    const rewardAmount2 = ethers.parseEther("1000");
+    await rewardToken.connect(distributor).approve(stakingAddress, rewardAmount2);
+    await instance.connect(distributor).notifyRewardAmount(rewardTokenAddress, rewardAmount2);
+
+    // Get updated reward rate after second notification
+    const rewardData2 = await instance.rewardData(rewardTokenAddress);
+    const updatedRewardRate = rewardData2.rewardRate;
+
+    // In the original contract, the rate should have increased because leftover + new amount is spread over DURATION
+    // In the mutant, the rate should remain unchanged (else block removed)
+    // The original would have: remaining = 4 days, leftover = 4 days * initialRate, newRate = (1000 + leftover) / 7 days
+    // The mutant keeps the rate unchanged
+
+    // Calculate expected rate for original contract
+    const remaining = 4 * 86400; // 4 days remaining
+    const leftover = BigInt(remaining) * BigInt(initialRewardRate);
+    const expectedRate = (BigInt(rewardAmount2) + leftover) / BigInt(7 * 86400);
+
+    // The mutant will have updatedRewardRate == initialRewardRate (unchanged)
+    // The original will have updatedRewardRate == expectedRate (higher)
+
+    // Stake tokens and claim rewards to further verify
+    await stakingToken.connect(owner).transfer(staker.address, ethers.parseEther("100"));
+    await stakingToken.connect(staker).approve(stakingAddress, ethers.parseEther("100"));
+    await instance.connect(staker).stake(ethers.parseEther("100"));
+
+    // Fast forward to end of reward period
+    await ethers.provider.send("evm_increaseTime", [7 * 86400]);
+    await ethers.provider.send("evm_mine", []);
+
+    // Get claimable rewards
+    const earnedRewards = await instance.earned(staker.address, rewardTokenAddress);
+
+    // In the original contract, the reward rate was higher for the remaining period
+    // so the staker earned more rewards than if the rate stayed the same
+    // The mutant will have lower rewards because the rate wasn't updated
+
+    // The test detects the mutant by checking that the reward rate was actually updated
+    // In the mutant, the rate stays the same, which is incorrect behavior
+    expect(updatedRewardRate).to.not.equal(initialRewardRate,
+      "Mutant detected: reward rate should have been updated after second notification during active period");
+
+    // Additional verification: earned rewards should be higher than if rate stayed the same
+    // Rate stayed same scenario: (100e18 * (initialRewardRate * 7 days) * 1e18) / totalSupply(100e18) / 1e18 = initialRewardRate * 7 days
+    // Original scenario: rate was higher for the last 4 days
+    const minExpectedEarnings = ethers.parseEther("500"); // Should be significantly more than if rate unchanged
+    expect(earnedRewards).to.be.gt(minExpectedEarnings);
+  });
+});

@@ -1,0 +1,51 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("W_WALLET mutant detection - overflow protection removed", function () {   it("should revert when sending ether that causes balance overflow in Put, but mutant should succeed", async function () {     const [owner, user] = await ethers.getSigners();          // Deploy the Log contract first (required constructor argument for W_WALLET)     const LogFactory = await ethers.getContractFactory("Log");     const log = await LogFactory.deploy();     await log.waitForDeployment();          // Deploy W_WALLET with the Log contract address     const Factory = await ethers.getContractFactory("W_WALLET");     const instance = await Factory.deploy(await log.getAddress());     await instance.waitForDeployment();          // Get the current balance of the user     const initialBalance = await instance.Acc(user.address);     const initialUserBalance = initialBalance.balance;          // Calculate a value that when added to initialBalance will overflow uint256     // We need to send enough to make (balance + msg.value) wrap around     // The overflow would happen if balance + msg.value > 2^256 - 1     // So we need msg.value = 2^256 - initialBalance     const MAX_UINT = ethers.MaxUint256;     const overflowAmount = MAX_UINT - initialUserBalance + 1n;          // In the original contract, this should revert due to the require check     // In the mutant (which removes the require), this would succeed     await expect(       instance.connect(user).Put(0, { value: overflowAmount })     ).to.be.reverted;  // This will pass on original, fail on mutant (mutant doesn't revert)   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract W_WALLET { function Put(uint _unlockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("W_WALLET mutant detection - overflow protection removed", function () {
+  it("should revert when sending ether that causes balance overflow in Put, but mutant should succeed", async function () {
+    const [owner, user] = await ethers.getSigners();
+
+    // Deploy the Log contract first (required constructor argument for W_WALLET)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+
+    // Deploy W_WALLET with the Log contract address
+    const Factory = await ethers.getContractFactory("W_WALLET");
+    const instance = await Factory.deploy(await log.getAddress());
+    await instance.waitForDeployment();
+
+    // Get the current balance of the user
+    const initialBalance = await instance.Acc(user.address);
+    const initialUserBalance = initialBalance.balance;
+
+    // Calculate a value that when added to initialBalance will overflow uint256
+    // We need to send enough to make (balance + msg.value) wrap around
+    // The overflow would happen if balance + msg.value > 2^256 - 1
+    // So we need msg.value = 2^256 - initialBalance + 1 to trigger overflow
+    const MAX_UINT = ethers.MaxUint256;
+    const overflowAmount = MAX_UINT - initialUserBalance + 1n;
+
+    // In the original contract, this should revert due to the require check
+    // In the mutant (which removes the require), this would succeed
+    await expect(
+      instance.connect(user).Put(0, { value: overflowAmount })
+    ).to.be.reverted; // This will pass on original, fail on mutant (mutant doesn't revert)
+  });
+});
+```

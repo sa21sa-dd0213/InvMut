@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tdcc6e439",
+ "property_summary": "For every caller address, only the original admin (the deployer) can successfully change C.owner via setOwner; the mutant additionally allows the current owner to change owner, violating this rule when caller == owner != admin.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Changed the require message but kept logic identical (no behavioral change) - REMOVED: Not included because it would be equivalent; instead created a stronger check requiring both admin and owner, preventing admin-only calls from succeeding alone.",
+ "mutated_unit_code": "modifier onlyAdmin() {\n    require(msg.sender == admin || msg.sender == owner, \"Only admin or owner can call address(this) function\");\n    _;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Owned} from \"../src/Owned.sol\";\n\ncontract InvMutTest is Test {\n    Owned c;\n    address deployer;\n\n    function setUp() public {\n        deployer = address(this);\n        c = new Owned();\n    }\n\n    function testFuzz_property(address actor) public {\n        vm.assume(actor != address(0));\n\n        address initialOwner = c.owner();\n        assertTrue(initialOwner == deployer);\n\n        vm.prank(deployer);\n        bool ok;\n        try c.setOwner(actor) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n        vm.assume(ok);\n\n        address newOwner = address(uint160(uint256(keccak256(abi.encodePacked(actor, \"new\")))));\n\n        vm.prank(actor);\n        bool ok2;\n        try c.setOwner(newOwner) {\n            ok2 = true;\n        } catch {\n            ok2 = false;\n        }\n\n        assertTrue(!ok2);\n    }\n}\n"
+}

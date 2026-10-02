@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0015",
+ "property_summary": "Owner burns tokens, then a frozen account attempts a transfer: the reference reverts due to frozenAccount check, while the mutant succeeds, causing balanceOf transfers to differ.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Remove both frozenAccount checks, allowing transfers from or to frozen accounts.",
+ "mutated_unit_code": "function _transfer(address _from, address _to, uint _value) internal {\n    require (_to != address(0));\n    require (balanceOf[_from] >= _value);\n    require (balanceOf[_to] + _value >= balanceOf[_to]);\n    balanceOf[_from] -= _value;\n    balanceOf[_to] += _value;\n    emit Transfer(_from, _to, _value);\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ERCDDAToken} from \"../src/ERCDDAToken.sol\";\n\ncontract InvMutTest is Test {\n    ERCDDAToken c;\n    function setUp() public { c = new ERCDDAToken(0, \"\", \"\"); }\n    function testRegression_property() public {\n        address owner = address(this);\n        address frozenUser = address(0x123);\n        vm.deal(frozenUser, 1 ether);\n\n        c.mintToken(owner, 1000);\n        c.mintToken(frozenUser, 500);\n\n        c.burn(200);\n\n        c.freezeAccount(frozenUser, true);\n\n        vm.prank(frozenUser);\n        bool ok;\n        try c.transfer(owner, 100) {\n            ok = true;\n        } catch {\n            ok = false;\n        }\n\n        assertTrue(ok == false);\n    }\n}"
+}

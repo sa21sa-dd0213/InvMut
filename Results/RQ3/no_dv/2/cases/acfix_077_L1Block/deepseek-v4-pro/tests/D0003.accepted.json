@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0003",
+ "property_summary": "A call to setL1BlockValues from the depositor account must succeed (not revert), and a call from a non-depositor must revert.",
+ "render_status": "rendered",
+ "validation_status": "skipped",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Change msg.sender == depositorAccount to msg.sender != depositorAccount, inverting access control so only non-depositor accounts can set values.",
+ "mutated_unit_code": "function setL1BlockValues(\n    uint64 _number,\n    uint64 _timestamp,\n    uint256 _basefee,\n    bytes32 _hash,\n    uint64 _sequenceNumber,\n    bytes32 _batcherHash,\n    uint256 _l1FeeOverhead,\n    uint256 _l1FeeScalar\n) external {\n    require(\n        msg.sender != depositorAccount,\n        \"L1Block: only the depositor account can set L1 block values\"\n    );\n\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {L1Block} from \"../src/L1Block.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    L1Block c;\n\n    function setUp() public {\n        c = new L1Block();\n    }\n\n    function _test(address caller, address depositor) internal {\n        bool succeeded;\n        address originalDepositor;\n        try c.depositorAccount() returns (address __r) { originalDepositor = __r; } catch { return; }\n        vm.assume(caller != depositor);\n        bool reverted = false;\n        try c.setL1BlockValues(0, 0, 0, bytes32(0), 0, bytes32(0), 0, 0) {\n            succeeded = true;\n        } catch {\n            reverted = true;\n        }\n        assertTrue(reverted == (address(this) != c.depositorAccount()));\n    }\n\n    function testFuzz_test(address caller, address depositor) public {\n        _test(caller, depositor);\n    }\n\n    receive() external payable {}\n}\n"
+}

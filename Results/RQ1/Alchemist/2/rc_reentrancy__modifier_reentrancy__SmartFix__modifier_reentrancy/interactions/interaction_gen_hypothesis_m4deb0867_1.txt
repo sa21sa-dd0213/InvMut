@@ -1,0 +1,35 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract ModifierEntrancy:
+        Contract Code: pragma solidity ^0.8.0; contract SmartFix { bool public _locked = false; modifier _nonReentrant() { require(!_locked); _locked = true; _; _locked = false; } } contract ModifierEntrancy is SmartFix { mapping (address => uint) public tokenBalance; string constant name = "Nu Token"; function airDrop()  public _nonReentrant  hasNoBalance supportsToken { require(((tokenBalance[msg.sender] + 20) >= tokenBalance[msg.sender])); tokenBalance[msg.sender] += 20; } modifier supportsToken() { require(keccak256(abi.encodePacked("Nu Token")) == Bank(msg.sender).supportsToken()); _; } modifier hasNoBalance { require(tokenBalance[msg.sender] == 0); _; } } contract Bank{ function supportsToken() external pure returns (bytes32){ return(keccak256(abi.encodePacked("Nu Token"))); } }
+
+    Consider the following mutant of ModifierEntrancy:
+        Mutant m4deb0867 of function airDrop replaces >= with >
+        Mutant Diff: ---|     require(((tokenBalance[msg.sender] + 20) >= tokenBalance[msg.sender])); +++|     require(((tokenBalance[msg.sender] + 20)  > tokenBalance[msg.sender]));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's break this down.
+
+The original `require` statement checks:
+```
+require(((tokenBalance[msg.sender] + 20) >= tokenBalance[msg.sender]));
+```
+This is always true for any unsigned integer (since adding 20 to a value will always be >= that value), so it’s essentially a redundant check that always passes.
+
+The mutant changes `>=` to `>`, making it:
+```
+require(((tokenBalance[msg.sender] + 20) > tokenBalance[msg.sender]));
+```
+This will **fail** if `tokenBalance[msg.sender]` is at its maximum value (`type(uint).max`), because adding 20 would overflow (in Solidity 0.8+ it reverts on overflow, but the check itself would also fail since the overflowed result is less than the original). More directly, if `tokenBalance[msg.sender]` is `type(uint).max - 19` or less, the check passes; but if it is `type(uint).max - 20` or less, it's fine. However, the simplest case to kill the mutant is when `tokenBalance[msg.sender]` is exactly `type(uint).max - 19` or lower? Wait—let’s think simpler.
+
+Actually, the simplest scenario: if `tokenBalance[msg.sender]` is `0`, then `(0 + 20) > 0` is `true`, so it passes. The mutant fails only when the left side equals the right side, i.e., when `tokenBalance[msg.sender] + 20 == tokenBalance[msg.sender]`, which is impossible with normal integers. So the mutant actually behaves identically to the original for all normal values—except if we consider overflow.
+
+In Solidity 0.8+, overflow causes a revert before the `require`. So to kill the mutant, we need a case where the original passes but the mutant fails. Since `>=` always passes, we need `>` to fail. That happens if `tokenBalance[msg.sender]` is `type(uint).max - 19` or lower? No—`20 > 0` is true. Actually, the only way `(x + 20) > x` is false is if overflow occurs and wraps around, making `x + 20 < x`. In Solidity 0.8+, overflow

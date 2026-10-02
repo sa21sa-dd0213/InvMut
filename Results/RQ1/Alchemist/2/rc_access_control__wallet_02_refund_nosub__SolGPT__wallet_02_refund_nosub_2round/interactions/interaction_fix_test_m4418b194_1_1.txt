@@ -1,0 +1,44 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Wallet reference (ethers v6; deploy may require constructor arguments)", function () {   it("should detect mutant m4418b194 by verifying that deposit correctly records the exact amount sent", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Wallet");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Deposit exactly 1 wei from addr1     const depositAmount = ethers.parseEther("0");     const oneWei = 1n;     const tx = await instance.connect(addr1).deposit({ value: oneWei });     await tx.wait();      // Withdraw the full balance     const withdrawTx = await instance.connect(addr1).withdraw(oneWei);     await withdrawTx.wait();      // Check that addr1's balance after withdrawal is zero     const balanceAfterWithdraw = await ethers.provider.getBalance(addr1.address);     const expectedBalance = (await ethers.provider.getBalance(addr1.address)) + 0n; // just to have a reference      // The mutant would have added 2 wei to balance, so withdraw of 1 wei would leave 1 wei stuck.     // Try withdrawing the remaining 1 wei (if mutant is present) - this should succeed if mutant present     // But if original, second withdraw should fail because balance is 0     await expect(       instance.connect(addr1).withdraw(1n)     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract Wallet { address creator; mapping(address => uint256) balances; constructor() public { creator = payable(msg.sender); } function deposit() public payable { assert(balances[msg.sender] + msg.value > balances[msg.sender]); balances[msg.sender] += msg.value; } function withdraw(uint256 amount) public { require(amount <= balances[msg.sender]); payable(msg.sender).transfer(amount); balances[msg.sender] -= amount; } function refund() public { payable(msg.sender).transfer(balances[msg.sender]); balances[msg.sender] = 0; } function migrateTo(address to) public { require(creator == msg.sender); payable(to).transfer(address(this).balance); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Wallet reference (ethers v6; deploy may require constructor arguments)", function () {
+  it("should detect mutant m4418b194 by verifying that deposit correctly records the exact amount sent", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Wallet");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deposit exactly 1 wei from addr1
+    const oneWei = 1n;
+    const tx = await instance.connect(addr1).deposit({ value: oneWei });
+    await tx.wait();
+
+    // Withdraw the full balance
+    const withdrawTx = await instance.connect(addr1).withdraw(oneWei);
+    await withdrawTx.wait();
+
+    // Check that addr1's balance after withdrawal is zero
+    // The mutant would have added 2 wei to balance, so withdraw of 1 wei would leave 1 wei stuck.
+    // Try withdrawing the remaining 1 wei (if mutant is present) - this should succeed if mutant present
+    // But if original, second withdraw should fail because balance is 0
+    await expect(
+      instance.connect(addr1).withdraw(1n)
+    ).to.be.reverted;
+  });
+});
+```

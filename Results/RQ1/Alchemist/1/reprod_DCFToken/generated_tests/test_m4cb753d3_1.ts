@@ -1,0 +1,142 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DCF mutant kill test - burnPair", function () {
+  it("should kill mutant m4cb753d3 by verifying that tokens are burned from pair address during sell", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy DCF with a liquidity receive address
+    const liquidityReceiveAddress = addr2.address;
+    const Factory = await ethers.getContractFactory("DCF");
+    const dcf = await Factory.deploy(liquidityReceiveAddress);
+    await dcf.waitForDeployment();
+    
+    // Get helper contract address
+    const helperAddress = await dcf.helperAddress();
+    
+    // Get router and pair addresses
+    const router = await dcf.uniswapV2Router();
+    const pairAddress = await dcf.pairAddress();
+    
+    // Get USDT address from contract
+    const usdtAddress = await dcf.USDT();
+    
+    // Get USDT contract interface for approvals
+    const usdtContract = await ethers.getContractAt("IERC20", usdtAddress);
+    
+    // Get initial total supply
+    const initialTotalSupply = await dcf.totalSupply();
+    
+    // Setup: Transfer some DCF tokens to addr1 for testing
+    const transferAmount = ethers.parseEther("1000");
+    await dcf.transfer(addr1.address, transferAmount);
+    
+    // Get initial pair balance
+    const initialPairBalance = await dcf.balanceOf(pairAddress);
+    
+    // Need USDT to create liquidity first (required for sell to work properly)
+    // Get some USDT from the router (WBNB) - in test environment we need to simulate
+    // For testing the burn functionality, we need to trigger a sell transaction
+    
+    // First, let's check if there's any liquidity in the pair
+    const pairContract = await ethers.getContractAt("IUniswapV2Pair", pairAddress);
+    const reserves = await pairContract.getReserves();
+    
+    // If no liquidity, we need to add some first to make the sell work
+    if (reserves.reserve0.toString() === "0" && reserves.reserve1.toString() === "0") {
+      // Add liquidity through the helper contract
+      // This requires USDT tokens - in test we'll use the owner to provide them
+      // For simplicity, we'll directly test the burnPair function through the internal logic
+      
+      // We need to trigger a sell that calls burnPair with positive _deadAmount
+      // The sell happens when to == pairAddress
+      
+      // Approve router to spend DCF tokens
+      await dcf.approve(router, ethers.parseEther("100"));
+      
+      // Create path for swap
+      const path = [await dcf.getAddress(), usdtAddress];
+      
+      // Execute a swap (sell) which should trigger the burn
+      // We need to have some tokens in the pair first, so let's add minimal liquidity
+      
+      // Get the router contract
+      const routerContract = await ethers.getContractAt("IUniswapV2Router02", router);
+      
+      // Add liquidity by providing USDT - in test we need to simulate having USDT
+      // For the purpose of testing the burn, we'll directly test the condition
+    }
+    
+    // Direct test of burnPair by checking the _transfer logic
+    // When selling to pair, deadAmount = (amount - fee) / deadCfg where deadCfg = 2
+    // fee = amount * 5 / 100
+    // So deadAmount = (amount - amount*5/100) / 2 = (amount * 95/100) / 2 = amount * 47.5/100
+    
+    // Let's test with a sell amount that would produce a positive deadAmount
+    const sellAmount = ethers.parseEther("100"); // 100 tokens
+    const fee = sellAmount * 5n / 100n; // 5 tokens
+    const expectedDeadAmount = (sellAmount - fee) / 2n; // ~47.5 tokens
+    
+    // We need to have tokens in the pair for the balance check
+    // Transfer some tokens to pair first to simulate initial liquidity
+    await dcf.transfer(pairAddress, ethers.parseEther("1000"));
+    
+    // Now perform the sell transaction from addr1
+    await dcf.connect(addr1).approve(router, sellAmount);
+    
+    // Execute swap via router (sell DCF for USDT)
+    const swapPath = [await dcf.getAddress(), usdtAddress];
+    
+    // Get initial total supply before sell
+    const supplyBeforeSell = await dcf.totalSupply();
+    
+    // Perform the swap (this will trigger _transfer with to == pairAddress)
+    const router02 = await ethers.getContractAt("IUniswapV2Router02", router);
+    
+    // We need to have some USDT in the router for the swap to work
+    // In a real test environment, this would require actual token setup
+    // For the mutant detection, we can test the burnPair function more directly
+    
+    // Alternative approach: test the condition in burnPair directly
+    // The mutant changes if (_deadAmount > 0) to if (false)
+    // So we need to verify that when deadAmount > 0, the burn actually happens
+    
+    // Let's use the distributeToken function to move tokens and check supply
+    // First set a distribute address
+    await dcf.setCaller(owner.address);
+    await dcf.setDistributeAddress(addr2.address);
+    
+    // Transfer tokens to contract for distribution
+    await dcf.transfer(await dcf.getAddress(), ethers.parseEther("5000"));
+    
+    // Get supply before burn
+    const supplyBeforeBurn = await dcf.totalSupply();
+    
+    // Now trigger a sell to pair through a direct transfer (simulating swap)
+    // Transfer tokens to pair (this should trigger the sell logic)
+    await dcf.connect(addr1).transfer(pairAddress, sellAmount);
+    
+    // Get supply after the sell (which should have triggered burn)
+    const supplyAfterSell = await dcf.totalSupply();
+    
+    // The mutant will NOT burn tokens, so supply will remain the same
+    // The original would burn expectedDeadAmount from the pair
+    const supplyDifference = supplyBeforeBurn - supplyAfterSell;
+    
+    // In the original, supplyDifference should be positive (tokens were burned)
+    // In the mutant, supplyDifference should be 0 (no burn happened)
+    // We expect the mutant to fail this assertion
+    expect(supplyDifference).to.be.gt(0);
+    
+    // Additional verification: check pair balance decreased by burn amount
+    const pairBalanceAfter = await dcf.balanceOf(pairAddress);
+    const expectedPairBalance = initialPairBalance + sellAmount - fee - expectedDeadAmount;
+    
+    // In original: pairBalanceAfter should equal expectedPairBalance
+    // In mutant: pairBalanceAfter will be higher (no burn happened)
+    expect(pairBalanceAfter).to.equal(expectedPairBalance);
+    
+    // Also verify that sync was called (mutant still calls sync even without burn)
+    // This is harder to verify directly, but the balance check should be sufficient
+  });
+});

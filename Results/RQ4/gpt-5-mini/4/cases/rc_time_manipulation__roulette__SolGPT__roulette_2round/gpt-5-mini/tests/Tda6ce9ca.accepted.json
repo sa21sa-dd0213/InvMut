@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tda6ce9ca",
+ "property_summary": "For every call to fallback that sends exactly 10 ether and occurs at a strictly later block timestamp, the correct contract retains its balance unless block.number % 15 == 0 (only then it pays out); the mutant flips the payout condition and will sometimes pay out when block.number % 15 != 0, violating this rule.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Change the transfer condition to trigger when block.number % 15 != 0, altering when the contract pays out its balance.",
+ "mutated_unit_code": "fallback() external payable {\n        require(msg.value == 10 ether);\n\n        require(block.timestamp > pastBlockTime);\n\n        pastBlockTime = block.timestamp;\n        if(block.number % 15 != 0) {\n            payable(msg.sender).transfer(address(this).balance);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n\n    function testFuzz_property(uint64 timeDelta, uint64 blockOffset, address actor) public {\n        vm.assume(timeDelta > 0);\n        vm.assume(actor != address(0));\n\n        uint256 amt = 10 ether;\n        vm.deal(actor, amt);\n\n        vm.warp(block.timestamp + timeDelta);\n        uint64 targetBlock = uint64(block.number) + (blockOffset % 100);\n        vm.roll(uint256(targetBlock));\n\n        vm.prank(actor);\n        (bool ok,) = address(c).call{value: amt}(\"\");\n\n        if (block.number % 15 != 0) {\n            assertTrue(ok);\n            assertTrue(address(c).balance == amt);\n        } else {\n            assertTrue(ok);\n        }\n    }\n}\n"
+}

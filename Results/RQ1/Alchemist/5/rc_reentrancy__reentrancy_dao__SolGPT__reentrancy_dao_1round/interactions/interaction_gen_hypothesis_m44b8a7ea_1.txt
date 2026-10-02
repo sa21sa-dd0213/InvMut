@@ -1,0 +1,34 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract ReentrancyDAO:
+        Contract Code: pragma solidity ^0.8.0; contract ReentrancyDAO { mapping (address => uint) credit; uint balance; function withdrawAll() public { uint oCredit = credit[msg.sender]; if (oCredit > 0) { balance -= oCredit; credit[msg.sender] = 0; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); } } function deposit() public payable { credit[msg.sender] += msg.value; balance += msg.value; } }
+
+    Consider the following mutant of ReentrancyDAO:
+        Mutant m44b8a7ea of function deposit replaces msg.value with msg.value+1
+        Mutant Diff: ---|         balance += msg.value; +++|         balance += msg.value+1;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's reason through this step by step.
+
+The original `deposit()` function adds `msg.value` to both `credit[msg.sender]` and `balance`.  
+The mutant changes `balance += msg.value;` to `balance += msg.value + 1;`, so `balance` is incremented by one extra wei compared to the actual deposited amount.
+
+Because `balance` is used in `withdrawAll()` to deduct from before sending, this mismatch means:
+- After a deposit, `balance` is larger than the sum of all `credit` entries by exactly 1 wei per deposit.
+- If a user later calls `withdrawAll()`, the contract will try to send them their exact `oCredit`, but the subtraction `balance -= oCredit` will leave `balance` artificially high, and a subsequent withdrawal attempt from another user could fail due to insufficient actual Ether in the contract (since `balance` is just a storage variable, not the actual contract Ether).
+
+A simple test to catch this:  
+Deposit a specific amount (e.g., 1 wei), then immediately withdraw all.  
+On the original, the withdrawal succeeds and the contract’s Ether balance becomes 0.  
+On the mutant, `balance` was increased by 2 wei but only 1 wei was actually sent; when withdrawing 1 wei, `balance` becomes 1, but the contract has 0 Ether — the next withdrawal attempt will revert because the `call` will fail, or the `require(callResult)` will revert.
+
+**Hypothesis**:  
+"Hypothesis": "The mutant adds an extra 1 wei to the `balance` state variable on each deposit, while the actual Ether sent remains unchanged. Therefore, a test case that deposits exactly 1 wei, then withdraws all, and then attempts a second withdrawal from a different address (which expects a revert due to insufficient contract balance) should kill the mutant, because on the mutant the first withdrawal leaves `balance` artificially positive while the contract has no Ether left."

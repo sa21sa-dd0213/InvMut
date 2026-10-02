@@ -1,0 +1,54 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MultiplicatorX4 mutant test - mfd372852", function () {
+  it("should detect mutant that changes >= to == in multiplicate function", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy the contract
+    const Factory = await ethers.getContractFactory("MultiplicatorX4");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // Get the contract address
+    const contractAddress = await instance.getAddress();
+    
+    // Fund the contract with 1 ETH
+    const initialFundTx = await owner.sendTransaction({
+      to: contractAddress,
+      value: ethers.parseEther("1.0")
+    });
+    await initialFundTx.wait();
+    
+    // Check initial balance of contract
+    const initialContractBalance = await ethers.provider.getBalance(contractAddress);
+    expect(initialContractBalance).to.equal(ethers.parseEther("1.0"));
+    
+    // Get addr1's initial balance
+    const addr1InitialBalance = await ethers.provider.getBalance(addr1.address);
+    
+    // Send 2 ETH (greater than contract balance of 1 ETH) to trigger multiplicate
+    // Original: if(msg.value >= address(this).balance) - this would execute
+    // Mutant: if(msg.value == address(this).balance) - this would NOT execute
+    const tx = await instance.connect(owner).multiplicate(addr1.address, {
+      value: ethers.parseEther("2.0")
+    });
+    await tx.wait();
+    
+    // Check if the transfer happened
+    const addr1FinalBalance = await ethers.provider.getBalance(addr1.address);
+    const contractFinalBalance = await ethers.provider.getBalance(contractAddress);
+    
+    // On the original contract, the transfer would occur and addr1 would receive funds
+    // On the mutant, the transfer would NOT occur because msg.value (2) != contract balance (1)
+    // This difference will kill the mutant
+    const expectedTransferAmount = ethers.parseEther("3.0"); // contract balance (1) + msg.value (2)
+    const expectedAddr1Balance = addr1InitialBalance + expectedTransferAmount;
+    
+    // This assertion will pass on the original but fail on the mutant
+    expect(addr1FinalBalance).to.equal(expectedAddr1Balance);
+    
+    // Also verify contract balance is 0 after successful transfer on original
+    expect(contractFinalBalance).to.equal(ethers.parseEther("0"));
+  });
+});

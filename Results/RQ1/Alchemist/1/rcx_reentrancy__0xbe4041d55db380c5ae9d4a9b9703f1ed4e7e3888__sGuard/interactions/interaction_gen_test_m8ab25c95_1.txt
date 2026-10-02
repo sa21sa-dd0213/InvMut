@@ -1,0 +1,91 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m8ab25c95 of MONEY_BOX.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test MONEY_BOX.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for MONEY_BOX:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("MONEY_BOX reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy MONEY_BOX by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("MONEY_BOX"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MONEY_BOX mutant m8ab25c95 detection", function () {
+    it("should detect missing nonReentrant modifier on Put by exploiting reentrancy", async function () {
+        const [owner, attacker] = await ethers.getSigners();
+        
+        // Deploy MONEY_BOX (no constructor arguments needed)
+        const MoneyBoxFactory = await ethers.getContractFactory("MONEY_BOX");
+        const moneyBox = await MoneyBoxFactory.deploy();
+        await moneyBox.waitForDeployment();
+        
+        // Deploy attacker contract
+        const AttackerFactory = await ethers.getContractFactory("ReentrancyAttacker");
+        const attackerContract = await AttackerFactory.deploy(await moneyBox.getAddress());
+        await attackerContract.waitForDeployment();
+        
+        // Setup: fund the moneyBox so it can send ether
+        // First, send ether via Put to create a balance for the attacker contract
+        await moneyBox.connect(attacker).Put(0, { value: ethers.parseEther("10") });
+        
+        // Set MinSum to 1 wei so Collect can succeed
+        await moneyBox.SetMinSum(1);
+        
+        // Initialize the contract (required by SetMinSum)
+        await moneyBox.Initialized();
+        
+        // Now the attacker contract has balance >= MinSum and can call Collect
+        // The attacker contract will attempt reentrancy via its fallback
+        
+        // Expect the transaction to revert on the original (non-mutant) due to nonReentrant
+        // But on the mutant, it will succeed, draining funds
+        // We check that the reentrancy attack succeeds (mutant behavior)
+        const initialBalance = await ethers.provider.getBalance(await moneyBox.getAddress());
+        
+        // Trigger the attack - this should revert on original but succeed on mutant
+        await attackerContract.connect(attacker).attack(ethers.parseEther("5"));
+        
+        // On mutant: after attack, moneyBox should have lost more than the requested amount
+        // due to reentrancy (multiple Put calls during Collect)
+        const finalBalance = await ethers.provider.getBalance(await moneyBox.getAddress());
+        
+        // Verify that the attack drained more than the legitimate withdrawal
+        // This confirms the reentrancy guard was missing
+        expect(initialBalance - finalBalance).to.be.gt(ethers.parseEther("5"));
+    });
+});
+
+// Attacker contract to exploit reentrancy
+contract ReentrancyAttacker {
+    address payable target;
+    
+    constructor(address payable _target) {
+        target = _target;
+    }
+    
+    function attack(uint amount) external {
+        // Call Collect on MONEY_BOX which will send ether to this contract
+        // triggering fallback which calls Put(0) again
+        (bool success, ) = target.call(abi.encodeWithSignature("Collect(uint256)", amount));
+        require(success);
+    }
+    
+    fallback() external payable {
+        // Reenter by calling Put - on mutant this will succeed, on original it will revert
+        if (address(target).balance >= msg.value) {
+            (bool success, ) = target.call{value: msg.value}(abi.encodeWithSignature("Put(uint256)", 0));
+            success; // suppress warning
+        }
+    }
+}
+```

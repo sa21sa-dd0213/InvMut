@@ -1,0 +1,67 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("BANK_SAFE mutant kill test - m1b358bc4", function () {   it("should revert when external call fails in Collect function", async function () {     const [owner, attacker] = await ethers.getSigners();          // Deploy a malicious contract that rejects Ether     const RejectorFactory = await ethers.getContractFactory("Rejector");     const rejector = await RejectorFactory.deploy();     await rejector.waitForDeployment();          // Deploy BANK_SAFE (no constructor arguments)     const Factory = await ethers.getContractFactory("BANK_SAFE");     const bank = await Factory.deploy();     await bank.waitForDeployment();          // Setup: Initialize and set MinSum to 0     await bank.SetMinSum(0);     await bank.Initialized();          // Deposit funds to the rejector contract address     const depositAmount = ethers.parseEther("1.0");     await owner.sendTransaction({       to: await bank.getAddress(),       value: depositAmount     });          // Verify balance was recorded     const balanceBefore = await bank.balances(rejector.target);     expect(balanceBefore).to.equal(depositAmount);          // Attempt Collect from the rejector contract - this should revert because the rejector rejects Ether     // In the original contract, the else {revert()} would catch the failed call     // In the mutant, the revert is missing so the function would succeed but the balance would be incorrectly updated     await expect(       bank.connect(attacker).Collect(depositAmount)     ).to.be.reverted;          // If the mutant survives (no revert), the balance would have been incorrectly deducted     // Verify balance remains unchanged if revert occurred     const balanceAfter = await bank.balances(rejector.target);     expect(balanceAfter).to.equal(depositAmount);   }); });  // Helper contract that rejects all incoming Ether contract Rejector {   receive() external payable {     revert("Ether rejected");   } }
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract BANK_SAFE { mapping (address=>uint256) public balances; uint public MinSum; LogFile Log; bool intitalized; function SetMinSum(uint _val) public { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log) public { if(intitalized)revert(); Log = LogFile(_log); } function Initialized() public { intitalized = true; } function Deposit() public payable { require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); balances[msg.sender]+= msg.value; Log.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { if(balances[msg.sender]>=MinSum && balances[msg.sender]>=_am) { balances[msg.sender] = (balances[msg.sender] - _am); (bool _veri_ok,) = msg.sender.call{value: _am}(""); if(_veri_ok) { Log.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } receive() external payable { Deposit(); } } contract LogFile { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val,string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("BANK_SAFE mutant kill test - m1b358bc4", function () {
+  it("should revert when external call fails in Collect function", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy a malicious contract that rejects Ether
+    const RejectorFactory = await ethers.getContractFactory("Rejector");
+    const rejector = await RejectorFactory.deploy();
+    await rejector.waitForDeployment();
+    
+    // Deploy BANK_SAFE (no constructor arguments)
+    const Factory = await ethers.getContractFactory("BANK_SAFE");
+    const bank = await Factory.deploy();
+    await bank.waitForDeployment();
+    
+    // Setup: Initialize and set MinSum to 0
+    await bank.SetMinSum(0);
+    await bank.Initialized();
+    
+    // Deposit funds to the bank contract (using owner's address)
+    const depositAmount = ethers.parseEther("1.0");
+    await owner.sendTransaction({
+      to: await bank.getAddress(),
+      value: depositAmount
+    });
+    
+    // Verify balance was recorded for the owner (not rejector)
+    const balanceBefore = await bank.balances(owner.address);
+    expect(balanceBefore).to.equal(depositAmount);
+    
+    // Attempt Collect from the rejector contract address - this should revert
+    // because the rejector rejects Ether and the call is made from attacker's address
+    // which has no balance
+    await expect(
+      bank.connect(attacker).Collect(depositAmount)
+    ).to.be.reverted;
+    
+    // Verify balance remains unchanged for the owner
+    const balanceAfter = await bank.balances(owner.address);
+    expect(balanceAfter).to.equal(depositAmount);
+  });
+});
+
+// Helper contract that rejects all incoming Ether
+contract Rejector {
+  receive() external payable {
+    revert("Ether rejected");
+  }
+}
+```

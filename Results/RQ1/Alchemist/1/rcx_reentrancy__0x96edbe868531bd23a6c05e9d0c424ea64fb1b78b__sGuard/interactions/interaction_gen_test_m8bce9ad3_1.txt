@@ -1,0 +1,57 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m8bce9ad3 of PENNY_BY_PENNY.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test PENNY_BY_PENNY.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for PENNY_BY_PENNY:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("PENNY_BY_PENNY reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy PENNY_BY_PENNY by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("PENNY_BY_PENNY"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PENNY_BY_PENNY mutant m8bce9ad3", function () {
+  it("should revert when Collect is called before unlockTime (original behavior), but mutant allows it", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy contracts
+    const PennyFactory = await ethers.getContractFactory("PENNY_BY_PENNY");
+    const LogFactory = await ethers.getContractFactory("LogFile");
+    
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+    
+    const pennyInstance = await PennyFactory.deploy();
+    await pennyInstance.waitForDeployment();
+    
+    // Initialize the contract
+    await pennyInstance.connect(owner).SetLogFile(await logInstance.getAddress());
+    await pennyInstance.connect(owner).SetMinSum(ethers.parseEther("0.01"));
+    await pennyInstance.connect(owner).Initialized();
+    
+    // Setup: addr1 puts 1 ETH with a lock time of 1 hour
+    const lockTime = 3600; // 1 hour
+    const putAmount = ethers.parseEther("1");
+    await pennyInstance.connect(addr1).Put(lockTime, { value: putAmount });
+    
+    // Attempt to collect immediately (before unlockTime)
+    const collectAmount = ethers.parseEther("0.5");
+    
+    // This should revert in the original (block.timestamp < unlockTime),
+    // but the mutant (< instead of >) will allow it to succeed
+    await expect(
+      pennyInstance.connect(addr1).Collect(collectAmount)
+    ).to.be.reverted;
+  });
+});
+```

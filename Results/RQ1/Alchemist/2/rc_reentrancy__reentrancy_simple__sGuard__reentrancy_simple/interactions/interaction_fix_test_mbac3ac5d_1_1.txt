@@ -1,0 +1,47 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("Reentrance mutant mbac3ac5d test", function () {   it("should detect that mutant adds 1 to msg.value causing insufficient balance on withdrawal", async function () {     const [owner, attacker] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("Reentrance");     const instance = await Factory.deploy();     await instance.waitForDeployment();      const depositAmount = ethers.parseEther("1.0");      // Attacker deposits exactly 1 ether     await instance.connect(attacker).addToBalance({ value: depositAmount });      // Check recorded balance - mutant would record depositAmount + 1 wei     const recordedBalance = await instance.getBalance(attacker.address);          // In mutant, recordedBalance should be depositAmount + 1 wei     // In original, recordedBalance should be exactly depositAmount     // The withdrawal will try to send recordedBalance, but contract only has depositAmount     // This should revert in the mutant due to insufficient balance     await expect(       instance.connect(attacker).withdrawBalance()     ).to.be.reverted;      // Verify the contract's Ether balance is as expected (only depositAmount)     const contractBalance = await ethers.provider.getBalance(instance.target);     expect(contractBalance).to.equal(depositAmount);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuard{ function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } } contract Reentrance  is sGuard { mapping (address => uint) userBalance; function getBalance(address u)  public view returns (uint) { return userBalance[u]; } function addToBalance()  public nonReentrant_ payable { userBalance[msg.sender] = add_uint256(userBalance[msg.sender], msg.value); } function withdrawBalance()  public nonReentrant_ { { (bool _s, bytes memory _d) = msg.sender.call{value: userBalance[msg.sender]}(""); _d; if (! _s) { revert(); } } userBalance[msg.sender] = 0; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Reentrance mutant mbac3ac5d test", function () {
+  it("should detect that mutant adds 1 to msg.value causing insufficient balance on withdrawal", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("Reentrance");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const depositAmount = ethers.parseEther("1.0");
+
+    // Attacker deposits exactly 1 ether
+    await instance.connect(attacker).addToBalance({ value: depositAmount });
+
+    // Check recorded balance - mutant would record depositAmount + 1 wei
+    const recordedBalance = await instance.getBalance(attacker.address);
+
+    // In mutant, recordedBalance should be depositAmount + 1 wei
+    // In original, recordedBalance should be exactly depositAmount
+    // The withdrawal will try to send recordedBalance, but contract only has depositAmount
+    // This should revert in the mutant due to insufficient balance
+    await expect(
+      instance.connect(attacker).withdrawBalance()
+    ).to.be.reverted;
+
+    // Verify the contract's Ether balance is as expected (only depositAmount)
+    const contractBalance = await ethers.provider.getBalance(instance.target);
+    expect(contractBalance).to.equal(depositAmount);
+  });
+});
+```

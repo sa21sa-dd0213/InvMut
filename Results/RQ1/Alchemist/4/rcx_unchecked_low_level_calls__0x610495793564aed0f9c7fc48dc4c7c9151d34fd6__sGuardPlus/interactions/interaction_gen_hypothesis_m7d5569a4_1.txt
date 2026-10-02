@@ -1,0 +1,19 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract SimpleWallet:
+        Contract Code: pragma solidity ^0.8.0; contract SimpleWallet  { address  public   owner = payable(msg.sender); uint  public   depositsCount; modifier onlyOwner { require(msg.sender==owner); _; } fallback() external payable { depositsCount ++ ; } function withdrawAll () public onlyOwner  { withdraw(address(this).balance); } function withdraw (uint    _value) public onlyOwner  { payable(msg.sender).transfer(_value); } function sendMoney (address    _target,uint    _value, bytes memory _data) public onlyOwner  { (bool __sent_result100, ) = _target.call{value: _value}(_data); require(__sent_result100); } }
+
+    Consider the following mutant of SimpleWallet:
+        Mutant m7d5569a4 of function sendMoney replaces require(__sent_result100); with 
+        Mutant Diff: ---| require(__sent_result100); +++|
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant removes the `require(__sent_result100);` statement, meaning the function will no longer revert if the external call fails. Therefore, a test case that sends a transaction to a target address that intentionally fails (e.g., a contract that reverts on receiving ETH or an address with no payable fallback) and then checks that the balance of the wallet has not decreased (or that the transaction did not revert) should kill the mutant, because the original would revert on failure while the mutant would silently succeed.

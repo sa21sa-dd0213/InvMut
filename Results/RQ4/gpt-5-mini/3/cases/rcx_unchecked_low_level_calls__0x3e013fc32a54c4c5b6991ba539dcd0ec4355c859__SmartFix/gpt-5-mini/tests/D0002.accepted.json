@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0002",
+ "property_summary": "If the provided caller address is not equal to c.Owner(), then calling c.withdraw must revert.",
+ "render_status": "rendered",
+ "validation_status": "skipped",
+ "validation_error": null,
+ "kill": "bug_no_kill:m_no_cex_within_bound",
+ "origin": "primary",
+ "change_summary": "Invert the require so it requires caller is NOT Owner, preventing Owner from calling withdraw but allowing others to trigger transfer to Owner.",
+ "mutated_unit_code": "function withdraw()\n    payable\n    public\n    {\n        require(msg.sender != Owner);\n        payable(Owner).transfer(address(this).balance);\n    }\n",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\n\nimport {Test} from \"forge-std/Test.sol\";\nimport {MultiplicatorX4} from \"../src/MultiplicatorX4.sol\";\n\ncontract InvMutTest is Test {\n    uint256 internal constant VALUE_CAP = 1000000000000000000000000000000;\n    MultiplicatorX4 c;\n\n    function setUp() public {\n        c = new MultiplicatorX4();\n    }\n\n    function _run(address caller) internal {\n        vm.deal(address(this), VALUE_CAP);\n        vm.deal(address(c), VALUE_CAP);\n        caller = address(this);\n        vm.assume(caller != address(0));\n        bool reverted;\n        address owner;\n        try c.Owner() returns (address __r) { owner = __r; } catch { return; }\n        try c.withdraw{value:0}() {\n            reverted = false;\n        } catch {\n            reverted = true;\n        }\n        assertTrue(!(caller != owner) || reverted);\n    }\n\n    function testFuzz_run(address caller) public {\n        _run(caller);\n    }\n\n    receive() external payable {}\n}\n"
+}

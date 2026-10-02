@@ -1,0 +1,73 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m7d8ecc58 of ModifierEntrancy.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test ModifierEntrancy.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for ModifierEntrancy:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("ModifierEntrancy reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy ModifierEntrancy by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("ModifierEntrancy"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ModifierEntrancy mutant test - reentrancy guard removal", function () {
+  it("should revert on reentrant call when _nonReentrant modifier is present (original), but succeed when removed (mutant)", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy the target contract (ModifierEntrancy) and the malicious Bank contract
+    const ModifierEntrancyFactory = await ethers.getContractFactory("ModifierEntrancy");
+    const target = await ModifierEntrancyFactory.deploy();
+    await target.waitForDeployment();
+    
+    // Deploy a malicious contract that will attempt reentrancy
+    const MaliciousFactory = await ethers.getContractFactory("MaliciousReentrancy");
+    const malicious = await MaliciousFactory.deploy(target.target);
+    await malicious.waitForDeployment();
+    
+    // The attacker calls the malicious contract which will attempt reentrancy
+    // The original contract with _nonReentrant should revert the second call
+    // The mutant without _nonReentrant would allow the second call to succeed
+    
+    // First ensure the attacker has no balance (to pass hasNoBalance modifier)
+    // The malicious contract will call airDrop, and in supportsToken() callback, 
+    // it will attempt to call airDrop again
+    
+    await expect(
+      malicious.connect(attacker).attack()
+    ).to.be.reverted;
+  });
+});
+
+// Malicious contract that reenters during supportsToken() callback
+contract MaliciousReentrancy {
+    ModifierEntrancy public target;
+    bool public firstCall = true;
+    
+    constructor(address _target) {
+        target = ModifierEntrancy(_target);
+    }
+    
+    function attack() external {
+        target.airDrop();
+    }
+    
+    function supportsToken() external returns (bytes32) {
+        if (firstCall) {
+            firstCall = false;
+            // Reenter the airDrop function
+            target.airDrop();
+        }
+        return keccak256(abi.encodePacked("Nu Token"));
+    }
+}
+```

@@ -1,0 +1,66 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant md5c36a14 of MY_BANK.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test MY_BANK.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for MY_BANK:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("MY_BANK reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy MY_BANK by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("MY_BANK"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MY_BANK mutant kill test - md5c36a14", function () {
+  it("should revert when Collect external call fails (mutant removed revert)", async function () {
+    const [owner, user] = await ethers.getSigners();
+    
+    // Deploy Log contract first (needed for MY_BANK constructor)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const log = await LogFactory.deploy();
+    await log.waitForDeployment();
+    
+    // Deploy MY_BANK with Log address
+    const BankFactory = await ethers.getContractFactory("MY_BANK");
+    const bank = await BankFactory.deploy(await log.getAddress());
+    await bank.waitForDeployment();
+    
+    // Deploy a contract that rejects Ether to trigger failed external call
+    const RejectorFactory = await ethers.getContractFactory("contract Rejector { receive() external payable { revert(); } }");
+    const rejector = await RejectorFactory.deploy();
+    await rejector.waitForDeployment();
+    
+    // Fund user with ether
+    await owner.sendTransaction({
+      to: user.address,
+      value: ethers.parseEther("5")
+    });
+    
+    // User puts 2 ether into bank
+    await bank.connect(user).Put(ethers.parseEther("0"), { value: ethers.parseEther("2") });
+    
+    // Verify user has balance
+    const holderBefore = await bank.Acc(user.address);
+    expect(holderBefore.balance).to.equal(ethers.parseEther("2"));
+    
+    // User tries to collect 1 ether to the rejector contract (which will fail)
+    // In original contract this would revert, in mutant it would not
+    await expect(
+      bank.connect(user).Collect(ethers.parseEther("1"))
+    ).to.be.reverted;
+    
+    // Verify balance remains unchanged after failed collect
+    const holderAfter = await bank.Acc(user.address);
+    expect(holderAfter.balance).to.equal(ethers.parseEther("2"));
+  });
+});
+```

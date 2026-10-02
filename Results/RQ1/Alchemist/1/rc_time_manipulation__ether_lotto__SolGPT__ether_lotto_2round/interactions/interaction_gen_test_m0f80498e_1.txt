@@ -1,0 +1,90 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m0f80498e of EtherLotto.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EtherLotto.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EtherLotto:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EtherLotto reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EtherLotto by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EtherLotto"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant m0f80498e test", function () {
+  it("should detect the mutant where pot += msg.value-1 instead of pot += msg.value", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = 10n; // 10 wei
+
+    // Player sends exactly 10 wei and loses (random == 1)
+    // We can't control randomness, but we can play multiple times until we get a losing round
+    // For deterministic testing, we'll play and check pot after each round
+    
+    // Play until we get a losing round (random == 1)
+    let potAfterPlay: bigint;
+    let round = 0;
+    const maxRounds = 10;
+    
+    do {
+      const tx = await player.sendTransaction({
+        to: await instance.getAddress(),
+        value: TICKET_AMOUNT
+      });
+      await tx.wait();
+      
+      potAfterPlay = await instance.pot();
+      round++;
+      
+      if (round > maxRounds) {
+        // If all rounds were winning (unlikely but possible), just check the last pot
+        break;
+      }
+    } while (potAfterPlay !== 0n); // pot = 0 means a winning round (payout happened)
+
+    // After a losing round, pot should be exactly 10 wei (the full ticket amount)
+    // In the mutant, pot would be 9 wei (msg.value - 1)
+    // If we got a winning round, pot will be 0, so we need to check after a losing round
+    if (potAfterPlay !== 0n) {
+      // We had a losing round - pot should equal TICKET_AMOUNT
+      expect(potAfterPlay).to.equal(TICKET_AMOUNT);
+    }
+    
+    // Additional check: play a second time to verify cumulative effect
+    const secondTx = await player.sendTransaction({
+      to: await instance.getAddress(),
+      value: TICKET_AMOUNT
+    });
+    await secondTx.wait();
+    
+    const potAfterSecondPlay = await instance.pot();
+    
+    // If first round was winning (pot reset to 0), second losing round should show pot = 10
+    // If first round was losing (pot = 10), second losing round should show pot = 20
+    if (potAfterPlay === 0n) {
+      // First was winning, second was losing
+      if (potAfterSecondPlay !== 0n) {
+        expect(potAfterSecondPlay).to.equal(TICKET_AMOUNT);
+      }
+    } else {
+      // First was losing, second might be losing or winning
+      if (potAfterSecondPlay !== 0n) {
+        // Both losing - pot should be 2 * TICKET_AMOUNT = 20
+        expect(potAfterSecondPlay).to.equal(TICKET_AMOUNT * 2n);
+      }
+    }
+  });
+});
+```

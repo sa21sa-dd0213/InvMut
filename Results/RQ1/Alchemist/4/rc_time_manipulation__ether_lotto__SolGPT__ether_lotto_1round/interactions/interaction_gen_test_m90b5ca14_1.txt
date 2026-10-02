@@ -1,0 +1,74 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m90b5ca14 of EtherLotto.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EtherLotto.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EtherLotto:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EtherLotto reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EtherLotto by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EtherLotto"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant detection - m90b5ca14", function () {
+  it("should detect mutant that adds 1 extra wei to pot (msg.value+1)", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = 10n; // 10 wei
+    const FEE_AMOUNT = 1n; // 1 wei
+
+    // Play and win scenario: We need to force random == 0.
+    // Since randomness depends on block.timestamp and block.difficulty,
+    // we can mine blocks until we get a win.
+    // Alternative approach: play many times and check the first win.
+
+    // Record balances before
+    const playerBalanceBefore = await ethers.provider.getBalance(player.address);
+    const ownerBalanceBefore = await ethers.provider.getBalance(owner.address);
+
+    // Play until we win (random == 0)
+    let won = false;
+    let tx;
+    while (!won) {
+      tx = await instance.connect(player).play({ value: TICKET_AMOUNT });
+      const receipt = await tx.wait();
+
+      // Check if the player won by examining the pot after transaction
+      // If pot is 0, it means the win condition triggered
+      const potAfter = await instance.pot();
+      if (potAfter === 0n) {
+        won = true;
+      }
+    }
+
+    // After a win, player should have received: pot - fee
+    // Original pot was 10 (msg.value), so player gets 9 wei
+    // Mutant pot becomes 11 (msg.value+1), so player would get 10 wei
+    const playerBalanceAfter = await ethers.provider.getBalance(player.address);
+    const ownerBalanceAfter = await ethers.provider.getBalance(owner.address);
+
+    const playerNetChange = playerBalanceAfter - playerBalanceBefore;
+    const ownerNetChange = ownerBalanceAfter - ownerBalanceBefore;
+
+    // Player paid 10 wei for the ticket
+    // Under original: player receives 9 wei, net change = -1 wei
+    // Under mutant: player receives 10 wei, net change = 0 wei
+    // Owner receives 1 wei fee under both versions
+    expect(playerNetChange).to.equal(-1n); // -1 wei (paid 10, got 9 back)
+    expect(ownerNetChange).to.equal(1n); // +1 wei fee
+  });
+});
+```

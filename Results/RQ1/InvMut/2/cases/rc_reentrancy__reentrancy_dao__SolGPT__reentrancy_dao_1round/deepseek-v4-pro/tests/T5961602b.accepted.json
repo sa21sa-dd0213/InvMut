@@ -1,0 +1,12 @@
+{
+ "difference_id": "T5961602b",
+ "property_summary": "For any caller who has previously deposited, after a successful withdrawAll the caller's remaining credit must be zero; the buggy version leaves the caller's credit unchanged, enabling repeated withdrawals.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Remove the `credit[msg.sender] = 0;` assignment, so the caller retains their internal credit after withdrawal.",
+ "mutated_unit_code": "function withdrawAll() public {\n        uint oCredit = credit[msg.sender];\n        if (oCredit > 0) {\n            balance -= oCredit;\n            (bool callResult, ) = msg.sender.call{value: oCredit}(\"\");\n            require(callResult);\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ReentrancyDAO} from \"../src/ReentrancyDAO.sol\";\n\ncontract InvMutTest is Test {\n    ReentrancyDAO c;\n    function setUp() public {\n        c = new ReentrancyDAO();\n    }\n\n    function testFuzz_property(uint256 depositAmount, uint256 withdrawAmount, address caller) public {\n        depositAmount = bound(depositAmount, 1, 1_000_000 ether);\n        withdrawAmount = bound(withdrawAmount, 0, depositAmount);\n        vm.assume(caller != address(this));\n        vm.assume(caller != address(0));\n\n        vm.deal(caller, depositAmount);\n        vm.prank(caller);\n        c.deposit{value: depositAmount}();\n\n        Receiver helper = new Receiver();\n        address adversary = address(helper);\n\n        vm.deal(adversary, depositAmount);\n        vm.prank(adversary);\n        c.deposit{value: depositAmount}();\n\n        vm.prank(adversary);\n        c.withdrawAll();\n\n        uint256 balanceBeforeSecond = address(c).balance;\n        bool secondOk;\n        vm.prank(adversary);\n        try c.withdrawAll() { secondOk = true; } catch { secondOk = false; }\n\n        uint256 balanceAfterSecond = address(c).balance;\n        assertTrue(balanceAfterSecond == balanceBeforeSecond);\n    }\n}\n\ncontract Receiver {\n    receive() external payable {}\n}\n"
+}

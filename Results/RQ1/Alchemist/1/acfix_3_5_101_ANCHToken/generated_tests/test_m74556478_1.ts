@@ -1,0 +1,174 @@
+import { expect } from "chai";
+import { ethers } } from "hardhat";
+
+describe("ANCHToken mutant kill test for m74556478", function () {
+  it("should revert when unauthorized sender tries to trigger buy reward transfer", async function () {
+    const [owner, addr1, addr2, unauthorizedUser] = await ethers.getSigners();
+    
+    // Deploy ANCHToken with constructor arguments
+    // Note: The contract requires _route (UniswapV2Router02 address) and _USDToken address
+    // For testing, we need to use a mock router or deploy with a real one
+    // Since we don't have a real Uniswap router, we'll deploy with a placeholder approach
+    const USDTokenFactory = await ethers.getContractFactory("ANCHToken");
+    
+    // Get a UniswapV2Router02 address - for testing we'll use a zero address
+    // but this won't work because createPair will fail. Instead, let's modify approach:
+    // We'll deploy with a mock router that returns a valid factory
+    
+    // For simplicity in testing the specific mutation, we'll deploy with a mock approach
+    // that bypasses the Uniswap creation by directly testing the _transfer logic
+    
+    // Since the contract requires actual Uniswap addresses, we'll use a workaround:
+    // Deploy a simple ERC20 as USD token
+    const SimpleERC20 = await ethers.getContractFactory("SimpleERC20");
+    const usdToken = await SimpleERC20.deploy("USD Token", "USD", 18);
+    await usdToken.waitForDeployment();
+    
+    // For the router, we need a contract that returns a factory with createPair
+    // This is complex for testing, so we'll test the mutation directly
+    // by calling internal functions through the deployed contract
+    
+    // Alternative approach: deploy the contract with actual addresses
+    // For testing the mutation, we need to verify that only authorized users can trigger buy reward
+    
+    // Since we cannot easily deploy without real Uniswap, let's test the logic differently:
+    // We'll deploy the contract with minimal setup and test the _allowedRoles mapping
+    
+    // Actually, the best approach is to test the role check directly
+    // Let's deploy with a mock that allows us to test the mutation
+    
+    // For the purpose of killing this mutant, we need to verify that
+    // when sender is NOT in _allowedRoles, the transfer should NOT go through _tokenBuyTransferReward
+    
+    // Since we cannot easily deploy with real Uniswap, let's create a minimal test:
+    // We'll test that unauthorized users cannot trigger the buy reward path
+    
+    // Deploy with dummy addresses (this will fail at createPair, so we need a different approach)
+    // Let's use a test that checks the behavior when _allowedRoles[sender] is false
+    
+    // For a proper test, we need to verify the mutant changes behavior
+    // The mutant makes the condition always true, so unauthorized users would get buy reward
+    
+    // Test scenario:
+    // 1. Deploy contract
+    // 2. Transfer tokens to an unauthorized user
+    // 3. Unauthorized user tries to transfer - in original, goes to else branch (no reward)
+    //    In mutant, goes to buy reward path (with reward)
+    
+    // Since we can't easily deploy with real router, let's check if the contract has
+    // a way to set allowed roles (it doesn't expose setAllowedRoles, only uses it internally)
+    
+    // The contract doesn't have a public setAllowedRoles function, so we need to
+    // test through the available public functions
+    
+    // Let's test the transfer function behavior with different senders
+    // The owner should be able to transfer (owner is implicitly authorized? No, only _allowedRoles)
+    
+    // Actually, looking at the contract more carefully:
+    // The _allowedRoles mapping is private and never set in constructor
+    // So initially, no one is authorized
+    // This means all transfers should go through the else branch (regular transfer)
+    // The mutant makes all transfers go through _tokenBuyTransferReward
+    
+    // Test: If we can deploy and transfer, the original would not give rewards,
+    // but the mutant would try to give rewards (and might revert if balance is insufficient)
+    
+    // Since we need to deploy with real Uniswap, let's create a simple test
+    // that demonstrates the difference
+    
+    // For testing purposes, we'll deploy with a minimal setup
+    // The constructor creates a Uniswap pair, which requires real addresses
+    
+    // Let's use a different approach - test the balance changes
+    // In original: unauthorized sender -> regular transfer (no reward)
+    // In mutant: unauthorized sender -> buy reward transfer (tries to give reward)
+    
+    // The mutant will try to give reward from contract balance
+    // If contract has no tokens, the reward distribution will revert
+    // So a transfer from unauthorized user will succeed in original but revert in mutant
+    
+    // This is our kill test!
+    
+    // We need to deploy with real addresses - let's use a mock router
+    const MockRouter = await ethers.getContractFactory("MockUniswapV2Router02");
+    const mockRouter = await MockRouter.deploy();
+    await mockRouter.waitForDeployment();
+    
+    const mockUSD = await ethers.getContractFactory("SimpleERC20");
+    const mockUSDToken = await mockUSD.deploy("Mock USD", "mUSD", 18);
+    await mockUSDToken.waitForDeployment();
+    
+    // Deploy ANCHToken with mock addresses
+    const ANCHToken = await ethers.getContractFactory("ANCHToken");
+    const anchorToken = await ANCHToken.deploy(mockRouter.target, mockUSDToken.target);
+    await anchorToken.waitForDeployment();
+    
+    // Now test: unauthorized user tries to transfer
+    // In original: should succeed (goes to else branch)
+    // In mutant: will try to give reward, but contract has 0 balance -> revert
+    
+    // Get some tokens to unauthorized user
+    const totalSupply = await anchorToken.totalSupply();
+    const transferAmount = ethers.parseEther("100");
+    
+    // Owner transfers tokens to unauthorized user first
+    await anchorToken.transfer(unauthorizedUser.address, transferAmount);
+    
+    // Now unauthorized user tries to transfer back to owner
+    // This should succeed in original but revert in mutant (if contract has no reward tokens)
+    
+    // The mutant will try to distribute reward from contract balance
+    // Contract balance is 0, so the reward check `balanceOf(address(this)) >= rewardAmount` will fail
+    // In original: no reward attempt, transfer succeeds
+    // In mutant: reward check fails, but the transfer itself still happens (reward is skipped)
+    
+    // Actually looking more carefully at _tokenBuyTransferReward:
+    // The reward distribution is inside an if statement that checks balance
+    // So the transfer itself still happens even if reward fails
+    
+    // So the mutant doesn't revert - it just adds reward logic that fails silently
+    // We need a different approach
+    
+    // The key difference: in mutant, the _tokenBuyTransferReward is called instead of regular transfer
+    // Both do the same base transfer, but _tokenBuyTransferReward also tracks txReward
+    
+    // Test: Check that txReward is NOT updated for unauthorized users in original
+    // but IS updated in mutant
+    
+    // Get initial txReward for recipient
+    const initialTxReward = await anchorToken.txReward(owner.address);
+    
+    // Unauthorized user transfers to owner
+    await anchorToken.connect(unauthorizedUser).transfer(owner.address, transferAmount);
+    
+    // Check txReward for owner
+    const finalTxReward = await anchorToken.txReward(owner.address);
+    
+    // In original: txReward should remain the same (no reward for unauthorized)
+    // In mutant: txReward should increase (reward was tracked)
+    
+    // The transfer amount is less than minTxnAmount (10000 tokens), so no reward actually given
+    // But the txReward mapping is still updated in the mutant
+    
+    // Let's make transfer amount >= minTxnAmount to trigger reward logic
+    const largeAmount = ethers.parseEther("15000"); // > minTxnAmount
+    
+    // First get more tokens to unauthorized user
+    await anchorToken.transfer(unauthorizedUser.address, largeAmount);
+    
+    // Get initial txReward for owner
+    const initialTxReward2 = await anchorToken.txReward(owner.address);
+    
+    // Unauthorized user transfers large amount to owner
+    await anchorToken.connect(unauthorizedUser).transfer(owner.address, largeAmount);
+    
+    // Check txReward for owner
+    const finalTxReward2 = await anchorToken.txReward(owner.address);
+    
+    // In original: txReward should be unchanged (regular transfer, no reward)
+    // In mutant: txReward should increase (buy reward path updates txReward)
+    
+    expect(initialTxReward2).to.equal(finalTxReward2, 
+      "Original contract should not update txReward for unauthorized senders");
+  });
+});

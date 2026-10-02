@@ -1,0 +1,12 @@
+{
+ "difference_id": "T0ffbb8d1",
+ "property_summary": "After any sequence of addToBalance calls, a user's balance must equal the sum of msg.value they sent via addToBalance minus any withdrawals; the mutant breaks this by overwriting the balance with the last msg.value instead of accumulating.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Change the balance update to always set the balance to msg.value instead of adding.",
+ "mutated_unit_code": "function addToBalance() public payable {\n    require(((userBalance[msg.sender] + msg.value) >= userBalance[msg.sender]));\n    userBalance[msg.sender] = msg.value;\n  }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n    function testFuzz_property(address actor, uint256 amt1, uint256 amt2) public {\n        vm.assume(actor != address(0));\n        vm.assume(amt1 > 0 && amt2 > 0);\n        vm.assume(amt1 <= type(uint256).max / 2 && amt2 <= type(uint256).max / 2);\n\n        vm.deal(actor, amt1 + amt2);\n\n        vm.prank(actor);\n        c.addToBalance{value: amt1}();\n        uint256 balAfterFirst = c.getBalance(actor);\n\n        vm.prank(actor);\n        c.addToBalance{value: amt2}();\n        uint256 balAfterSecond = c.getBalance(actor);\n\n        assertTrue(balAfterSecond >= balAfterFirst);\n    }\n}\n"
+}

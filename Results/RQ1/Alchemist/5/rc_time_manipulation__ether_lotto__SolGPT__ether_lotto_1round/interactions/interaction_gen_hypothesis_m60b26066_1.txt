@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EtherLotto:
+        Contract Code: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+
+    Consider the following mutant of EtherLotto:
+        Mutant m60b26066 of function play replaces % with /
+        Mutant Diff: ---|         uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; +++|         uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) / 2;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract uses `% 2` to determine a winner (random == 0), giving a 50% chance. The mutant replaces this with `/ 2`, which performs integer division, always resulting in 0 (since any number divided by 2 and truncated will be 0 for values less than 2, but in practice the hash output is large, so dividing by 2 always yields a non-zero result for values ≥ 2). This means the condition `random == 0` will almost never be true in the mutant, causing the payout branch to never execute.
+
+**Hypothesis:** A test case that calls `play()` multiple times (e.g., 10 or more times) with the exact ticket amount and expects the `pot` to be reset to 0 and the sender to receive a transfer (i.e., the "win" scenario to occur at least once) should detect the mutant. In the original, wins happen roughly 50% of the time, so after many calls the pot will be reset and funds transferred. In the mutant, the win condition never triggers, so the pot will keep accumulating without ever being reset, and no transfers to the sender will occur, causing the test to fail.

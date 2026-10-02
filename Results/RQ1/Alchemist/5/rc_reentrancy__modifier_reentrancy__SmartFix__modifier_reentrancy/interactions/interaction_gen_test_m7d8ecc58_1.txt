@@ -1,0 +1,85 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m7d8ecc58 of ModifierEntrancy.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test ModifierEntrancy.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for ModifierEntrancy:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("ModifierEntrancy reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy ModifierEntrancy by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("ModifierEntrancy"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ModifierEntrancy mutant detection - reentrancy guard removal", function () {
+  it("should detect removal of _nonReentrant modifier by allowing reentrant call", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    
+    // Deploy ModifierEntrancy (no constructor arguments)
+    const ModifierEntrancy = await ethers.getContractFactory("ModifierEntrancy");
+    const modEntrancy = await ModifierEntrancy.deploy();
+    await modEntrancy.waitForDeployment();
+    
+    // Deploy a malicious contract that will attempt reentrancy
+    const MaliciousContract = await ethers.getContractFactory("MaliciousReentrancy");
+    const malicious = await MaliciousContract.deploy(await modEntrancy.getAddress());
+    await malicious.waitForDeployment();
+    
+    // First, fund attacker with some ETH to deploy and interact (optional)
+    // The malicious contract will call airDrop and then re-enter
+    
+    // Execute the attack
+    await malicious.connect(attacker).attack();
+    
+    // Check that the attacker's token balance was increased multiple times
+    // In the original contract with _nonReentrant, it should revert
+    // In the mutant without _nonReentrant, the balance will be > 20
+    const attackerBalance = await modEntrancy.tokenBalance(await malicious.getAddress());
+    expect(attackerBalance).to.equal(40); // Should be 40 if reentrant call succeeded
+  });
+});
+
+// Helper contract for reentrancy attack
+// This must be deployed in the same file or as a separate contract
+// For simplicity, we define it as a Hardhat contract factory
+```
+
+```typescript
+// Additional contract needed for the test - deploy as a separate contract file
+// File: contracts/MaliciousReentrancy.sol
+// pragma solidity ^0.8.0;
+// import "./ModifierEntrancy.sol";
+// contract MaliciousReentrancy {
+//     ModifierEntrancy public target;
+//     bool public attackPerformed;
+//     
+//     constructor(address _target) {
+//         target = ModifierEntrancy(_target);
+//     }
+//     
+//     function attack() external {
+//         attackPerformed = false;
+//         target.airDrop();
+//     }
+//     
+//     function supportsToken() external pure returns (bytes32) {
+//         return keccak256(abi.encodePacked("Nu Token"));
+//     }
+//     
+//     receive() external payable {
+//         if (!attackPerformed) {
+//             attackPerformed = true;
+//             target.airDrop(); // Reentrant call
+//         }
+//     }
+// }
+```

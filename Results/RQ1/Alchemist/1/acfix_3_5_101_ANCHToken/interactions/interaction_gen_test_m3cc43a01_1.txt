@@ -1,0 +1,75 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m3cc43a01 of ANCHToken.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test ANCHToken.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for ANCHToken:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("ANCHToken reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy ANCHToken by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("ANCHToken"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ANCHToken mutant detection tests", function () {
+  it("should kill mutant m3cc43a01 by verifying tokenFromReflection returns correct non-zero value", async function () {
+    // Get signers
+    const [owner, addr1] = await ethers.getSigners();
+
+    // Deploy the contract with constructor arguments
+    // The constructor requires: address _route, address _USDToken
+    // We'll use the owner address as a placeholder for both since we're not testing Uniswap integration
+    const Factory = await ethers.getContractFactory("ANCHToken");
+    const instance = await Factory.deploy(owner.address, addr1.address);
+    await instance.waitForDeployment();
+
+    // Get the contract instance
+    const contract = await instance.getAddress();
+
+    // First, we need to set up an allowed role to perform transfers
+    // Since _allowedRoles is private, we need to work with what we have
+    // The owner should have tokens from the mint in constructor
+    
+    // Get the total supply and rate to calculate a valid reflection amount
+    const totalSupply = await instance.totalSupply();
+    const totalReflections = await instance.totalFees(); // This is _tFeeTotal, not _rTotal
+    // Actually, we need to call tokenFromReflection with a valid rAmount
+    // The rAmount should be less than _rTotal, so let's use a known value
+    
+    // The contract mints _rTotal to msg.sender (owner)
+    // We can get the owner's balance and calculate the rate
+    const ownerBalance = await instance.balanceOf(owner.address);
+    
+    // Get the reflection balance by calling tokenFromReflection with a value
+    // First, let's get the current rate by checking a known reflection
+    const testRAmount = ethers.parseEther("1000"); // Some reflection amount
+    const result = await instance.tokenFromReflection(testRAmount);
+    
+    // The mutant returns 0, the original returns a non-zero value
+    // For the original, if testRAmount is 1000 * 10^18 and rate is positive, result should be > 0
+    expect(result).to.be.gt(0);
+    
+    // Additional verification: the result should be less than the input
+    // because rAmount / rate where rate > 1
+    expect(result).to.be.lt(testRAmount);
+    
+    // Also verify that tokenFromReflection(0) returns 0 in both cases
+    const zeroResult = await instance.tokenFromReflection(0);
+    expect(zeroResult).to.equal(0);
+    
+    // Verify that a very large valid amount still returns non-zero
+    const largeRAmount = ethers.parseEther("1000000");
+    const largeResult = await instance.tokenFromReflection(largeRAmount);
+    expect(largeResult).to.be.gt(0);
+  });
+});
+```

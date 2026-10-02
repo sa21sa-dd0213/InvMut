@@ -1,0 +1,12 @@
+{
+ "difference_id": "Td1ce0d27",
+ "property_summary": "For any address whose low-level call in withdraw() fails, the reference contract preserves their balance, while the buggy version always zeroes it, leading to a difference in balances.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Remove the require statement checking the result of the external call, which can cause the balance to be zeroed even if the call fails (reverting on the require but leaving state unchanged if sender uses try/catch, or changing state if revert occurs before zeroing — here deletion prevents revert, always zeroing the balance regardless of call success).",
+ "mutated_unit_code": "function withdraw () public __lock_modifier0  {\n(bool __sent_result100, ) = msg.sender.call{value: balances[msg.sender]}(\"\");\n\nbalances[msg.sender]=0;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {keepMyEther} from \"../src/keepMyEther.sol\";\n\ncontract InvMutTest is Test {\n    keepMyEther c;\n    function setUp() public { c = new keepMyEther(); }\n    function testFuzz_property(address actor, uint256 amount, uint256 seed) public {\n        vm.assume(amount > 0);\n        vm.assume(actor != address(0) && actor != address(c));\n        Reverter reverter = new Reverter();\n        address caller = reverter.actor();\n        vm.deal(caller, amount);\n        vm.prank(caller);\n        (bool success,) = address(c).call{value: amount}(\"\");\n        require(success, \"deposit failed\");\n        uint256 balanceBefore = c.balances(caller);\n        assertEq(balanceBefore, amount, \"balance should equal deposited amount\");\n        vm.prank(caller);\n        try c.withdraw() {\n            assertEq(c.balances(caller), 0, \"balance must be zero after successful withdraw\");\n        } catch {\n            assertEq(c.balances(caller), amount, \"after revert, balance must remain unchanged (reference behavior)\");\n        }\n        assertEq(c.balances(caller), amount, \"balance must remain unchanged when external call fails\");\n    }\n}\n\ncontract Reverter {\n    fallback() external payable {\n        revert(\"Revert on receive\");\n    }\n    function actor() external view returns (address) {\n        return address(this);\n    }\n}"
+}

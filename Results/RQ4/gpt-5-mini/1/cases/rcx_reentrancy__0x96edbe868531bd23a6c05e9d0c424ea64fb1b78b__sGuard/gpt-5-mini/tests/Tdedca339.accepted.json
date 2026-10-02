@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tdedca339",
+ "property_summary": "For any caller and any value, calling SetMinSum on the correct contract always succeeds (does not revert) and sets MinSum to the provided value; the mutant that leaves the reentrancy lock permanently true causes subsequent SetMinSum calls to revert (fail) for some inputs (e.g., a second SetMinSum call), breaking this rule.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Modify nonReentrant_ modifier to omit setting locked_ back to false after function execution, causing subsequent SetMinSum calls to revert on require and thus changing observed MinSum after calls.",
+ "mutated_unit_code": "  modifier nonReentrant_() {\n    require(!locked_);\n    locked_ = true;\n    _;\n    // locked_ not reset to false to retain lock\n  }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {PENNY_BY_PENNY} from \"../src/PENNY_BY_PENNY.sol\";\n\ncontract InvMutTest is Test {\n    PENNY_BY_PENNY c;\n    function setUp() public { c = new PENNY_BY_PENNY(); }\n\n    function testFuzz_property(address caller, uint256 val) public {\n        vm.assume(caller != address(0));\n\n        bool ok1;\n        vm.prank(caller);\n        try c.SetMinSum(val) { ok1 = true; } catch { ok1 = false; }\n\n        uint256 minAfterFirst = c.MinSum();\n\n        bool ok2;\n        vm.prank(caller);\n        try c.SetMinSum(val + 1) { ok2 = true; } catch { ok2 = false; }\n\n        assertTrue(ok2, \"Reference should allow second SetMinSum call but mutant may revert\");\n\n    }\n}\n"
+}

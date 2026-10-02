@@ -1,0 +1,41 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract W_WALLET:
+        Contract Code: pragma solidity ^0.8.0; contract sGuard{ function sub_uint256(uint256 a, uint256 b) internal pure returns (uint256) { assert(b <= a); return a - b; } bool internal locked_; constructor() { locked_ = false; } modifier nonReentrant_() { require(!locked_); locked_ = true; _; locked_ = false; } function add_uint256(uint256 a, uint256 b) internal pure returns (uint256) { uint256 c = a + b; assert(c >= a); return c; } } contract W_WALLET is sGuard { function Put(uint _unlockTime)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; acc.balance = add_uint256(acc.balance, msg.value); acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am)  public nonReentrant_ payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { acc.balance = sub_uint256(acc.balance, _am); LogFile.AddMessage(msg.sender,_am,"Collect"); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log is sGuard { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+
+    Consider the following mutant of W_WALLET:
+        Mutant ma48f70f9 of function Put replaces > with >=
+        Mutant Diff: ---|         acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; +++|         acc.unlockTime = _unlockTime>= block.timestamp?_unlockTime:block.timestamp;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let's think through the change step-by-step:
+
+The original uses `_unlockTime > block.timestamp` — meaning if `_unlockTime` is strictly greater than the current time, it sets `unlockTime` to `_unlockTime`; otherwise it sets it to `block.timestamp`.  
+The mutant uses `_unlockTime >= block.timestamp` — meaning if `_unlockTime` is greater than **or equal** to the current time, it sets `unlockTime` to `_unlockTime`; otherwise it sets it to `block.timestamp`.
+
+The critical difference happens when `_unlockTime` is exactly equal to `block.timestamp`.  
+- Original: `_unlockTime == block.timestamp` → condition false → sets `unlockTime = block.timestamp`.  
+- Mutant: `_unlockTime == block.timestamp` → condition true → sets `unlockTime = _unlockTime` (which equals `block.timestamp`).
+
+In this edge case, the resulting `unlockTime` is the same value in both cases, so a simple equality check wouldn't catch it. However, the bug matters when `_unlockTime` is *in the past* relative to `block.timestamp` but exactly equal to some timestamp that the contract might later compare against.
+
+But the key behavioral difference appears when `_unlockTime` is **slightly less than** `block.timestamp`:
+- Original: `_unlockTime < block.timestamp` → `unlockTime = block.timestamp` (future timestamp).
+- Mutant: `_unlockTime < block.timestamp` → `unlockTime = block.timestamp` as well (same).
+
+So the only scenario where behavior diverges is when `_unlockTime == block.timestamp` — and since both result in the same numeric value, the *state* looks identical.
+
+Wait — that means the mutant is semantically equivalent? Let me re-check:  
+If `_unlockTime == block.timestamp`:
+- Original: condition `>` is false → sets `unlockTime = block.timestamp`  
+- Mutant: condition `>=` is true → sets `unlockTime = _unlockTime` which equals `block.timestamp`
+
+So the stored `unlockTime` is identical. The mutant is **behaviorally equivalent** in all cases

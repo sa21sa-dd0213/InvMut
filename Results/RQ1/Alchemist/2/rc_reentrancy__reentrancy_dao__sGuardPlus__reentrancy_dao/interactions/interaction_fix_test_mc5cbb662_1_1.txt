@@ -1,0 +1,58 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("ReentrancyDAO mutant test - mc5cbb662", function () {   it("should detect the mutant by calling withdrawAll with zero credit and checking that no external call is made", async function () {     const [owner, addr1] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("ReentrancyDAO");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // First, deposit some ETH from owner to have a non-zero balance in the contract     const depositAmount = ethers.parseEther("1.0");     await instance.connect(owner).deposit({ value: depositAmount });      // Now addr1 has zero credit. Capture the balance before withdrawal     const balanceBefore = await ethers.provider.getBalance(instance.target);      // addr1 calls withdrawAll - should NOT make an external call in the original contract     // In the mutant, it WILL make an external call (sending 0 ETH) which we can detect     const tx = await instance.connect(addr1).withdrawAll();     const receipt = await tx.wait();      // Check that the contract balance remains unchanged (since addr1 had 0 credit)     const balanceAfter = await ethers.provider.getBalance(instance.target);     expect(balanceAfter).to.equal(balanceBefore);      // Verify that addr1's credit is still 0 (unchanged)     expect(await instance.credit(addr1.address)).to.equal(0);      // The key kill: check that no ETH was transferred to addr1     // In the mutant, even though the value is 0, an external call is made     // We can detect this by checking the gas used - mutant will use more gas     // due to the extra external call. A more robust check: verify the tx logs     // or that the address didn't receive any ETH (it shouldn't have)     const addr1BalanceAfter = await ethers.provider.getBalance(addr1.address);     // addr1 shouldn't have received any ETH from this transaction     // (only spent gas, so balance should be less, not more)     expect(addr1BalanceAfter).to.be.lessThan(       (await ethers.provider.getBalance(addr1.address)).add(ethers.parseEther("0.001"))     );   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract sGuardPlus { constructor() { __lock_modifier0_lock = false; } bool private __lock_modifier0_lock; modifier __lock_modifier0() { require(!__lock_modifier0_lock); __lock_modifier0_lock = true; _; __lock_modifier0_lock = false; } } contract ReentrancyDAO is sGuardPlus { mapping (address  => uint )    credit; uint     balance; function withdrawAll () public __lock_modifier0  { uint     oCredit = credit[msg.sender]; if (oCredit>0) { balance-=oCredit; (bool callResult, ) = msg.sender.call{value: oCredit}(""); require(callResult); credit[msg.sender]=0; } } function deposit () public payable { credit[msg.sender]+=msg.value; balance+=msg.value; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("ReentrancyDAO mutant test - mc5cbb662", function () {
+  it("should detect the mutant by calling withdrawAll with zero credit and checking that no external call is made", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("ReentrancyDAO");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // First, deposit some ETH from owner to have a non-zero balance in the contract
+    const depositAmount = ethers.parseEther("1.0");
+    await instance.connect(owner).deposit({ value: depositAmount });
+
+    // Now addr1 has zero credit. Capture the balance before withdrawal
+    const balanceBefore = await ethers.provider.getBalance(instance.target);
+
+    // addr1 calls withdrawAll - should NOT make an external call in the original contract
+    // In the mutant, it WILL make an external call (sending 0 ETH) which we can detect
+    const tx = await instance.connect(addr1).withdrawAll();
+    const receipt = await tx.wait();
+
+    // Check that the contract balance remains unchanged (since addr1 had 0 credit)
+    const balanceAfter = await ethers.provider.getBalance(instance.target);
+    expect(balanceAfter).to.equal(balanceBefore);
+
+    // Verify that addr1's credit is still 0 (unchanged)
+    expect(await instance.credit(addr1.address)).to.equal(0);
+
+    // The key kill: check that no ETH was transferred to addr1
+    // In the mutant, even though the value is 0, an external call is made
+    // We can detect this by checking the gas used - mutant will use more gas
+    // due to the extra external call. A more robust check: verify the tx logs
+    // or that the address didn't receive any ETH (it shouldn't have)
+    const addr1BalanceAfter = await ethers.provider.getBalance(addr1.address);
+    // addr1 shouldn't have received any ETH from this transaction
+    // (only spent gas, so balance should be less, not more)
+    expect(addr1BalanceAfter).to.be.lessThan(
+      (await ethers.provider.getBalance(addr1.address)).add(ethers.parseEther("0.001"))
+    );
+  });
+});
+```

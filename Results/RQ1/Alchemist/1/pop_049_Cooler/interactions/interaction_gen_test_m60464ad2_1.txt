@@ -1,0 +1,79 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m60464ad2 of Cooler.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test Cooler.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for Cooler:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("Cooler reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy Cooler by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("Cooler"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("Cooler mutant m60464ad2 test", function () {
+  it("should revert when unauthorized address calls provideNewTermsForRoll", async function () {
+    const [owner, lender, unauthorized] = await ethers.getSigners();
+    
+    // Deploy factory first (needed to create cooler)
+    const CoolerFactory = await ethers.getContractFactory("CoolerFactory");
+    const factory = await CoolerFactory.deploy();
+    await factory.waitForDeployment();
+    
+    // Get cooler implementation address from factory
+    const coolerImpl = await factory.coolerImplementation();
+    
+    // Deploy mock ERC20 tokens for collateral and debt
+    const ERC20Factory = await ethers.getContractFactory("ERC20");
+    const collateral = await ERC20Factory.deploy("Collateral", "COL", 18);
+    await collateral.waitForDeployment();
+    const debt = await ERC20Factory.deploy("Debt", "DEBT", 18);
+    await debt.waitForDeployment();
+    
+    // Generate cooler for owner with collateral and debt tokens
+    await factory.connect(owner).generateCooler(await collateral.getAddress(), await debt.getAddress());
+    
+    // Get cooler address from factory
+    const coolersFor = await factory.coolersFor(await collateral.getAddress(), await debt.getAddress());
+    const coolerAddress = coolersFor[0];
+    
+    // Attach to cooler contract
+    const Cooler = await ethers.getContractFactory("Cooler");
+    const cooler = Cooler.attach(coolerAddress);
+    
+    // First create a loan to have something to roll
+    // Request a loan
+    const amount = ethers.parseEther("100");
+    const interest = ethers.parseEther("0.1");
+    const loanToCollateral = ethers.parseEther("2");
+    const duration = 30 * 24 * 60 * 60; // 30 days
+    
+    // Calculate collateral needed
+    const collatAmount = await cooler.collateralFor(amount, loanToCollateral);
+    
+    // Transfer collateral to owner and approve cooler
+    await collateral.mint(owner.address, collatAmount);
+    await collateral.connect(owner).approve(coolerAddress, collatAmount);
+    await cooler.connect(owner).requestLoan(amount, interest, loanToCollateral, duration);
+    
+    // Clear request as lender
+    await debt.mint(lender.address, amount);
+    await debt.connect(lender).approve(coolerAddress, amount);
+    await cooler.connect(lender).clearRequest(0, false, false);
+    
+    // Now unauthorized tries to provide new terms for the loan
+    await expect(
+      cooler.connect(unauthorized).provideNewTermsForRoll(0, interest, loanToCollateral, duration)
+    ).to.be.revertedWithCustomError(cooler, "OnlyApproved");
+  });
+});
+```

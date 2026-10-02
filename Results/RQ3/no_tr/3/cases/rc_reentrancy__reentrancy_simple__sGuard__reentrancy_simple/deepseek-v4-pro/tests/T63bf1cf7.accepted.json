@@ -1,0 +1,12 @@
+{
+ "difference_id": "T63bf1cf7",
+ "property_summary": "After any invocation of withdrawBalance, the userBalance of the caller must be zero AND the contract's ETH balance must have decreased by the caller's previous balance; the bug violates this by zeroing userBalance without transferring ETH, so the contract's ETH balance remains unchanged while the caller's recorded balance is zero.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the external call that sends the balance, so userBalance is set to 0 without transferring any ETH.",
+ "mutated_unit_code": "function withdrawBalance()  public nonReentrant_ {\n\n         userBalance[msg.sender] = 0;\n     }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Reentrance} from \"../src/Reentrance.sol\";\n\ncontract InvMutTest is Test {\n    Reentrance c;\n    function setUp() public { c = new Reentrance(); }\n\n    function testFuzz_property(uint256 amount, address actor) public {\n        vm.assume(actor != address(c));\n        vm.assume(actor != address(0));\n        vm.assume(amount > 0);\n\n        vm.deal(actor, amount);\n        vm.prank(actor);\n        c.addToBalance{value: amount}();\n\n        uint256 balanceBefore = c.getBalance(actor);\n        uint256 contractEthBefore = address(c).balance;\n\n        vm.prank(actor);\n        c.withdrawBalance();\n\n        uint256 balanceAfter = c.getBalance(actor);\n        uint256 contractEthAfter = address(c).balance;\n\n        assertTrue(balanceAfter == 0 && contractEthBefore - contractEthAfter == balanceBefore);\n    }\n}"
+}

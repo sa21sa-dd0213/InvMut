@@ -1,0 +1,69 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m6574bde4 of NewIntelTechMedia.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test NewIntelTechMedia.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for NewIntelTechMedia:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("NewIntelTechMedia reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy NewIntelTechMedia by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("NewIntelTechMedia"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("NewIntelTechMedia mutant detection", function () {
+  it("should detect mutant m6574bde4 by verifying totalDistributed after two distributions", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy the contract (no constructor arguments needed based on contract code)
+    const Factory = await ethers.getContractFactory("NewIntelTechMedia");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+    
+    // First, call NETM() to set initial balances for owner (required for distribution to work)
+    await (await instance.NETM()).wait();
+    
+    // Get initial totalDistributed value after NETM() call
+    const initialTotalDistributed = await instance.totalDistributed();
+    
+    // First distribution: send ETH to trigger getTokens() which calls distr()
+    const firstAmount = ethers.parseEther("1"); // 1 ETH
+    await (await instance.connect(addr1).getTokens({ value: firstAmount })).wait();
+    
+    const afterFirstDist = await instance.totalDistributed();
+    const firstDistAmount = afterFirstDist - initialTotalDistributed;
+    
+    // Second distribution: use another address
+    await (await instance.connect(addr2).getTokens({ value: firstAmount })).wait();
+    
+    const finalTotalDistributed = await instance.totalDistributed();
+    const secondDistAmount = finalTotalDistributed - afterFirstDist;
+    
+    // In the original contract: totalDistributed increases by addition
+    // In the mutant: totalDistributed becomes totalDistributed * _amount
+    // After first dist: mutant would have 0 * firstDistAmount = 0 (if initial was 0)
+    // After second dist: mutant would have 0 * secondDistAmount = 0
+    // So final totalDistributed should be the sum, not 0 or a product
+    
+    // Verify the contract behaves correctly with addition
+    // If mutant is present, this assertion will fail
+    expect(finalTotalDistributed).to.equal(
+      initialTotalDistributed + firstDistAmount + secondDistAmount
+    );
+    
+    // Additional check: if mutant is present, after first distribution totalDistributed would be 0
+    // (since 0 * anything = 0) which would break the distribution logic
+    expect(afterFirstDist).to.be.gt(initialTotalDistributed);
+    expect(finalTotalDistributed).to.be.gt(afterFirstDist);
+  });
+});
+```

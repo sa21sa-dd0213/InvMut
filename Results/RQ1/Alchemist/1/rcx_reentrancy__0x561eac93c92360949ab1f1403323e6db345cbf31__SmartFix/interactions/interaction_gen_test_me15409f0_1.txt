@@ -1,0 +1,59 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant me15409f0 of BANK_SAFE.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test BANK_SAFE.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for BANK_SAFE:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("BANK_SAFE reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy BANK_SAFE by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("BANK_SAFE"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("BANK_SAFE mutant kill test", function () {
+  it("should allow collecting a partial amount (less than full balance) on original but revert on mutant", async function () {
+    const [owner, user] = await ethers.getSigners();
+    
+    // Deploy contracts
+    const BankFactory = await ethers.getContractFactory("BANK_SAFE");
+    const LogFactory = await ethers.getContractFactory("LogFile");
+    
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+    
+    const bankInstance = await BankFactory.deploy();
+    await bankInstance.waitForDeployment();
+    
+    // Setup: Set MinSum and Log, then initialize
+    await bankInstance.connect(owner).SetMinSum(0);
+    await bankInstance.connect(owner).SetLogFile(await logInstance.getAddress());
+    await bankInstance.connect(owner).Initialized();
+    
+    // Deposit 1 ether
+    const depositAmount = ethers.parseEther("1.0");
+    await bankInstance.connect(user).Deposit({ value: depositAmount });
+    
+    // Try to collect only 0.5 ether (partial amount)
+    const collectAmount = ethers.parseEther("0.5");
+    
+    // This should revert on the mutant because balances[user] == 1 ether != 0.5 ether
+    // On the original it would succeed because 1 ether >= 0.5 ether
+    await expect(
+      bankInstance.connect(user).Collect(collectAmount)
+    ).to.be.reverted;
+    
+    // Verify that the balance was NOT changed (mutant would revert, so balance stays)
+    expect(await bankInstance.balances(user.getAddress())).to.equal(depositAmount);
+  });
+});
+```

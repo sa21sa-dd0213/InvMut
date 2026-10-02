@@ -1,0 +1,84 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant m8680f503 of EtherLotto.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EtherLotto.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EtherLotto:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EtherLotto reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EtherLotto by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EtherLotto"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherLotto mutant test - m8680f503", function () {
+  it("should detect mutant by verifying payout occurs only when random == 0", async function () {
+    const [owner, player] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherLotto");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    const TICKET_AMOUNT = ethers.parseEther("10");
+    const FEE_AMOUNT = ethers.parseEther("1");
+
+    // Play multiple times to cover both random outcomes (0 and 1)
+    // We'll track player balance changes and verify correct behavior
+    let playerBalanceBefore = await ethers.provider.getBalance(player.address);
+    
+    // Play once - record the block data to determine expected random value
+    const tx1 = await instance.connect(player).play({ value: TICKET_AMOUNT });
+    const receipt1 = await tx1.wait();
+    const block1 = await ethers.provider.getBlock(receipt1.blockNumber);
+    const random1 = BigInt(ethers.keccak256(
+      ethers.AbiCoder.defaultAbiCoder().encode(
+        ["uint256", "uint256"],
+        [block1.timestamp, block1.difficulty]
+      )
+    )) % 2n;
+    
+    let playerBalanceAfter1 = await ethers.provider.getBalance(player.address);
+    
+    if (random1 === 0n) {
+      // In original contract: player gets pot - fee = 10 - 1 = 9 ETH
+      // Player sent 10 ETH, so net change should be +9 - 10 = -1 ETH (fee paid)
+      const expectedChange = FEE_AMOUNT * -1n;
+      expect(playerBalanceAfter1 - playerBalanceBefore).to.equal(expectedChange);
+    } else {
+      // In original contract: no payout, player just loses the 10 ETH ticket
+      const expectedChange = TICKET_AMOUNT * -1n;
+      expect(playerBalanceAfter1 - playerBalanceBefore).to.equal(expectedChange);
+    }
+
+    // Play again to cover the other random outcome
+    playerBalanceBefore = playerBalanceAfter1;
+    const tx2 = await instance.connect(player).play({ value: TICKET_AMOUNT });
+    const receipt2 = await tx2.wait();
+    const block2 = await ethers.provider.getBlock(receipt2.blockNumber);
+    const random2 = BigInt(ethers.keccak256(
+      ethers.AbiCoder.defaultAbiCoder().encode(
+        ["uint256", "uint256"],
+        [block2.timestamp, block2.difficulty]
+      )
+    )) % 2n;
+    
+    let playerBalanceAfter2 = await ethers.provider.getBalance(player.address);
+    
+    if (random2 === 0n) {
+      const expectedChange = FEE_AMOUNT * -1n;
+      expect(playerBalanceAfter2 - playerBalanceBefore).to.equal(expectedChange);
+    } else {
+      const expectedChange = TICKET_AMOUNT * -1n;
+      expect(playerBalanceAfter2 - playerBalanceBefore).to.equal(expectedChange);
+    }
+  });
+});
+```

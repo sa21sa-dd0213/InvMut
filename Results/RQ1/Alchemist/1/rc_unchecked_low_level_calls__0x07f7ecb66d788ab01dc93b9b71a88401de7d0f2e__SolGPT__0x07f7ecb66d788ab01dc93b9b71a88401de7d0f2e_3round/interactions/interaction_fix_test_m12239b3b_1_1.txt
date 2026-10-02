@@ -1,0 +1,70 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("PoCGame mutant m12239b3b - kill condition always true", function () {   it("should detect mutant where winningNumber == difficulty / 2 is replaced with true", async function () {     const [owner, player1, player2] = await ethers.getSigners();          // Deploy with constructor arguments: whaleAddress, wagerLimit     const betLimit = ethers.parseEther("1");     const Factory = await ethers.getContractFactory("PoCGame");     const instance = await Factory.deploy(player2.address, betLimit);     await instance.waitForDeployment();          // Owner opens to public     await (await instance.connect(owner).OpenToThePublic()).wait();          // Set difficulty to 10 so winning number must be 5 (difficulty / 2)     await (await instance.connect(owner).AdjustDifficulty(10)).wait();          // Player1 wagers     await (await instance.connect(player1).wager({ value: betLimit })).wait();          // Advance block by mining a new block     await ethers.provider.send("evm_mine", []);          // Get initial contract balance     const initialBalance = await instance.ethBalance();          // Player1 plays - in original contract, this has ~10% chance to win     // In mutant, it ALWAYS wins and pays out half the contract balance     await (await instance.connect(player1).play()).wait();          // Get balance after play     const balanceAfterPlay = await instance.ethBalance();          // In the mutant, the payout always happens, so balance should decrease     // In the original, payout only happens if winningNumber == difficulty/2 (rare)     // If mutant is active, balance decreased by at least half of initial balance     // If original, balance would stay the same or decrease less (since loseWager sends betLimit/2)          // We detect the mutant by checking that the contract lost MORE than what loseWager would send     // loseWager sends betLimit/2 = 0.5 ether     // Payout sends half the contract balance (much more than 0.5 ether)          // In mutant: balance drops significantly (half the contract balance paid out)     // In original: balance drops by exactly betLimit/2 (0.5 ether) if player loses     const balanceDecrease = initialBalance - balanceAfterPlay;     const loseAmount = betLimit / 2n;          // If the decrease is greater than loseAmount, the mutant is active (payout happened)     // This test will PASS on original (decrease <= loseAmount) and FAIL on mutant (decrease > loseAmount)     expect(balanceDecrease).to.be.lte(loseAmount);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract PoCGame { modifier onlyOwner() { require(msg.sender == owner); _; } modifier isOpenToPublic() { require(openToPublic); _; } modifier onlyRealPeople() { require(msg.sender == tx.origin); _; } modifier onlyPlayers() { require(wagers[msg.sender] > 0); _; } event Wager(uint256 amount, address depositer); event Win(uint256 amount, address paidTo); event Lose(uint256 amount, address loser); event Donate(uint256 amount, address paidTo, address donator); event DifficultyChanged(uint256 currentDifficulty); event BetLimitChanged(uint256 currentBetLimit); address private whale; uint256 betLimit; uint difficulty; uint private randomSeed; address owner; mapping(address => uint256) timestamps; mapping(address => uint256) wagers; bool openToPublic; uint256 totalDonated; constructor(address whaleAddress, uint256 wagerLimit) public { openToPublic = false; owner = payable(msg.sender); whale = whaleAddress; totalDonated = 0; betLimit = wagerLimit; } function OpenToThePublic()  public onlyOwner() { openToPublic = true; } function AdjustBetAmounts(uint256 amount)  public onlyOwner() { betLimit = amount; emit BetLimitChanged(betLimit); } function AdjustDifficulty(uint256 amount)  public onlyOwner() { difficulty = amount; emit DifficultyChanged(difficulty); } fallback() external payable {} function wager()  public isOpenToPublic() onlyRealPeople() payable { require(msg.value == betLimit); require(wagers[msg.sender] == 0); timestamps[msg.sender] = block.number; wagers[msg.sender] = msg.value; emit Wager(msg.value, msg.sender); } function play()  public isOpenToPublic() onlyRealPeople() onlyPlayers() { uint256 blockNumber = timestamps[msg.sender]; if (blockNumber < block.number) { timestamps[msg.sender] = 0; wagers[msg.sender] = 0; uint256 winningNumber = uint256(keccak256(abi.encodePacked(blockhash(blockNumber), msg.sender, randomSeed))) % difficulty + 1; if (winningNumber == difficulty / 2) { payout(msg.sender); } else { loseWager(betLimit / 2); } } else { revert(); } } function donate()  public isOpenToPublic() payable { donateToWhale(msg.value); } function payout(address winner) internal { uint256 ethToTransfer = address(this).balance / 2; payable(winner).transfer(ethToTransfer); emit Win(ethToTransfer, winner); } function donateToWhale(uint256 amount) internal { { (bool _s,) = whale.call{value: amount}(""); require(_s); } totalDonated += amount; emit Donate(amount, whale, msg.sender); } function loseWager(uint256 amount) internal { { (bool _s,) = whale.call{value: amount}(""); require(_s); } totalDonated += amount; emit Lose(amount, msg.sender); } function ethBalance() public view returns (uint256) { return address(this).balance; } function currentDifficulty() public view returns (uint256) { return difficulty; } function currentBetLimit() public view returns (uint256) { return betLimit; } function hasPlayerWagered(address player) public view returns (bool) { return wagers[player] > 0; } function winnersPot() public view returns (uint256) { return address(this).balance / 2; } function transferAnyERC20Token(address tokenAddress, address tokenOwner, uint tokens) public onlyOwner() returns (bool success) { return ERC20Interface(tokenAddress).transfer(tokenOwner, tokens); } } abstract contract ERC20Interface { function transfer(address to, uint256 tokens) virtual public returns (bool success); }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("PoCGame mutant m12239b3b - kill condition always true", function () {
+  it("should detect mutant where winningNumber == difficulty / 2 is replaced with true", async function () {
+    const [owner, player1, player2] = await ethers.getSigners();
+    
+    // Deploy with constructor arguments: whaleAddress, wagerLimit
+    const betLimit = ethers.parseEther("1");
+    const Factory = await ethers.getContractFactory("PoCGame");
+    const instance = await Factory.deploy(player2.address, betLimit);
+    await instance.waitForDeployment();
+    
+    // Owner opens to public
+    await (await instance.connect(owner).OpenToThePublic()).wait();
+    
+    // Set difficulty to 10 so winning number must be 5 (difficulty / 2)
+    await (await instance.connect(owner).AdjustDifficulty(10)).wait();
+    
+    // Player1 wagers
+    await (await instance.connect(player1).wager({ value: betLimit })).wait();
+    
+    // Advance block by mining a new block
+    await ethers.provider.send("evm_mine", []);
+    
+    // Get initial contract balance
+    const initialBalance = await instance.ethBalance();
+    
+    // Player1 plays - in original contract, this has ~10% chance to win
+    // In mutant, it ALWAYS wins and pays out half the contract balance
+    await (await instance.connect(player1).play()).wait();
+    
+    // Get balance after play
+    const balanceAfterPlay = await instance.ethBalance();
+    
+    // In the mutant, the payout always happens, so balance should decrease
+    // In the original, payout only happens if winningNumber == difficulty/2 (rare)
+    // If mutant is active, balance decreased by at least half of initial balance
+    // If original, balance would stay the same or decrease less (since loseWager sends betLimit/2)
+    
+    // We detect the mutant by checking that the contract lost MORE than what loseWager would send
+    // loseWager sends betLimit/2 = 0.5 ether
+    // Payout sends half the contract balance (much more than 0.5 ether)
+    
+    // In mutant: balance drops significantly (half the contract balance paid out)
+    // In original: balance drops by exactly betLimit/2 (0.5 ether) if player loses
+    const balanceDecrease = initialBalance - balanceAfterPlay;
+    const loseAmount = betLimit / 2n;
+    
+    // If the decrease is greater than loseAmount, the mutant is active (payout happened)
+    // This test will PASS on original (decrease <= loseAmount) and FAIL on mutant (decrease > loseAmount)
+    expect(balanceDecrease).to.be.lte(loseAmount);
+  });
+});
+```

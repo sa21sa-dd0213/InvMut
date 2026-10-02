@@ -1,0 +1,99 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("CVXStaker mutant m0b9f317d - withdrawAndUnwrap subtraction replaced with addition", function () {   it("should kill the mutant by attempting to withdraw an amount greater than clpBalance but less than staked balance", async function () {     const [owner, operator, addr1] = await ethers.getSigners();      // Deploy mock tokens and booster for testing     const MockERC20 = await ethers.getContractFactory("MockERC20");     const MockBooster = await ethers.getContractFactory("MockBooster");     const MockRewardPool = await ethers.getContractFactory("MockRewardPool");      const clpToken = await MockERC20.deploy("CLP", "CLP", 18);     await clpToken.waitForDeployment();      const rewardToken = await MockERC20.deploy("RWD", "RWD", 18);     await rewardToken.waitForDeployment();      const rewardPool = await MockRewardPool.deploy(await clpToken.getAddress());     await rewardPool.waitForDeployment();      const booster = await MockBooster.deploy();     await booster.waitForDeployment();      // Setup pool info in booster     const poolInfo = {       lptoken: await clpToken.getAddress(),       token: await clpToken.getAddress(),       gauge: ethers.ZeroAddress,       crvRewards: ethers.ZeroAddress,       stash: ethers.ZeroAddress,       shutdown: false     };     await booster.setPoolInfo(0, poolInfo);      // Deploy CVXStaker with constructor arguments     const rewardTokens = [await rewardToken.getAddress()];     const CVXStaker = await ethers.getContractFactory("CVXStaker");     const staker = await CVXStaker.deploy(       await operator.getAddress(),       await clpToken.getAddress(),       await booster.getAddress(),       rewardTokens     );     await staker.waitForDeployment();      // Set CVX pool info     await staker.connect(owner).setCvxPoolInfo(       0,       await clpToken.getAddress(),       await rewardPool.getAddress()     );      // Fund operator with CLP tokens and approve staker     const depositAmount = ethers.parseEther("100");     await clpToken.mint(await operator.getAddress(), depositAmount);     await clpToken.connect(operator).approve(await staker.getAddress(), depositAmount);      // Deposit and stake via operator     await staker.connect(operator).depositAndStake(depositAmount);      // Simulate some tokens being sent to staker contract (clpBalance > 0)     const clpBalanceAmount = ethers.parseEther("10");     await clpToken.mint(await staker.getAddress(), clpBalanceAmount);      // Now attempt to withdraw an amount > clpBalance but < total staked     // clpBalance = 10, staked = 100     // amount = 50 (greater than clpBalance, less than staked)     // Original: toUnstake = 50 - 10 = 40 (should succeed)     // Mutant: toUnstake = 50 + 10 = 60 (will try to unstake 60 but only 100 staked - depends on mock)     // Mock should allow withdrawAndUnwrap up to staked amount     const withdrawAmount = ethers.parseEther("50");          // Set operator role for test     await staker.connect(owner).setOperator(await operator.getAddress());      // The test: mutated version will try to unstake amount + clpBalance = 60     // This should revert if mock enforces staked balance check     await expect(       staker.connect(operator).withdrawAndUnwrap(withdrawAmount, false, await addr1.getAddress())     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; library Address { function isContract(address account) internal view returns (bool) { return account.code.length > 0; } function sendValue(address payable recipient, uint256 amount) internal { require(address(this).balance >= amount, "Address: insufficient balance"); (bool success, ) = recipient.call{value: amount}(""); require(success, "Address: unable to send value, recipient may have reverted"); } function functionCall(address target, bytes memory data) internal returns (bytes memory) { return functionCallWithValue(target, data, 0, "Address: low-level call failed"); } function functionCall( address target, bytes memory data, string memory errorMessage ) internal returns (bytes memory) { return functionCallWithValue(target, data, 0, errorMessage); } function functionCallWithValue(address target, bytes memory data, uint256 value) internal returns (bytes memory) { return functionCallWithValue(target, data, value, "Address: low-level call with value failed"); } function functionCallWithValue( address target, bytes memory data, uint256 value, string memory errorMessage ) internal returns (bytes memory) { require(address(this).balance >= value, "Address: insufficient balance for call"); (bool success, bytes memory returndata) = target.call{value: value}(data); return verifyCallResultFromTarget(target, success, returndata, errorMessage); } function functionStaticCall(address target, bytes memory data) internal view returns (bytes memory) { return functionStaticCall(target, data, "Address: low-level static call failed"); } function functionStaticCall( address target, bytes memory data, string memory errorMessage ) internal view returns (bytes memory) { (bool success, bytes memory returndata) = target.staticcall(data); return verifyCallResultFromTarget(target, success, returndata, errorMessage); } function functionDelegateCall(address target, bytes memory data) internal returns (bytes memory) { return functionDelegateCall(target, data, "Address: low-level delegate call failed"); } function functionDelegateCall( address target, bytes memory data, string memory errorMessage ) internal returns (bytes memory) { (bool success, bytes memory returndata) = target.delegatecall(data); return verifyCallResultFromTarget(target, success, returndata, errorMessage); } function verifyCallResultFromTarget( address target, bool success, bytes memory returndata, string memory errorMessage ) internal view returns (bytes memory) { if (success) { if (returndata.length == 0) { require(isContract(target), "Address: call to non-contract"); } return returndata; } else { _revert(returndata, errorMessage); } } function verifyCallResult( bool success, bytes memory returndata, string memory errorMessage ) internal pure returns (bytes memory) { if (success) { return returndata; } else { _revert(returndata, errorMessage); } } function _revert(bytes memory returndata, string memory errorMessage) private pure { if (returndata.length > 0) { assembly { let returndata_size := mload(returndata) revert(add(32, returndata), returndata_size) } } else { revert(errorMessage); } } } abstract contract Context { function _msgSender() internal view virtual returns (address) { return msg.sender; } function _msgData() internal view virtual returns (bytes calldata) { return msg.data; } } interface IBaseRewardPool { function withdrawAndUnwrap( uint256 amount, bool claim ) external returns (bool); function withdrawAll(bool claim) external; function withdrawAllAndUnwrap(bool claim) external; function withdraw(uint256 amount, bool claim) external; function stakeFor(address _for, uint256 _amount) external returns (bool); function stakeAll() external returns (bool); function stake(uint256 _amount) external returns (bool); function earned(address account) external view returns (uint256); function getReward( address _account, bool _claimExtras ) external returns (bool); function getReward() external returns (bool); function balanceOf(address account) external view returns (uint256); function rewardToken() external view returns (address); } interface ICVXBooster { struct PoolInfo { address lptoken; address token; address gauge; address crvRewards; address stash; bool shutdown; } function poolInfo(uint256 _pid) external view returns (PoolInfo memory); function depositAll(uint256 _pid, bool _stake) external returns (bool); function withdrawAll(uint256 _pid) external returns (bool); function deposit( uint256 _pid, uint256 _amount, bool _stake ) external returns (bool); function withdraw(uint256 _pid, uint256 _amount) external returns (bool); } interface IERC20 { event Transfer(address indexed from, address indexed to, uint256 value); event Approval(address indexed owner, address indexed spender, uint256 value); function totalSupply() external view returns (uint256); function balanceOf(address account) external view returns (uint256); function transfer(address to, uint256 amount) external returns (bool); function allowance(address owner, address spender) external view returns (uint256); function approve(address spender, uint256 amount) external returns (bool); function transferFrom(address from, address to, uint256 amount) external returns (bool); } interface IERC20Permit { function permit( address owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s ) external; function nonces(address owner) external view returns (uint256); function DOMAIN_SEPARATOR() external view returns (bytes32); } abstract contract Ownable is Context { address private _owner; event OwnershipTransferred(address indexed previousOwner, address indexed newOwner); constructor() { _transferOwnership(_msgSender()); } modifier onlyOwner() { _checkOwner(); _; } function owner() public view virtual returns (address) { return _owner; } function _checkOwner() internal view virtual { require(owner() == _msgSender(), "Ownable: caller is not the owner"); } function renounceOwnership() public virtual onlyOwner { _transferOwnership(address(0)); } function transferOwnership(address newOwner) public virtual onlyOwner { require(newOwner != address(0), "Ownable: new owner is the zero address"); _transferOwnership(newOwner); } function _transferOwnership(address newOwner) internal virtual { address oldOwner = _owner; _owner = newOwner; emit OwnershipTransferred(oldOwner, newOwner); } } library SafeERC20 { using Address for address; function safeTransfer(IERC20 token, address to, uint256 value) internal { _callOptionalReturn(token, abi.encodeWithSelector(token.transfer.selector, to, value)); } function safeTransferFrom(IERC20 token, address from, address to, uint256 value) internal { _callOptionalReturn(token, abi.encodeWithSelector(token.transferFrom.selector, from, to, value)); } function safeApprove(IERC20 token, address spender, uint256 value) internal { require( (value == 0) || (token.allowance(address(this), spender) == 0), "SafeERC20: approve from non-zero to non-zero allowance" ); _callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, value)); } function safeIncreaseAllowance(IERC20 token, address spender, uint256 value) internal { uint256 oldAllowance = token.allowance(address(this), spender); _callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, oldAllowance + value)); } function safeDecreaseAllowance(IERC20 token, address spender, uint256 value) internal { unchecked { uint256 oldAllowance = token.allowance(address(this), spender); require(oldAllowance >= value, "SafeERC20: decreased allowance below zero"); _callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, oldAllowance - value)); } } function forceApprove(IERC20 token, address spender, uint256 value) internal { bytes memory approvalCall = abi.encodeWithSelector(token.approve.selector, spender, value); if (!_callOptionalReturnBool(token, approvalCall)) { _callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, 0)); _callOptionalReturn(token, approvalCall); } } function safePermit( IERC20Permit token, address owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s ) internal { uint256 nonceBefore = token.nonces(owner); token.permit(owner, spender, value, deadline, v, r, s); uint256 nonceAfter = token.nonces(owner); require(nonceAfter == nonceBefore + 1, "SafeERC20: permit did not succeed"); } function _callOptionalReturn(IERC20 token, bytes memory data) private { bytes memory returndata = address(token).functionCall(data, "SafeERC20: low-level call failed"); require(returndata.length == 0 || abi.decode(returndata, (bool)), "SafeERC20: ERC20 operation did not succeed"); } function _callOptionalReturnBool(IERC20 token, bytes memory data) private returns (bool) { (bool success, bytes memory returndata) = address(token).call(data); return success && (returndata.length == 0 || abi.decode(returndata, (bool))) && Address.isContract(address(token)); } } contract CVXStaker is Ownable { using SafeERC20 for IERC20; address public operator; IERC20 public immutable clpToken; CvxPoolInfo public cvxPoolInfo; ICVXBooster public immutable booster; address public rewardsRecipient; address[] public rewardTokens; struct CvxPoolInfo { address token; address rewards; uint32 pId; } struct Position { uint256 staked; uint256 earned; } error NotOperator(); error NotOperatorOrOwner(); event SetCvxPoolInfo(uint32 indexed pId, address token, address rewards); event SetOperator(address operator); event RecoveredToken(address token, address to, uint256 amount); event SetRewardsRecipient(address recipient); constructor( address _operator, IERC20 _clpToken, ICVXBooster _booster, address[] memory _rewardTokens ) { operator = _operator; clpToken = _clpToken; booster = _booster; rewardTokens = _rewardTokens; } function setCvxPoolInfo( uint32 _pId, address _token, address _rewards ) external onlyOwner { cvxPoolInfo.pId = _pId; cvxPoolInfo.token = _token; cvxPoolInfo.rewards = _rewards; emit SetCvxPoolInfo(_pId, _token, _rewards); } function setOperator(address _operator) external onlyOwner { operator = _operator; emit SetOperator(_operator); } function setRewardsRecipient(address _recipeint) external onlyOwner { rewardsRecipient = _recipeint; emit SetRewardsRecipient(_recipeint); } function recoverToken( address token, address to, uint256 amount ) external onlyOwner { IERC20(token).safeTransfer(to, amount); emit RecoveredToken(token, to, amount); } function isCvxShutdown() public view returns (bool) { return booster.poolInfo(cvxPoolInfo.pId).shutdown; } function depositAndStake(uint256 amount) external onlyOperator { if (!isCvxShutdown()) { clpToken.safeIncreaseAllowance(address(booster), amount); booster.deposit(cvxPoolInfo.pId, amount, true); } } function withdrawAndUnwrap( uint256 amount, bool claim, address to ) external onlyOperatorOrOwner { uint256 clpBalance = clpToken.balanceOf(address(this)); uint256 toUnstake = (amount < clpBalance) ? 0 : amount - clpBalance; if (toUnstake > 0) { IBaseRewardPool(cvxPoolInfo.rewards).withdrawAndUnwrap( toUnstake, claim ); } if (to != address(0)) { clpToken.safeTransfer(to, amount); } } function withdrawAllAndUnwrap( bool claim, bool sendToOperator ) external onlyOwner { IBaseRewardPool(cvxPoolInfo.rewards).withdrawAllAndUnwrap(claim); if (sendToOperator) { uint256 totalBalance = clpToken.balanceOf(address(this)); clpToken.safeTransfer(operator, totalBalance); } } function getReward(bool claimExtras) external { IBaseRewardPool(cvxPoolInfo.rewards).getReward( address(this), claimExtras ); if (rewardsRecipient != address(0)) { for (uint i = 0; i < rewardTokens.length; i++) { uint256 balance = IERC20(rewardTokens[i]).balanceOf( address(this) ); if (balance != 0) { IERC20(rewardTokens[i]).safeTransfer(rewardsRecipient, balance); } unchecked {++i;} } } } function stakedBalance() public view returns (uint256 balance) { balance = IBaseRewardPool(cvxPoolInfo.rewards).balanceOf(address(this)); } function earned() public view returns (uint256 earnedRewards) { earnedRewards = IBaseRewardPool(cvxPoolInfo.rewards).earned( address(this) ); } function showPositions() external view returns (Position memory position) { position.staked = stakedBalance(); position.earned = earned(); } modifier onlyOperator() { if (msg.sender != operator) { revert NotOperator(); } _; } modifier onlyOperatorOrOwner() { if (msg.sender != operator && msg.sender != owner()) { revert NotOperatorOrOwner(); } _; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("CVXStaker mutant m0b9f317d - withdrawAndUnwrap subtraction replaced with addition", function () {
+  it("should kill the mutant by attempting to withdraw an amount greater than clpBalance but less than staked balance", async function () {
+    const [owner, operator, addr1] = await ethers.getSigners();
+
+    // Deploy mock tokens and booster for testing
+    const MockERC20 = await ethers.getContractFactory("MockERC20");
+    const MockBooster = await ethers.getContractFactory("MockBooster");
+    const MockRewardPool = await ethers.getContractFactory("MockRewardPool");
+
+    const clpToken = await MockERC20.deploy("CLP", "CLP", 18);
+    await clpToken.waitForDeployment();
+
+    const rewardToken = await MockERC20.deploy("RWD", "RWD", 18);
+    await rewardToken.waitForDeployment();
+
+    const rewardPool = await MockRewardPool.deploy(await clpToken.getAddress());
+    await rewardPool.waitForDeployment();
+
+    const booster = await MockBooster.deploy();
+    await booster.waitForDeployment();
+
+    // Setup pool info in booster
+    const poolInfo = {
+      lptoken: await clpToken.getAddress(),
+      token: await clpToken.getAddress(),
+      gauge: ethers.ZeroAddress,
+      crvRewards: ethers.ZeroAddress,
+      stash: ethers.ZeroAddress,
+      shutdown: false
+    };
+    await booster.setPoolInfo(0, poolInfo);
+
+    // Deploy CVXStaker with constructor arguments
+    const rewardTokens = [await rewardToken.getAddress()];
+    const CVXStaker = await ethers.getContractFactory("CVXStaker");
+    const staker = await CVXStaker.deploy(
+      await operator.getAddress(),
+      await clpToken.getAddress(),
+      await booster.getAddress(),
+      rewardTokens
+    );
+    await staker.waitForDeployment();
+
+    // Set CVX pool info
+    await staker.connect(owner).setCvxPoolInfo(
+      0,
+      await clpToken.getAddress(),
+      await rewardPool.getAddress()
+    );
+
+    // Fund operator with CLP tokens and approve staker
+    const depositAmount = ethers.parseEther("100");
+    await clpToken.mint(await operator.getAddress(), depositAmount);
+    await clpToken.connect(operator).approve(await staker.getAddress(), depositAmount);
+
+    // Deposit and stake via operator
+    await staker.connect(operator).depositAndStake(depositAmount);
+
+    // Simulate some tokens being sent to staker contract (clpBalance > 0)
+    const clpBalanceAmount = ethers.parseEther("10");
+    await clpToken.mint(await staker.getAddress(), clpBalanceAmount);
+
+    // Now attempt to withdraw an amount > clpBalance but < total staked
+    // clpBalance = 10, staked = 100
+    // amount = 50 (greater than clpBalance, less than staked)
+    // Original: toUnstake = 50 - 10 = 40 (should succeed)
+    // Mutant: toUnstake = 50 + 10 = 60 (will try to unstake 60 but only 100 staked - depends on mock)
+    // Mock should allow withdrawAndUnwrap up to staked amount
+    const withdrawAmount = ethers.parseEther("50");
+        
+    // Set operator role for test
+    await staker.connect(owner).setOperator(await operator.getAddress());
+
+    // The test: mutated version will try to unstake amount + clpBalance = 60
+    // This should revert if mock enforces staked balance check
+    await expect(
+      staker.connect(operator).withdrawAndUnwrap(withdrawAmount, false, await addr1.getAddress())
+    ).to.be.reverted;
+  });
+});
+```

@@ -1,0 +1,12 @@
+{
+ "difference_id": "L0014",
+ "property_summary": "After calling DrugDealer() from address A, then collectDrugs(B) from A (where B is also the referral), the reference contract sets Kilos[A] and claimedDrugs[B] using the old claimedDrugs[A] before clearing it, while the mutant sets claimedDrugs[B] after Kilos[A] uses the cleared claimedDrugs[A], causing claimedDrugs[B] to differ; here we use hard-coded values and warp to trigger a specific nonzero drugsUsed=86400 so newKilo=1, and the claimedDrugs[B] difference is observable via c.claimedDrugs(B).",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "concrete",
+ "change_summary": "Swap the order of the two assignment statements (one for Kilos, one for claimedDrugs of ref) by moving the claimedDrugs update before the Kilos update.",
+ "mutated_unit_code": "    function collectDrugs(address ref) public{\n        require(initialized);\n        if(referrals[msg.sender] == address(0) && referrals[msg.sender]!=msg.sender){\n            referrals[msg.sender]=ref;\n        }\n        uint256 drugsUsed=getMyDrugs();\n        uint256 newKilo=SafeMath.div(drugsUsed,DRUGS_TO_PRODUCE_1KILO);\n        claimedDrugs[referrals[msg.sender]]=SafeMath.add(claimedDrugs[referrals[msg.sender]],SafeMath.div(drugsUsed,5));\n        Kilos[msg.sender]=SafeMath.add(Kilos[msg.sender],newKilo);\n        claimedDrugs[msg.sender]=0;\n        lastCollect[msg.sender]=block.timestamp;\n\n        marketDrugs=SafeMath.add(marketDrugs,SafeMath.div(drugsUsed,10));\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {EtherCartel} from \"../src/EtherCartel.sol\";\n\ncontract InvMutTest is Test {\n    EtherCartel c;\n    function setUp() public { c = new EtherCartel(); }\n    function testRegression_property() public {\n        vm.deal(address(this), 1 ether);\n\n        c.seedMarket{value: 1 ether}(1);\n\n        address A = address(0x1);\n        vm.deal(A, 1 ether);\n        vm.prank(A);\n        c.getFreeKilo();\n\n        vm.warp(block.timestamp + 86400);\n\n        vm.prank(A);\n        c.collectDrugs(A);\n\n        uint256 drugsUsed = 86400 * 300;\n        uint256 expectedRef = drugsUsed / 5;\n        assertTrue(c.claimedDrugs(A) == expectedRef, \"Reference should have claimedDrugs[A] = drugsUsed/5, mutant clears it\");\n    }\n}\n"
+}

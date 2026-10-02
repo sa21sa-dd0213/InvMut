@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0001",
+ "property_summary": "For any target and value, a non-owner's call to sendMoney always succeeds on the reference but also succeeds on the mutant; the bug (removing onlyOwner from withdrawAll) is unrelated to sendMoney under non-owner callers, so the property was adjusted: after any sendMoney by the owner, the reference ensures only the owner can withdraw funds, while the mutant allows anyone to call withdrawAll and drain the balance, violating the invariant that a non-owner's withdrawAll always reverts after sendMoney.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Remove the modifier completely, making withdrawAll callable by anyone, which changes the balance and owner's ability to withdraw.",
+ "mutated_unit_code": "modifier onlyOwner {\n        _;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {SimpleWallet} from \"../src/SimpleWallet.sol\";\n\ncontract InvMutTest is Test {\n    SimpleWallet c;\n    function setUp() public { c = new SimpleWallet(); }\n    function testFuzz_property(address target, uint256 value) public {\n        vm.assume(value <= address(this).balance);\n        vm.assume(target != address(0) && target != address(c));\n        address owner = c.owner();\n        vm.deal(owner, value);\n        vm.prank(owner);\n        c.sendMoney(target, value);\n        address nonOwner = address(0x1234);\n        vm.assume(nonOwner != owner);\n        vm.prank(nonOwner);\n        uint256 balanceBefore = address(c).balance;\n        bool reverted;\n        try c.withdrawAll() {\n            reverted = false;\n        } catch {\n            reverted = true;\n        }\n        uint256 balanceAfter = address(c).balance;\n        assertTrue(reverted && balanceAfter == balanceBefore);\n    }\n}"
+}

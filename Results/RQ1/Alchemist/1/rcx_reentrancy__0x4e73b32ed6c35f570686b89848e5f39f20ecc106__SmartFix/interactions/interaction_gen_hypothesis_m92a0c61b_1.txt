@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract PRIVATE_ETH_CELL:
+        Contract Code: pragma solidity ^0.8.0; contract PRIVATE_ETH_CELL { mapping (address=>uint256) public balances; uint public MinSum; LogFile Log; bool intitalized; function SetMinSum(uint _val) public { require(!intitalized); MinSum = _val; } function SetLogFile(address _log) public { require(!intitalized); Log = LogFile(_log); } function Initialized() public { intitalized = true; } function Deposit() public payable { require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); balances[msg.sender]+= msg.value; Log.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { if(balances[msg.sender]>=MinSum && balances[msg.sender]>=_am) { balances[msg.sender] = (balances[msg.sender] - _am); (bool _veri_ok,) = msg.sender.call{value: _am}(""); if(_veri_ok) { Log.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } receive() external payable { Deposit(); } } contract LogFile { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val,string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+
+    Consider the following mutant of PRIVATE_ETH_CELL:
+        Mutant m92a0c61b of function Deposit replaces >= with >
+        Mutant Diff: ---|         require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); +++|         require(((balances[msg.sender] + msg.value)  > balances[msg.sender]));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The original contract uses `>=` in the require statement to allow deposits of zero value (e.g., when `msg.value` is 0, the condition `balances[msg.sender] + 0 >= balances[msg.sender]` holds true). The mutant changes this to `>`, which would reject a deposit of zero value because `balances[msg.sender] + 0 > balances[msg.sender]` is false.
+
+**Hypothesis:** A test case that calls `Deposit()` or sends a transaction with a value of 0 (e.g., via the `receive()` function) and expects the transaction to succeed should kill the mutant, because the mutant will revert on zero-value deposits while the original contract allows them.

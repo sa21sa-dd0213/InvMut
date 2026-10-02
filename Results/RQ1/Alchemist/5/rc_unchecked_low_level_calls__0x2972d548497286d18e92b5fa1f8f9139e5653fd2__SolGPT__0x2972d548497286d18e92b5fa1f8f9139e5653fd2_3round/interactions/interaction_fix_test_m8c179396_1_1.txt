@@ -1,0 +1,48 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("demo mutant m8c179396 - loop condition changed from < to >", function () {   it("should revert when _tos array has elements, because mutant loop never executes", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("demo");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Deploy a simple ERC20 token that has transferFrom     const tokenFactory = await ethers.getContractFactory("ERC20Mock");     const token = await tokenFactory.deploy("Mock", "MCK", ethers.parseEther("1000"));     await token.waitForDeployment();      // Approve demo contract to spend tokens from owner     await token.approve(await instance.getAddress(), ethers.parseEther("100"));      // Prepare test data: send 50 tokens to addr1     const recipients = [addr1.address];     const amounts = [ethers.parseEther("50")];      // In the original, this would succeed and transfer tokens.     // In the mutant, the loop never runs (i starts at 0, condition i>length is false),     // so no transferFrom call happens - the function returns true without reverting.     // We expect no tokens transferred, so addr1 balance should be 0.     await instance.transfer(owner.address, await token.getAddress(), recipients, amounts);      const balance = await token.balanceOf(addr1.address);     expect(balance).to.equal(0);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract demo{ function transfer(address from, address caddress, address[] memory _tos, uint[] memory v) public returns (bool){ require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i=0; i<_tos.length; i++){ { (bool _s,) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v[i])); require(_s); } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("demo mutant m8c179396 - loop condition changed from < to >", function () {
+  it("should revert when _tos array has elements, because mutant loop never executes", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("demo");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy a simple ERC20 token that has transferFrom
+    const tokenFactory = await ethers.getContractFactory("ERC20Mock");
+    const token = await tokenFactory.deploy("Mock", "MCK", ethers.parseEther("1000"));
+    await token.waitForDeployment();
+
+    // Approve demo contract to spend tokens from owner
+    await token.approve(await instance.getAddress(), ethers.parseEther("100"));
+
+    // Prepare test data: send 50 tokens to addr1
+    const recipients = [addr1.address];
+    const amounts = [ethers.parseEther("50")];
+
+    // In the original, this would succeed and transfer tokens.
+    // In the mutant, the loop never runs (i starts at 0, condition i>length is false),
+    // so no transferFrom call happens - the function returns true without reverting.
+    // We expect no tokens transferred, so addr1 balance should be 0.
+    await instance.transfer(owner.address, await token.getAddress(), recipients, amounts);
+
+    const balance = await token.balanceOf(addr1.address);
+    expect(balance).to.equal(0);
+  });
+});
+```

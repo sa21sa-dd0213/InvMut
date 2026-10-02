@@ -1,0 +1,95 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("FlashGovernanceArbiter - kill mutant m1916efdf", function () {
+  it("should revert enforceTolerance when v1 > v2 and v2 != 0 and difference exceeds tolerance", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy a mock DAO that implements the required interface
+    const MockDAO = await ethers.getContractFactory("MockLimboDAO");
+    const mockDAO = await MockDAO.deploy();
+    await mockDAO.waitForDeployment();
+    
+    // Deploy a mock configurable contract
+    const MockConfigurable = await ethers.getContractFactory("MockConfigurable");
+    const mockConfigurable = await MockConfigurable.deploy();
+    await mockConfigurable.waitForDeployment();
+    
+    // Deploy FlashGovernanceArbiter with mock DAO address
+    const Factory = await ethers.getContractFactory("FlashGovernanceArbiter");
+    const instance = await Factory.deploy(await mockDAO.getAddress());
+    await instance.waitForDeployment();
+    
+    // Configure the DAO and make addr1 a successful proposal maker
+    await mockDAO.setSuccessfulProposal(addr1.address, true);
+    
+    // Configure security parameters with changeTolerance = 50 (50%)
+    await instance.connect(addr1).configureSecurityParameters(
+      10, // maxGovernanceChangePerEpoch
+      1000, // epochSize
+      50 // changeTolerance = 50%
+    );
+    
+    // Enable enforcement for the configurable contract
+    await instance.connect(addr1).setEnforcement(true);
+    
+    // Mark the configurable contract as configured
+    await mockConfigurable.setConfigured(true);
+    
+    // Test case: v1 = 200, v2 = 100, changeTolerance = 50
+    // (v1 - v2) * 100 = 10000, changeTolerance * v1 = 50 * 200 = 10000
+    // This should revert because 10000 is NOT less than 10000 (equal)
+    await expect(
+      instance.connect(addr1).enforceTolerance(200, 100)
+    ).to.be.revertedWith("FE1");
+    
+    // Additional test: v1 = 300, v2 = 100 should also revert
+    // (300 - 100) * 100 = 20000, changeTolerance * 300 = 15000
+    // 20000 > 15000, so should revert
+    await expect(
+      instance.connect(addr1).enforceTolerance(300, 100)
+    ).to.be.revertedWith("FE1");
+    
+    // Test that valid tolerance passes: v1 = 110, v2 = 100
+    // (110 - 100) * 100 = 1000, changeTolerance * 110 = 5500
+    // 1000 < 5500, so should pass
+    await expect(
+      instance.connect(addr1).enforceTolerance(110, 100)
+    ).to.not.be.reverted;
+  });
+});
+
+// Helper contract to mock LimboDAOLike interface
+// This should be deployed separately or included in the test setup
+contract MockLimboDAO {
+    mapping(address => bool) public successfulProposals;
+    
+    function setSuccessfulProposal(address proposer, bool success) external {
+        successfulProposals[proposer] = success;
+    }
+    
+    function successfulProposal(address proposer) external view returns (bool) {
+        return successfulProposals[proposer];
+    }
+    
+    function getFlashGoverner() external view returns (address) {
+        return address(0);
+    }
+    
+    function proposalConfig() external view returns (uint256, uint256, address) {
+        return (0, 0, address(0));
+    }
+}
+
+// Helper contract to mock Configurable interface
+contract MockConfigurable {
+    bool private _configured;
+    
+    function setConfigured(bool configured) external {
+        _configured = configured;
+    }
+    
+    function configured() external view returns (bool) {
+        return _configured;
+    }
+}

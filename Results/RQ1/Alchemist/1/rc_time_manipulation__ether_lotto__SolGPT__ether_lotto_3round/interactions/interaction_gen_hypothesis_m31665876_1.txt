@@ -1,0 +1,28 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract EtherLotto:
+        Contract Code: pragma solidity ^0.8.0; contract EtherLotto { uint constant TICKET_AMOUNT = 10; uint constant FEE_AMOUNT = 1; address public bank; uint public pot; constructor() { bank = payable(msg.sender); } function play()  public payable { require(msg.value == TICKET_AMOUNT); pot += msg.value; uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; if (random == 0) { payable(bank).transfer(FEE_AMOUNT); payable(msg.sender).transfer(pot - FEE_AMOUNT); pot = 0; } } }
+
+    Consider the following mutant of EtherLotto:
+        Mutant m31665876 of function play replaces keccak256 with sha256
+        Mutant Diff: ---|         uint random = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty))) % 2; +++|         uint random = uint(sha256(abi.encodePacked(block.timestamp, block.difficulty))) % 2;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let’s think step-by-step.  
+
+The original contract uses `keccak256` to generate a pseudo-random number. The mutant replaces it with `sha256`. While both are hash functions, `sha256` returns a `bytes32` value, whereas in Solidity `keccak256` is the native hashing function and its behavior is well-defined within the EVM.  
+
+Crucially, the `uint` cast of `sha256` output may produce a different result than `uint(keccak256(...))` for the same inputs, because `sha256` is a precompile that returns exactly 32 bytes, but the value interpretation could differ if the return is not handled identically. In practice, this changes the outcome of the `% 2` randomness, making the contract behave differently (e.g., always choosing the same branch or distributing rewards incorrectly).  
+
+A test that relies on the specific pseudo-random outcome of `keccak256` for given `block.timestamp` and `block.difficulty` values would pass on the original but fail on the mutant because the mutant would produce a different random result, causing an unexpected state transition (e.g., not resetting `pot` or transferring the wrong amount).  
+
+**Hypothesis:**  
+A test case that fixes `block.timestamp` and `block.difficulty` to known values, plays the lottery, and then asserts that the `pot` is reset to zero and the correct amounts are transferred to the bank and the player should kill the mutant, because the mutant’s `sha256` will produce a different random number, causing the `if (random == 0)` branch to behave differently than expected.

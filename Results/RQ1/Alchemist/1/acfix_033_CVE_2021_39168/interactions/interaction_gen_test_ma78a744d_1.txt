@@ -1,0 +1,81 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant ma78a744d of TimelockController.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test TimelockController.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for TimelockController:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("TimelockController reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy TimelockController by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("TimelockController"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("TimelockController mutant ma78a744d - _beforeCall && vs ||", function () {
+  it("should execute operation with non-zero predecessor after predecessor is done, but mutant fails", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    const minDelay = 10; // 10 seconds delay
+    const proposers = [owner.address];
+    const executors = [owner.address];
+    
+    const Factory = await ethers.getContractFactory("TimelockController");
+    const instance = await Factory.deploy(minDelay, proposers, executors);
+    await instance.waitForDeployment();
+    
+    // Get the contract address
+    const timelockAddress = await instance.getAddress();
+    
+    // Encode a simple call - call updateDelay on itself with new delay
+    const newDelay = 20;
+    const callData = instance.interface.encodeFunctionData("updateDelay", [newDelay]);
+    
+    // Create first operation (no predecessor)
+    const salt1 = ethers.randomBytes(32);
+    const hash1 = await instance.hashOperation(timelockAddress, 0, callData, ethers.ZeroHash, salt1);
+    
+    // Schedule first operation
+    await instance.connect(owner).schedule(timelockAddress, 0, callData, ethers.ZeroHash, salt1, minDelay);
+    
+    // Wait for delay to pass
+    await ethers.provider.send("evm_increaseTime", [minDelay + 1]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // Execute first operation (this will complete and set timestamp to DONE)
+    await instance.connect(owner).execute(timelockAddress, 0, callData, ethers.ZeroHash, salt1, { value: 0 });
+    
+    // Verify first operation is done
+    expect(await instance.isOperationDone(hash1)).to.be.true;
+    
+    // Create second operation that depends on first operation as predecessor
+    const salt2 = ethers.randomBytes(32);
+    const callData2 = instance.interface.encodeFunctionData("updateDelay", [30]);
+    const hash2 = await instance.hashOperation(timelockAddress, 0, callData2, hash1, salt2);
+    
+    // Schedule second operation with hash1 as predecessor
+    await instance.connect(owner).schedule(timelockAddress, 0, callData2, hash1, salt2, minDelay);
+    
+    // Wait for delay to pass
+    await ethers.provider.send("evm_increaseTime", [minDelay + 1]);
+    await ethers.provider.send("evm_mine", []);
+    
+    // Execute second operation - this should succeed in original but fail in mutant
+    // because mutant requires (predecessor == bytes32(0) && isOperationDone(predecessor))
+    // which is impossible when predecessor is non-zero
+    await instance.connect(owner).execute(timelockAddress, 0, callData2, hash1, salt2, { value: 0 });
+    
+    // If we reach here, the operation was executed successfully
+    // In the mutant, this would revert with "TimelockController: missing dependency"
+    expect(await instance.getMinDelay()).to.equal(30);
+  });
+});
+```

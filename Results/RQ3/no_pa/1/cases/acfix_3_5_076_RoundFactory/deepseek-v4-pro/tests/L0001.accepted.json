@@ -1,0 +1,11 @@
+{
+ "difference_id": "L0001",
+ "property_summary": "After deployment and initialization, calling create() with msg.sender not being a program operator should revert due to onlyProgramOperator modifier checking that programOperators[msg.sender] is true, but the buggy owner() always returns address(0) which is unrelated to this path; however, since create() calls onlyProgramOperator modifier which checks the mapping, the test actually triggers a difference in another call sequence: we set the owner via initialize, then updateRoundImplementation and updateAlloSettings, then call create() reverts for non-operator. The divergence is that if we make the owner call renounceOwnership() (which onlyOwner calls _checkOwner that calls owner()), the reference returns the original owner while the bug returns address(0), causing _checkOwner to revert in the buggy version but succeed in the reference. So concrete scenario: after initialize, owner is the deployer; renounceOwnership should succeed in reference but fails in bug because _transferOwnership(address(0)) is called but onlyOwner modifier checks owner() which returns address(0) in bug, causing renounceOwnership to revert instead of succeeding.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "change_summary": "Replace the body with 'return address(0);' so that owner() always returns zero address",
+ "mutated_unit_code": "    function owner() public view virtual returns (address) {\n        return address(0);\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.17;\nimport {Test} from \"forge-std/Test.sol\";\nimport {RoundFactory} from \"../src/RoundFactory.sol\";\n\ncontract InvMutTest is Test {\n    RoundFactory c;\n    function setUp() public { c = new RoundFactory(); }\n    function testRegression_property() public {\n        c.initialize();\n        bool ok = true;\n        try c.renounceOwnership() { ok = true; }\n        catch { ok = false; }\n        assertTrue(ok);\n    }\n}\n"
+}

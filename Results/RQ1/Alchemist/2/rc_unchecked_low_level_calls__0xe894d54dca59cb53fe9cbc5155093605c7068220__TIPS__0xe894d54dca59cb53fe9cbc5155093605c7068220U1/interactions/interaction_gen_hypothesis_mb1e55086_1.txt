@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract airDrop:
+        Contract Code: pragma solidity ^0.8.0; contract airDrop { function transfer(address from, address caddress, address[] memory _tos, uint v, uint _decimals)  public returns (bool) { require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); uint _value = v * 10 ** _decimals; for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], _value)); _d; if (! _s) { revert();} } } return true; } }
+
+    Consider the following mutant of airDrop:
+        Mutant mb1e55086 of function transfer replaces ** with *
+        Mutant Diff: ---| 	uint _value = v * 10 ** _decimals; +++| 	uint _value = v * 10 * _decimals;
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant changes the exponentiation operator `**` to multiplication `*`, so the calculation of `_value` differs: originally `_value = v * 10 ** _decimals`, but in the mutant it becomes `_value = v * 10 * _decimals`.  
+
+**Hypothesis**: A test case that sets `_decimals` to a value greater than 1 (e.g., 2) and a non-zero `v` (e.g., 1) should pass on the original (where `_value = 1 * 10^2 = 100`) but fail on the mutant (where `_value = 1 * 10 * 2 = 20`), because the incorrect `_value` will cause the subsequent `transferFrom` call to transfer a different amount, potentially reverting or leading to an unexpected state change.

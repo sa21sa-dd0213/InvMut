@@ -1,0 +1,86 @@
+{
+ "case_id": "rcx_unchecked_low_level_calls__0x610495793564aed0f9c7fc48dc4c7c9151d34fd6__sGuardPlus",
+ "config_label": "gpt-5-mini",
+ "target_contract": "SimpleWallet",
+ "modification_kind": "control_flow",
+ "feasible": true,
+ "reason": null,
+ "n_accepted": 5,
+ "n_validated": 5,
+ "n_killing": 1,
+ "success": true,
+ "kills": [
+  {
+   "difference_id": "D0002",
+   "property": "Any caller different from the contract owner must not be able to successfully call withdraw (non-owner withdraw calls mu",
+   "render": "rendered",
+   "validation": "skipped",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Modify onlyOwner modifier to allow any caller (remove the require), permitting non-owners to call withdraw and thus change which address receives funds.",
+   "mutated_unit_code": "modifier onlyOwner {\n    // removed ownership check\n    _;\n}\n",
+   "kill": "bug_no_kill:m_no_cex_within_bound",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "Tfe290b34",
+   "property": "For any owner-initiated withdraw(amount) call with the contract sending ether to a callee address that may revert, the r",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Replace transfer to send funds to owner using call which returns success bool but does not require success, allowing partial/failed transfers to leave contract balance unchanged.",
+   "mutated_unit_code": "function withdraw (uint    _value) public onlyOwner  {\n    (bool success, ) = payable(msg.sender).call{value: _value}(\"\");\n    // do not revert on failure\n}\n",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "D0003",
+   "property": "For any target that reverts when receiving funds, the reference contract's sendMoney(address,uint256,bytes) call will re",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Change the call to use transfer instead of low-level call, which will revert on failure differently and may alter state observable through sendMoney behavior.",
+   "mutated_unit_code": "function sendMoney (address    _target,uint    _value, bytes memory _data) public onlyOwner  {\n    // using transfer (ignores _data) instead of low-level call\n    payable(_target).transfer(_value);\n}\n",
+   "kill": "bug_no_kill",
+   "kill_via": null,
+   "counts_toward_success": false
+  },
+  {
+   "difference_id": "D0004",
+   "property": "For any target that reverts on low-level calls and any nonzero value, the reference contract's sendMoney call will rever",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Invert the require result to allow silent failure instead of reverting, changing whether the call reverts and thus observable behavior after sendMoney.",
+   "mutated_unit_code": "function sendMoney (address    _target,uint    _value, bytes memory _data) public onlyOwner  {\n    (bool __sent_result100, ) = _target.call{value: _value}(_data);\n    require(!__sent_result100);\n}\n",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  },
+  {
+   "difference_id": "D0005",
+   "property": "For every call to sendMoney(target, value, data) initiated by the owner, the correct contract will revert the whole tran",
+   "render": "rendered",
+   "validation": "passed",
+   "validation_error": null,
+   "origin": "primary",
+   "change_summary": "Remove the require so failures of the low-level call do not revert, altering whether subsequent state changes observed after sendMoney occur.",
+   "mutated_unit_code": "function sendMoney (address    _target,uint    _value, bytes memory _data) public onlyOwner  {\n    (bool __sent_result100, ) = _target.call{value: _value}(_data);\n    // no require: allow failure without reverting\n}\n",
+   "kill": "bug_fail",
+   "kill_via": "foundry",
+   "counts_toward_success": true
+  }
+ ],
+ "tokens": {
+  "prompt": 99113,
+  "completion": 31704,
+  "reasoning": 0
+ },
+ "wallclock_s": 537.105387210846,
+ "infra_error": null
+}

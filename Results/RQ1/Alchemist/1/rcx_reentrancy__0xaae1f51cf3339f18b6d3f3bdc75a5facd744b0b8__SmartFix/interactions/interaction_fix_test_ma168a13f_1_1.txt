@@ -1,0 +1,58 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("DEP_BANK mutant detection test - ma168a13f", function () {   it("should detect the mutant by exploiting overflow vulnerability in Deposit", async function () {     const [owner, user] = await ethers.getSigners();          // Deploy LogFile first (needed as constructor argument for DEP_BANK)     const LogFileFactory = await ethers.getContractFactory("LogFile");     const logFile = await LogFileFactory.deploy();     await logFile.waitForDeployment();          // Deploy DEP_BANK with LogFile address     const DEP_BANKFactory = await ethers.getContractFactory("DEP_BANK");     const bank = await DEP_BANKFactory.deploy(await logFile.getAddress());     await bank.waitForDeployment();          // Initialize the contract     await bank.connect(owner).Initialized();          // Set MinSum to 0 to allow withdrawals     await bank.connect(owner).SetMinSum(0);          // First deposit to set user's balance near overflow threshold     // uint256 max is 2^256 - 1 = ~1.15e77     // We'll deposit enough so that balance + next deposit would overflow     const maxUint = ethers.MaxUint256;     const firstDeposit = maxUint - BigInt(1); // Balance becomes 2^256 - 2     await bank.connect(user).Deposit({ value: firstDeposit });          // Now deposit 2 wei - this would cause overflow in original (balance + 2 > max)     // Original: require((balance + 2) >= balance) => requires no overflow => REVERTS     // Mutant: require((balance + 2 + 1) >= balance) => always true => PASSES     const secondDeposit = BigInt(2);          // In original contract this should revert due to overflow check     // In mutant it will pass (the +1 makes condition always true)     await expect(       bank.connect(user).Deposit({ value: secondDeposit })     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract DEP_BANK { mapping (address=>uint256) public balances; uint public MinSum; LogFile Log; bool intitalized; function SetMinSum(uint _val) public { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log) public { if(intitalized)revert(); Log = LogFile(_log); } function Initialized() public { intitalized = true; } function Deposit() public payable { require(((balances[msg.sender] + msg.value) >= balances[msg.sender])); balances[msg.sender]+= msg.value; Log.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { if(balances[msg.sender]>=MinSum && balances[msg.sender]>=_am) { balances[msg.sender] = (balances[msg.sender] - _am); (bool _veri_ok,) = msg.sender.call{value: _am}(""); if(_veri_ok) { Log.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } receive() external payable { Deposit(); } } contract LogFile { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val,string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DEP_BANK mutant detection test - ma168a13f", function () {
+  it("should detect the mutant by exploiting overflow vulnerability in Deposit", async function () {
+    const [owner, user] = await ethers.getSigners();
+
+    // Deploy LogFile first (needed as constructor argument for DEP_BANK)
+    const LogFileFactory = await ethers.getContractFactory("LogFile");
+    const logFile = await LogFileFactory.deploy();
+    await logFile.waitForDeployment();
+
+    // Deploy DEP_BANK with LogFile address
+    const DEP_BANKFactory = await ethers.getContractFactory("DEP_BANK");
+    const bank = await DEP_BANKFactory.deploy(await logFile.getAddress());
+    await bank.waitForDeployment();
+
+    // Initialize the contract
+    await bank.connect(owner).Initialized();
+
+    // Set MinSum to 0 to allow withdrawals
+    await bank.connect(owner).SetMinSum(0);
+
+    // First deposit to set user's balance near overflow threshold
+    // uint256 max is 2^256 - 1 = ~1.15e77
+    // We'll deposit enough so that balance + next deposit would overflow
+    const maxUint = ethers.MaxUint256;
+    const firstDeposit = maxUint - BigInt(1); // Balance becomes 2^256 - 2
+    await bank.connect(user).Deposit({ value: firstDeposit });
+
+    // Now deposit 2 wei - this would cause overflow in original (balance + 2 > max)
+    // Original: require((balance + 2) >= balance) => requires no overflow => REVERTS
+    // Mutant: require((balance + 2 + 1) >= balance) => always true => PASSES
+    const secondDeposit = BigInt(2);
+
+    // In original contract this should revert due to overflow check
+    // In mutant it will pass (the +1 makes condition always true)
+    await expect(
+      bank.connect(user).Deposit({ value: secondDeposit })
+    ).to.be.reverted;
+  });
+});
+```

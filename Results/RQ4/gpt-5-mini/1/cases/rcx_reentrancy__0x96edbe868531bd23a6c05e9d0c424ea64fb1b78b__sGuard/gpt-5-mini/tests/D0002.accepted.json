@@ -1,0 +1,12 @@
+{
+ "difference_id": "D0002",
+ "property_summary": "Invariant: calling Collect never changes MinSum in the correct contract (MinSum remains what was set before), but the mutant inverted the initializer check allowing MinSum to be updated only when initialized, so under certain call sequences Collect can lead to a different MinSum observable after the call in the mutant.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Invert the condition so it only sets MinSum when intitalized is true (previously it set only when not initialized), changing when MinSum can be updated.",
+ "mutated_unit_code": " function SetMinSum(uint _val)  public nonReentrant_ {\n        if(!intitalized)revert();\n        MinSum = _val;\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {PENNY_BY_PENNY} from \"../src/PENNY_BY_PENNY.sol\";\n\ncontract InvMutTest is Test {\n    PENNY_BY_PENNY c;\n    function setUp() public { c = new PENNY_BY_PENNY(); }\n\n    function testFuzz_property(address addr, uint256 putAmt, uint256 collectAmt) public {\n        vm.assume(addr != address(0));\n        putAmt = bound(putAmt, 1, 1 ether);\n        collectAmt = bound(collectAmt, 0, 1 ether);\n\n        vm.deal(addr, 2 ether);\n\n        uint256 initialMin = 0.1 ether;\n        c.SetMinSum(initialMin);\n\n        vm.prank(addr);\n        (bool okPut, ) = address(c).call{value: putAmt}(\"\");\n\n        uint256 before = c.MinSum();\n\n        vm.prank(addr);\n        try c.Collect(collectAmt) {\n        } catch {\n        }\n\n        assertTrue(c.MinSum() == before);\n    }\n}\n"
+}

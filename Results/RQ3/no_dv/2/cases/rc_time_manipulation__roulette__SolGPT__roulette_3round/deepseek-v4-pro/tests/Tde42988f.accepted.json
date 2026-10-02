@@ -1,0 +1,12 @@
+{
+ "difference_id": "Tde42988f",
+ "property_summary": "On every successful fallback call, pastBlockTime must be strictly greater than its previous value; the buggy version allows same-block calls to set pastBlockTime to the same value, violating strict increase.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_no_kill",
+ "origin": "primary",
+ "change_summary": "Delete the require(block.timestamp > pastBlockTime) statement.",
+ "mutated_unit_code": "fallback() external payable {\n    require(msg.value == 10 ether);\n\n    pastBlockTime = block.timestamp + 1;\n\n    if(block.number % 15 == 0) {\n        payable(msg.sender).transfer(address(this).balance);\n    }\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Roulette} from \"../src/Roulette.sol\";\n\ncontract InvMutTest is Test {\n    Roulette c;\n    function setUp() public { c = new Roulette(); }\n    function testFuzz_property(uint256 amount, uint256 warpSeed) public {\n        vm.assume(amount == 10 ether);\n        address caller = address(0x1234);\n        vm.deal(caller, amount * 5);\n        uint256 baseTime = 1000 + (warpSeed % 1000000);\n        vm.warp(baseTime);\n        vm.roll(1);\n\n        vm.prank(caller);\n        (bool success1, ) = address(c).call{value: amount}(\"\");\n        vm.assume(success1);\n        uint256 oldPast = c.pastBlockTime();\n\n        vm.warp(baseTime);\n        vm.roll(2);\n\n        vm.prank(caller);\n        (bool success2, ) = address(c).call{value: amount}(\"\");\n\n        if (success2) {\n            assertTrue(c.pastBlockTime() > oldPast);\n        } else {\n            assertTrue(c.pastBlockTime() == oldPast);\n        }\n    }\n}\n"
+}

@@ -1,0 +1,63 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } } from "hardhat";  describe("demo mutant m814e6338 - loop condition change", function () {   it("should detect mutant by verifying loop execution with multiple recipients", async function () {     const [owner, addr1, addr2] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("demo");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Deploy a simple token contract that implements transferFrom     const TokenFactory = await ethers.getContractFactory("SimpleToken");     const token = await TokenFactory.deploy("Test", "TST", 18);     await token.waitForDeployment();      // Mint tokens to addr1 so transferFrom can succeed     await token.mint(addr1.address, ethers.parseEther("100"));          // Approve the demo contract to spend tokens from addr1     await token.connect(addr1).approve(await instance.getAddress(), ethers.parseEther("100"));      // Create an array of recipients (more than one to ensure loop matters)     const recipients = [owner.address, addr2.address];     const amount = ethers.parseEther("10");      // Call transfer on the demo contract with valid parameters     const tx = await instance.transfer(       addr1.address,       await token.getAddress(),       recipients,       amount     );     const receipt = await tx.wait();      // Check that the token transfer actually occurred for both recipients     // If the loop didn't execute (mutant), only the first transfer would happen or none     const balanceOwner = await token.balanceOf(owner.address);     const balanceAddr2 = await token.balanceOf(addr2.address);          expect(balanceOwner).to.equal(ethers.parseEther("10"));     expect(balanceAddr2).to.equal(ethers.parseEther("10"));          // Also verify the sender's balance decreased appropriately     const balanceAddr1 = await token.balanceOf(addr1.address);     expect(balanceAddr1).to.equal(ethers.parseEther("80"));   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract demo { function transfer(address from, address caddress, address[] memory _tos, uint v)  public returns (bool) { require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); _d; if (! _s) { revert();} } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("demo mutant m814e6338 - loop condition change", function () {
+  it("should detect mutant by verifying loop execution with multiple recipients", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("demo");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy a simple token contract that implements transferFrom
+    const TokenFactory = await ethers.getContractFactory("SimpleToken");
+    const token = await TokenFactory.deploy("Test", "TST", 18);
+    await token.waitForDeployment();
+
+    // Mint tokens to addr1 so transferFrom can succeed
+    await token.mint(addr1.address, ethers.parseEther("100"));
+    
+    // Approve the demo contract to spend tokens from addr1
+    await token.connect(addr1).approve(await instance.getAddress(), ethers.parseEther("100"));
+
+    // Create an array of recipients (more than one to ensure loop matters)
+    const recipients = [owner.address, addr2.address];
+    const amount = ethers.parseEther("10");
+
+    // Call transfer on the demo contract with valid parameters
+    const tx = await instance.transfer(
+      addr1.address,
+      await token.getAddress(),
+      recipients,
+      amount
+    );
+    const receipt = await tx.wait();
+
+    // Check that the token transfer actually occurred for both recipients
+    // If the loop didn't execute (mutant), only the first transfer would happen or none
+    const balanceOwner = await token.balanceOf(owner.address);
+    const balanceAddr2 = await token.balanceOf(addr2.address);
+    
+    expect(balanceOwner).to.equal(ethers.parseEther("10"));
+    expect(balanceAddr2).to.equal(ethers.parseEther("10"));
+
+    // Also verify the sender's balance decreased appropriately
+    const balanceAddr1 = await token.balanceOf(addr1.address);
+    expect(balanceAddr1).to.equal(ethers.parseEther("80"));
+  });
+});
+```

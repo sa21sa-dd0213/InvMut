@@ -1,0 +1,81 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mb8b41337 of AirDropContract.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test AirDropContract.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for AirDropContract:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("AirDropContract reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy AirDropContract by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("AirDropContract"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("AirDropContract mutant test - mb8b41337", function () {
+  it("should revert when tos array is empty (original requires tos.length > 0)", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    
+    // Deploy a simple ERC20 token that will be used as the contract_address
+    const ERC20Factory = await ethers.getContractFactory("TestERC20");
+    const token = await ERC20Factory.deploy("Test", "TST", 18);
+    await token.waitForDeployment();
+    
+    // Deploy AirDropContract
+    const AirDropFactory = await ethers.getContractFactory("AirDropContract");
+    const airDrop = await AirDropFactory.deploy();
+    await airDrop.waitForDeployment();
+    
+    // Fund owner with tokens and approve the AirDropContract to spend them
+    const mintAmount = ethers.parseEther("1000");
+    await token.mint(owner.address, mintAmount);
+    await token.connect(owner).approve(await airDrop.getAddress(), mintAmount);
+    
+    // Prepare empty tos array and non-empty vs array (should revert in original)
+    const emptyTos: string[] = [];
+    const vs = [ethers.parseEther("10")];
+    
+    // Call transfer with empty tos array - should revert in original due to require(tos.length > 0)
+    await expect(
+      airDrop.connect(owner).transfer(await token.getAddress(), emptyTos, vs)
+    ).to.be.reverted;
+  });
+});
+
+// Helper ERC20 contract for testing (deployable with Hardhat)
+contract TestERC20 {
+    string public name;
+    string public symbol;
+    uint8 public decimals;
+    mapping(address => uint256) public balanceOf;
+    
+    constructor(string memory _name, string memory _symbol, uint8 _decimals) {
+        name = _name;
+        symbol = _symbol;
+        decimals = _decimals;
+    }
+    
+    function mint(address to, uint256 amount) external {
+        balanceOf[to] += amount;
+    }
+    
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        require(balanceOf[from] >= amount);
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+    
+    function approve(address spender, uint256 amount) external returns (bool) {
+        return true;
+    }
+}
+```

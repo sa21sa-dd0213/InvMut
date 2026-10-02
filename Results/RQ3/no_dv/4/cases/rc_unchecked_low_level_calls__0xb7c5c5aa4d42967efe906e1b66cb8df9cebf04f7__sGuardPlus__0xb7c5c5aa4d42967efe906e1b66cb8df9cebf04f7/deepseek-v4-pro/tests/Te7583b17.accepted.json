@@ -1,0 +1,12 @@
+{
+ "difference_id": "Te7583b17",
+ "property_summary": "For any caller who deposits and then withdraws, if the external call fails the caller's balance in the mapping remains unchanged; the buggy version always zeroes the balance causing a permanent loss.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Remove the require that checks the result of the external call, allowing the state update to proceed even if the call fails.",
+ "mutated_unit_code": "function withdraw () public __lock_modifier0  {\n(bool __sent_result100, ) = msg.sender.call{value: balances[msg.sender]}(\"\");\nbalances[msg.sender]=0;\n}",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {keepMyEther} from \"../src/keepMyEther.sol\";\n\ncontract InvMutTest is Test {\n    keepMyEther c;\n    function setUp() public { c = new keepMyEther(); }\n    function testFuzz_property(uint256 depositAmount, uint256 withdrawAmount, bool revertOnReceive) public {\n        vm.assume(depositAmount > 0 && depositAmount <= type(uint128).max);\n        vm.assume(withdrawAmount > 0 && withdrawAmount <= depositAmount);\n\n        address actor = address(new RevertingReceiver(revertOnReceive));\n        vm.deal(actor, depositAmount);\n        vm.prank(actor);\n        (bool depositOk,) = address(c).call{value: depositAmount}(\"\");\n        require(depositOk, \"deposit failed\");\n\n        uint256 balanceBefore = c.balances(actor);\n        bool success;\n        vm.prank(actor);\n        try c.withdraw() {\n            success = true;\n        } catch {\n            success = false;\n        }\n\n        bool balancePreserved = (c.balances(actor) == balanceBefore);\n        if (revertOnReceive) {\n            assertTrue(!success && balancePreserved);\n        } else {\n            assertTrue(success && c.balances(actor) == 0);\n        }\n    }\n}\n\ncontract RevertingReceiver {\n    bool public shouldRevert;\n    constructor(bool _shouldRevert) { shouldRevert = _shouldRevert; }\n    receive() external payable {\n        if (shouldRevert) {\n            revert(\"revert on receive\");\n        }\n    }\n}"
+}

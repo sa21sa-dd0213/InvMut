@@ -1,0 +1,58 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mbd2cf96f of DCF.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test DCF.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for DCF:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("DCF reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy DCF by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("DCF"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("DCF mutant mbd2cf96f test", function () {
+  it("should NOT deduct fee on regular transfer between non-pair addresses", async function () {
+    const [owner, userA, userB, liquidityReceiver] = await ethers.getSigners();
+    
+    // Deploy DCF with liquidityReceiveAddress
+    const Factory = await ethers.getContractFactory("DCF");
+    const dcf = await Factory.deploy(liquidityReceiver.address);
+    await dcf.waitForDeployment();
+    
+    // Get the pair address from the contract
+    const pairAddress = await dcf.pairAddress();
+    
+    // Transfer some tokens to userA for testing
+    const transferAmount = ethers.parseEther("100");
+    await dcf.connect(owner).transfer(userA.address, transferAmount);
+    
+    // Get userA's balance before the regular transfer
+    const balanceBefore = await dcf.balanceOf(userA.address);
+    
+    // Perform a regular transfer from userA to userB (not involving the pair)
+    const sendAmount = ethers.parseEther("10");
+    await dcf.connect(userA).transfer(userB.address, sendAmount);
+    
+    // Get userA's balance after transfer
+    const balanceAfter = await dcf.balanceOf(userA.address);
+    
+    // In the original contract, no fee should be deducted for regular transfers
+    // The balance difference should equal exactly the sendAmount
+    const balanceDifference = balanceBefore - balanceAfter;
+    
+    // If the mutant is active (if (true) instead of the condition), 
+    // a fee would be incorrectly deducted, making the difference > sendAmount
+    expect(balanceDifference).to.equal(sendAmount);
+  });
+});
+```

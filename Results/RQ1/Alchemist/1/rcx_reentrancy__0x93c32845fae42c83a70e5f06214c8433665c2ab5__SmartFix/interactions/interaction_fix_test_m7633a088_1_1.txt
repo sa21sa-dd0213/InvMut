@@ -1,0 +1,54 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("X_WALLET - Mutant kill test for m7633a088", function () {   it("should detect the mutant that adds 1 wei extra to balance on Put", async function () {     const [owner, user] = await ethers.getSigners();          // Deploy Log contract first (required constructor argument for X_WALLET)     const LogFactory = await ethers.getContractFactory("Log");     const logInstance = await LogFactory.deploy();     await logInstance.waitForDeployment();          // Deploy X_WALLET with Log address as constructor argument     const Factory = await ethers.getContractFactory("X_WALLET");     const instance = await Factory.deploy(await logInstance.getAddress());     await instance.waitForDeployment();          const depositAmount = ethers.parseEther("1.0");          // User deposits exactly 1 ETH     const tx = await instance.connect(user).Put(0, { value: depositAmount });     await tx.wait();          // Verify the user's recorded balance     const holder = await instance.Acc(user.address);          // In the original contract, balance should equal depositAmount     // In the mutant, balance = depositAmount + 1 wei (artificially inflated)          // Try to withdraw the exact deposit amount     // In the original: should succeed since balance >= amount     // In the mutant: will revert because actual contract balance is 1 wei less than recorded balance     //                when trying to send the exact deposit amount back     await expect(       instance.connect(user).Collect(depositAmount)     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract X_WALLET { function Put(uint _unlockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; acc.unlockTime = _unlockTime>block.timestamp?_unlockTime:block.timestamp; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; Log LogFile; uint public MinSum = 1 ether; constructor(address log) public{ LogFile = Log(log); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("X_WALLET - Mutant kill test for m7633a088", function () {
+  it("should detect the mutant that adds 1 wei extra to balance on Put", async function () {
+    const [owner, user] = await ethers.getSigners();
+
+    // Deploy Log contract first (required constructor argument for X_WALLET)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+
+    // Deploy X_WALLET with Log address as constructor argument
+    const Factory = await ethers.getContractFactory("X_WALLET");
+    const instance = await Factory.deploy(await logInstance.getAddress());
+    await instance.waitForDeployment();
+
+    const depositAmount = ethers.parseEther("1.0");
+
+    // User deposits exactly 1 ETH
+    const tx = await instance.connect(user).Put(0, { value: depositAmount });
+    await tx.wait();
+
+    // Verify the user's recorded balance
+    const holder = await instance.Acc(user.address);
+
+    // In the original contract, balance should equal depositAmount
+    // In the mutant, balance = depositAmount + 1 wei (artificially inflated)
+
+    // Try to withdraw the exact deposit amount
+    // In the original: should succeed since balance >= amount
+    // In the mutant: will revert because actual contract balance is 1 wei less than recorded balance
+    //                when trying to send the exact deposit amount back
+    await expect(
+      instance.connect(user).Collect(depositAmount)
+    ).to.be.reverted;
+  });
+});
+```

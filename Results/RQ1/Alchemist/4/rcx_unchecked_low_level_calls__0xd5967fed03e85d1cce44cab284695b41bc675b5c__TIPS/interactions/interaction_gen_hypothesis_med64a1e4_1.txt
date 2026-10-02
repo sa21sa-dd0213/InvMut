@@ -1,0 +1,21 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract demo:
+        Contract Code: pragma solidity ^0.8.0; contract demo { function transfer(address from, address caddress, address[] memory _tos, uint v)  public returns (bool) { require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); _d; if (! _s) { revert();} } } return true; } }
+
+    Consider the following mutant of demo:
+        Mutant med64a1e4 of function transfer replaces keccak256 with sha256
+        Mutant Diff: ---| 	bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); +++| 	bytes4 id = bytes4(sha256("transferFrom(address,address,uint256)"));
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+The mutant replaces `keccak256` with `sha256`, which produces a different hash output and therefore a different 4-byte function selector for `transferFrom(address,address,uint256)`. This means the mutated contract will call the target token contract with an incorrect function selector, causing the call to fail or behave unexpectedly.
+
+**Hypothesis:** A test case that calls `transfer` on the mutated contract with a valid ERC-20 token address, a legitimate sender and recipient, and a valid amount, then verifies that the token transfer actually occurs (e.g., by checking the recipient's balance increased by the correct amount), should kill the mutant. On the original contract, the correct selector is used and the transfer succeeds; on the mutant, the wrong selector causes the call to fail silently or revert, so the balance check will fail.

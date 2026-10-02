@@ -1,0 +1,34 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Reentrancy_bonus:
+        Contract Code: pragma solidity ^0.8.0; contract SmartFix { bool public _locked = false; modifier _nonReentrant() { require(!_locked); _locked = true; _; _locked = false; } } contract Reentrancy_bonus is SmartFix { mapping (address => uint) private userBalances; mapping (address => bool) private claimedBonus; mapping (address => uint) private rewardsForA; function withdrawReward(address recipient)  public _nonReentrant  { uint amountToWithdraw = rewardsForA[recipient]; rewardsForA[recipient] = 0; (bool success, ) = recipient.call{value: amountToWithdraw}(""); require(success); } function getFirstWithdrawalBonus(address recipient) public { require(!claimedBonus[recipient]); rewardsForA[recipient] += 100; withdrawReward(recipient); claimedBonus[recipient] = true; } }
+
+    Consider the following mutant of Reentrancy_bonus:
+        Mutant mc5a86e3b of function getFirstWithdrawalBonus replaces require(!claimedBonus[recipient]); with 
+        Mutant Diff: ---|         require(!claimedBonus[recipient]); +++|
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+Let’s break this down.
+
+The original function `getFirstWithdrawalBonus` starts with:
+```solidity
+require(!claimedBonus[recipient]);
+```
+This ensures that each address can only claim the bonus once.  
+If this `require` is removed (as in the mutant), the check is gone, and the same address can call the function multiple times, receiving 100 bonus `rewardsForA` each time and withdrawing it.
+
+**Step-by-step reasoning:**
+1. In the original contract, calling `getFirstWithdrawalBonus` twice for the same `recipient` will revert on the second call because `claimedBonus[recipient]` is already `true`.
+2. In the mutant, the second call will succeed, because the `require` is missing, and `claimedBonus[recipient]` is never checked.
+3. This means the mutant allows an attacker to drain extra funds by repeatedly claiming the bonus.
+
+**Hypothesis:**  
+A test case that calls `getFirstWithdrawalBonus` twice with the same recipient address and expects the second call to revert (due to the `claimedBonus` check) will pass on the original contract but fail on the mutant, because the mutant allows the second call to succeed instead of reverting.

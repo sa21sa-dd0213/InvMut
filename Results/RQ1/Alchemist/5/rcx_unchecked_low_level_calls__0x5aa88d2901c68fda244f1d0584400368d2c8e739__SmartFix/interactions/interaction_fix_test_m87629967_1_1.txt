@@ -1,0 +1,61 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MultiplicatorX3 mutant kill test - m87629967", function () {   it("should detect msg.value-1 mutant by verifying full balance withdrawal after Command call", async function () {     const [owner, attacker] = await ethers.getSigners();          // Deploy the contract (no constructor arguments needed)     const Factory = await ethers.getContractFactory("MultiplicatorX3");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Get the contract address     const contractAddress = await instance.getAddress();          // Send some initial ether to the contract to have a starting balance     await owner.sendTransaction({       to: contractAddress,       value: ethers.parseEther("10.0")     });          // Record the initial contract balance     const initialBalance = await ethers.provider.getBalance(contractAddress);          // Owner calls Command with a specific msg.value (e.g., 5 ether)     const commandValue = ethers.parseEther("5.0");     const targetAddress = attacker.address;     const emptyData = "0x";          await instance.connect(owner).Command(targetAddress, emptyData, {       value: commandValue     });          // Now call withdraw to get all remaining balance     await instance.connect(owner).withdraw();          // Check the final contract balance - in the original it should be 0,     // in the mutant 1 wei remains because msg.value-1 was forwarded     const finalBalance = await ethers.provider.getBalance(contractAddress);          // In the original contract, after withdraw the balance should be 0     // In the mutant, 1 wei will remain stuck     expect(finalBalance).to.equal(0);   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract MultiplicatorX3 { address public Owner = msg.sender; receive() external payable {} function withdraw() payable public { require(msg.sender == Owner); payable(Owner).transfer(address(this).balance); } function Command(address adr,bytes memory data) payable public { require(msg.sender == Owner); adr.call{value: msg.value}(data); } function multiplicate(address adr) public payable { if(msg.value>=address(this).balance) { require(((address(this).balance + msg.value) >= address(this).balance)); payable(adr).transfer(address(this).balance+msg.value); } } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MultiplicatorX3 mutant kill test - m87629967", function () {
+  it("should detect msg.value-1 mutant by verifying full balance withdrawal after Command call", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+
+    // Deploy the contract (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("MultiplicatorX3");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get the contract address
+    const contractAddress = await instance.getAddress();
+
+    // Send some initial ether to the contract to have a starting balance
+    await owner.sendTransaction({
+      to: contractAddress,
+      value: ethers.parseEther("10.0")
+    });
+
+    // Record the initial contract balance
+    const initialBalance = await ethers.provider.getBalance(contractAddress);
+
+    // Owner calls Command with a specific msg.value (e.g., 5 ether)
+    const commandValue = ethers.parseEther("5.0");
+    const targetAddress = attacker.address;
+    const emptyData = "0x";
+
+    await instance.connect(owner).Command(targetAddress, emptyData, {
+      value: commandValue
+    });
+
+    // Now call withdraw to get all remaining balance
+    await instance.connect(owner).withdraw();
+
+    // Check the final contract balance - in the original it should be 0,
+    // in the mutant 1 wei remains because msg.value-1 was forwarded
+    const finalBalance = await ethers.provider.getBalance(contractAddress);
+
+    // In the original contract, after withdraw the balance should be 0
+    // In the mutant, 1 wei will remain stuck
+    expect(finalBalance).to.equal(0);
+  });
+});
+```

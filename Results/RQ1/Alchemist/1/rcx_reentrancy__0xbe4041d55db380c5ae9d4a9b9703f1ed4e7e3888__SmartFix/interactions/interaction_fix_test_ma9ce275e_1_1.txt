@@ -1,0 +1,58 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("MONEY_BOX mutant test - ma9ce275e", function () {   it("should revert Collect when unlock time is extended by a subsequent Put with longer lock time", async function () {     const [owner, user] = await ethers.getSigners();          // Deploy MONEY_BOX (no constructor arguments needed)     const Factory = await ethers.getContractFactory("MONEY_BOX");     const instance = await Factory.deploy();     await instance.waitForDeployment();          // Deploy Log contract (MONEY_BOX needs a LogFile)     const LogFactory = await ethers.getContractFactory("Log");     const logInstance = await LogFactory.deploy();     await logInstance.waitForDeployment();          // Initialize MONEY_BOX: set MinSum, set LogFile, then call Initialized     await (await instance.SetMinSum(ethers.parseEther("0.1"))).wait();     await (await instance.SetLogFile(await logInstance.getAddress())).wait();     await (await instance.Initialized()).wait();          // User deposits 1 ETH with a short lock time (e.g., 1 second)     const shortLockTime = 1;     const depositAmount = ethers.parseEther("1");     await (await instance.connect(user).Put(shortLockTime, { value: depositAmount })).wait();          // User deposits another 1 ETH with a very long lock time (e.g., 1 year = 31536000 seconds)     const longLockTime = 31536000;     await (await instance.connect(user).Put(longLockTime, { value: depositAmount })).wait();          // Fast-forward time to after the short lock time but before the long lock time expires     await ethers.provider.send("evm_increaseTime", [shortLockTime + 10]);     await ethers.provider.send("evm_mine", []);          // Attempt to collect 0.5 ETH - should revert because unlock time was extended to longLockTime     const collectAmount = ethers.parseEther("0.5");     await expect(       instance.connect(user).Collect(collectAmount)     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract MONEY_BOX { struct Holder { uint unlockTime; uint balance; } mapping (address => Holder) public Acc; uint public MinSum; Log LogFile; bool intitalized; function SetMinSum(uint _val) public { if(intitalized)revert(); MinSum = _val; } function SetLogFile(address _log) public { if(intitalized)revert(); LogFile = Log(_log); } function Initialized() public { intitalized = true; } function Put(uint _lockTime) public payable { Holder storage acc = Acc[msg.sender]; require(((acc.balance + msg.value) >= acc.balance)); acc.balance += msg.value; if(block.timestamp+_lockTime>acc.unlockTime)acc.unlockTime=block.timestamp+_lockTime; LogFile.AddMessage(msg.sender,msg.value,"Put"); } function Collect(uint _am) public payable { Holder storage acc = Acc[msg.sender]; if( acc.balance>=MinSum && acc.balance>=_am && block.timestamp>acc.unlockTime) { acc.balance = (acc.balance - _am); { (bool _s, bytes memory _d) = msg.sender.call{value: _am}(""); _d; if (_s) { LogFile.AddMessage(msg.sender,_am,"Collect"); } else {revert (); } } } } fallback() external payable { Put(0); } } contract Log { struct Message { address Sender; string  Data; uint Val; uint  Time; } Message[] public History; Message LastMsg; function AddMessage(address _adr,uint _val, string memory _data) public { LastMsg.Sender = _adr; LastMsg.Time = block.timestamp; LastMsg.Val = _val; LastMsg.Data = _data; History.push(LastMsg); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("MONEY_BOX mutant test - ma9ce275e", function () {
+  it("should revert Collect when unlock time is extended by a subsequent Put with longer lock time", async function () {
+    const [owner, user] = await ethers.getSigners();
+
+    // Deploy MONEY_BOX (no constructor arguments needed)
+    const Factory = await ethers.getContractFactory("MONEY_BOX");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Deploy Log contract (MONEY_BOX needs a LogFile)
+    const LogFactory = await ethers.getContractFactory("Log");
+    const logInstance = await LogFactory.deploy();
+    await logInstance.waitForDeployment();
+
+    // Initialize MONEY_BOX: set MinSum, set LogFile, then call Initialized
+    await (await instance.SetMinSum(ethers.parseEther("0.1"))).wait();
+    await (await instance.SetLogFile(await logInstance.getAddress())).wait();
+    await (await instance.Initialized()).wait();
+
+    // User deposits 1 ETH with a short lock time (e.g., 1 second)
+    const shortLockTime = 1;
+    const depositAmount = ethers.parseEther("1");
+    await (await instance.connect(user).Put(shortLockTime, { value: depositAmount })).wait();
+
+    // User deposits another 1 ETH with a very long lock time (e.g., 1 year = 31536000 seconds)
+    const longLockTime = 31536000;
+    await (await instance.connect(user).Put(longLockTime, { value: depositAmount })).wait();
+
+    // Fast-forward time to after the short lock time but before the long lock time expires
+    await ethers.provider.send("evm_increaseTime", [shortLockTime + 10]);
+    await ethers.provider.send("evm_mine", []);
+
+    // Attempt to collect 0.5 ETH - should revert because unlock time was extended to longLockTime
+    const collectAmount = ethers.parseEther("0.5");
+    await expect(
+      instance.connect(user).Collect(collectAmount)
+    ).to.be.reverted;
+  });
+});
+```

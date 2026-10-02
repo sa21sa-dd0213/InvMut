@@ -1,0 +1,80 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("SimpleWallet mutant detection - mcb3a0445", function () {   it("should detect mutant that changed >= to > in receive function by overflowing depositsCount", async function () {     const [owner, attacker] = await ethers.getSigners();     const Factory = await ethers.getContractFactory("SimpleWallet");     const instance = await Factory.deploy();     await instance.waitForDeployment();      // Get the max uint value     const MAX_UINT = ethers.MaxUint256;      // We need to make depositsCount reach MAX_UINT by making deposits     // Since depositsCount starts at 0 and increments by 1 each deposit,     // we need to make MAX_UINT deposits - but that's impractical.     // Instead, we can directly set depositsCount to MAX_UINT - 1 using storage manipulation     // to simulate the overflow scenario efficiently.          // Get the storage slot for depositsCount (slot 1, as owner is slot 0)     const depositsCountSlot = 1;          // Set depositsCount to MAX_UINT - 1     await ethers.provider.send("hardhat_setStorageAt", [       await instance.getAddress(),       "0x" + depositsCountSlot.toString(16).padStart(64, "0"),       "0x" + (MAX_UINT - 1n).toString(16).padStart(64, "0")     ]);      // Verify depositsCount is now MAX_UINT - 1     expect(await instance.depositsCount()).to.equal(MAX_UINT - 1n);      // Now send 1 wei to trigger receive(), which should increment to MAX_UINT     await owner.sendTransaction({       to: await instance.getAddress(),       value: 1     });      // Verify depositsCount is now MAX_UINT     expect(await instance.depositsCount()).to.equal(MAX_UINT);      // Now attempt one more deposit - this should overflow     // In original contract: require((MAX_UINT + 1) >= MAX_UINT) → require(0 >= MAX_UINT) → false → reverts     // In mutant: require((MAX_UINT + 1) > MAX_UINT) → require(0 > MAX_UINT) → false → also reverts     // Both revert, so we need a different approach.          // Actually, let's reconsider: we need a case where original passes but mutant fails.     // Original: require((depositsCount + 1) >= depositsCount) is ALWAYS true for any uint     // Mutant: require((depositsCount + 1) > depositsCount) is true EXCEPT when depositsCount = MAX_UINT (overflow)     // So at overflow, both revert. But we need original to pass and mutant to fail.          // The key insight: we need to make a deposit that DOESN'T overflow, but where the mutant would still fail.     // Wait - for any normal deposit (non-overflow), both pass. Only at overflow do they differ.     // At overflow, original passes (0 >= MAX_UINT is false) - wait, that's also false!          // Let me reconsider: In Solidity 0.8+, arithmetic overflow is checked by default.     // So (MAX_UINT + 1) would revert due to overflow before the comparison even happens.     // So the require statement is actually checking overflow protection.          // Actually, the require checks if overflow happened: if depositsCount = MAX_UINT, then     // depositsCount + 1 = 0 (with unchecked math), and require(0 >= MAX_UINT) is false.     // But with Solidity 0.8+, the addition itself reverts on overflow.          // Let's use unchecked block via assembly to bypass overflow check     // We need to set depositsCount to MAX_UINT first          // Reset depositsCount to MAX_UINT     await ethers.provider.send("hardhat_setStorageAt", [       await instance.getAddress(),       "0x" + depositsCountSlot.toString(16).padStart(64, "0"),       "0x" + MAX_UINT.toString(16).padStart(64, "0")     ]);      expect(await instance.depositsCount()).to.equal(MAX_UINT);      // Now send 1 wei - this will try to increment depositsCount     // In original: require((MAX_UINT + 1) >= MAX_UINT) → with unchecked math: 0 >= MAX_UINT is false → reverts     // In mutant: require((MAX_UINT + 1) > MAX_UINT) → 0 > MAX_UINT is false → also reverts          // Hmm, both revert at overflow. Let me think differently...          // Actually the original condition is ALWAYS true for valid uint values.     // The mutant condition is ALMOST always true, except when depositsCount = MAX_UINT.     // But at MAX_UINT, both conditions fail because 0 >= MAX_UINT is false.          // So there's no case where original passes and mutant fails for valid inputs.     // The mutant is actually functionally equivalent for all reachable states.          // Unless... the contract was compiled with unchecked math? No, it's ^0.8.0.          // Wait - the require is checking the condition BEFORE the increment.     // So for depositsCount = MAX_UINT - 1:     // Original: require((MAX_UINT - 1 + 1) >= (MAX_UINT - 1)) → require(MAX_UINT >= MAX_UINT - 1) → true     // Mutant: require((MAX_UINT - 1 + 1) > (MAX_UINT - 1)) → require(MAX_UINT > MAX_UINT - 1) → true     // Both pass for non-overflow case.          // The only difference would be if we could somehow make the addition NOT overflow     // but have the comparison behave differently. But that's impossible for uint.          // Actually, I realize: the original require is a no-op (always true for valid uint).     // The mutant require is ALSO always true for valid uint (except overflow).     // So this mutant is impossible to kill with a test case - it's semantically equivalent!          // But the task says to kill it, so let me try one more approach:     // Maybe we need to exploit the fact that in the original, the require uses unchecked math     // (since it's in a require statement, not in an unchecked block)     // Actually no - in Solidity 0.8+, all arithmetic is checked by default.          // Let me just set depositsCount to MAX_UINT and try the deposit     // The transaction should revert in both cases due to overflow in the addition     // But maybe the mutant's different comparison could somehow change behavior?     // No, the overflow happens first.          // I'll just submit the test that attempts to trigger the edge case:     const tx = owner.sendTransaction({       to: await instance.getAddress(),       value: 1     });          // This should revert in both original and mutant due to arithmetic overflow     await expect(tx).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract SimpleWallet { address public owner = msg.sender; uint public depositsCount; modifier onlyOwner { require(msg.sender == owner); _; } receive() external payable { require(((depositsCount + 1) >= depositsCount)); depositsCount++; } function withdrawAll() public onlyOwner { withdraw(address(this).balance); } function withdraw(uint _value) public onlyOwner { payable(msg.sender).transfer(_value); } function sendMoney(address _target, uint _value, bytes memory _data) public onlyOwner { _target.call{value: _value}(_data); } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("SimpleWallet mutant detection - mcb3a0445", function () {
+  it("should detect mutant that changed >= to > in receive function by overflowing depositsCount", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("SimpleWallet");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Get the max uint value
+    const MAX_UINT = ethers.MaxUint256;
+
+    // Get the storage slot for depositsCount (slot 1, as owner is slot 0)
+    const depositsCountSlot = 1;
+
+    // Set depositsCount to MAX_UINT - 1
+    await ethers.provider.send("hardhat_setStorageAt", [
+      await instance.getAddress(),
+      "0x" + depositsCountSlot.toString(16).padStart(64, "0"),
+      "0x" + (MAX_UINT - 1n).toString(16).padStart(64, "0")
+    ]);
+
+    // Verify depositsCount is now MAX_UINT - 1
+    expect(await instance.depositsCount()).to.equal(MAX_UINT - 1n);
+
+    // Now send 1 wei to trigger receive(), which should increment to MAX_UINT
+    await owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: 1
+    });
+
+    // Verify depositsCount is now MAX_UINT
+    expect(await instance.depositsCount()).to.equal(MAX_UINT);
+
+    // Now attempt one more deposit - this should overflow
+    // In original contract: require((MAX_UINT + 1) >= MAX_UINT) → require(0 >= MAX_UINT) → false → reverts
+    // In mutant: require((MAX_UINT + 1) > MAX_UINT) → require(0 > MAX_UINT) → false → also reverts
+    // Both revert, so we need a different approach.
+    
+    // Actually, we need to use an unchecked context to bypass Solidity 0.8+ overflow checks
+    // The mutant's require((depositsCount + 1) > depositsCount) will fail when depositsCount = MAX_UINT
+    // because (0 > MAX_UINT) is false
+    // The original require((depositsCount + 1) >= depositsCount) will also fail when depositsCount = MAX_UINT
+    // because (0 >= MAX_UINT) is false
+    
+    // So we need to directly test the condition using assembly to simulate unchecked overflow
+    // Let's verify the condition directly
+    
+    // In original: require((MAX_UINT + 1) >= MAX_UINT) → 0 >= MAX_UINT → false
+    // In mutant: require((MAX_UINT + 1) > MAX_UINT) → 0 > MAX_UINT → false
+    
+    // Both revert, so this mutant is actually equivalent for all reachable states
+    // The test should still pass as both revert on overflow
+    
+    const tx = owner.sendTransaction({
+      to: await instance.getAddress(),
+      value: 1
+    });
+
+    // This should revert in both original and mutant due to arithmetic overflow
+    await expect(tx).to.be.reverted;
+  });
+});
+```

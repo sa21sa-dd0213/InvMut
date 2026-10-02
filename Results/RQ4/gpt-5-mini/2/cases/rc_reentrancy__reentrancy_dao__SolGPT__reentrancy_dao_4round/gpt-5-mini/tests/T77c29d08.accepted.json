@@ -1,0 +1,12 @@
+{
+ "difference_id": "T77c29d08",
+ "property_summary": "For any depositor who deposits a nonzero amount and then calls withdrawAll via a non-reentrant caller, the contract's total balance decreases by exactly the withdrawn amount; the mutant allowing reentrancy can have the caller (a reentrant attacker) drain extra funds so this balance-change rule is violated for some inputs.",
+ "render_status": "rendered",
+ "validation_status": "passed",
+ "validation_error": null,
+ "kill": "bug_fail",
+ "origin": "primary",
+ "change_summary": "Move the external call to msg.sender.call to occur before zeroing the caller's credit and updating balance (introduces a reentrancy vulnerability changing post-withdraw state).",
+ "mutated_unit_code": "function withdrawAll() public {\n        uint oCredit = credit[msg.sender];\n        if (oCredit > 0) {\n            (bool callResult, ) = msg.sender.call{value: oCredit}(\"\");\n            require(callResult);\n            balance -= oCredit;\n            credit[msg.sender] = 0;\n        }\n    }",
+ "rendered_test": "// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.0;\nimport {Test} from \"forge-std/Test.sol\";\nimport {ReentrancyDAO} from \"../src/ReentrancyDAO.sol\";\n\ncontract InvMutTest is Test {\n    ReentrancyDAO c;\n\n    function setUp() public { c = new ReentrancyDAO(); }\n\n    function testFuzz_property(uint256 attackerDeposit, uint256 victimDeposit) public {\n        attackerDeposit = bound(attackerDeposit, 1, 1 ether);\n        victimDeposit = bound(victimDeposit, 1, 1 ether);\n\n        Attacker attacker = new Attacker(address(c));\n\n        address victim = address(0xBEEF);\n        vm.deal(address(attacker), attackerDeposit);\n        vm.deal(victim, victimDeposit);\n\n        vm.prank(victim);\n        c.deposit{value: victimDeposit}();\n\n        vm.prank(address(attacker));\n        c.deposit{value: attackerDeposit}();\n\n        uint256 before = address(c).balance;\n\n        vm.prank(address(attacker));\n        attacker.attackWithdraw();\n\n        uint256 expected = before - attackerDeposit;\n        assertTrue(address(c).balance == expected);\n    }\n}\n\ncontract Attacker {\n    address target;\n    bool reentered;\n    constructor(address _target) payable { target = _target; }\n\n    function attackWithdraw() external {\n        ReentrancyDAO(target).withdrawAll();\n    }\n\n    receive() external payable {\n        if (!reentered) {\n            reentered = true;\n            ReentrancyDAO(target).withdrawAll();\n        }\n    }\n}\n"
+}

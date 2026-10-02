@@ -1,0 +1,59 @@
+Task: Derive a test case to kill the live Solidity mutant just like a senior test automation engineer would.
+
+Instructions:
+    1 - Generate the Test: Based on the previous hypothesis, you must generate a test case to kill mutant mfedbf00f of EtherCartel.
+        Requirements:       
+        - You must generate a single HardHat test case in Typescript that directly tests the mutant.
+        - The test case should be included in a test file with all all necessary imports, setups, and hooks to ensure it can run as-is. 
+        - You must use the provided Reference Test Suite Setup as a reference for generating the new test case.
+        - Do not use mocks, placeholders or undefined variables, and do not call functions or other elements that do not exist in the smart contract under test EtherCartel.
+        - Pay attention to the syntax of the generated code, avoiding Solidity syntax errors.
+    First think step-by-step, look at the differences between the original and the mutant, consider the hypothesis, and then generate a test case that should be able to detect the mutant.
+
+Reference Test Suite Setup for EtherCartel:
+        Test Suite Setup: import { expect } from "chai"; import { ethers } from "hardhat"; describe("EtherCartel reference (ethers v6; deploy may require constructor arguments)", function () { it("deploy EtherCartel by supplying its REQUIRED constructor arguments (read them from the contract constructor), then call methods and assert; use ethers.parseEther, await (await tx).wait(), and expect(...).to.be.reverted", async function () { const [owner, addr1, addr2] = await ethers.getSigners(); const Factory = await ethers.getContractFactory("EtherCartel"); const instance = await Factory.deploy(...constructorArgs); await instance.waitForDeployment(); }); });
+
+Output Format:
+    Provide your experiment code within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("EtherCartel - mutant mfedbf00f test", function () {
+  it("should detect the min function mutation (a < b -> a > b) by checking getDrugsSinceLastCollect after a long wait", async function () {
+    const [owner, addr1] = await ethers.getSigners();
+    const Factory = await ethers.getContractFactory("EtherCartel");
+    const instance = await Factory.deploy();
+    await instance.waitForDeployment();
+
+    // Seed the market to initialize the contract
+    const seedDrugs = ethers.parseEther("1");
+    await instance.seedMarket(seedDrugs, { value: ethers.parseEther("1") });
+
+    // Get free kilos for addr1 to start earning drugs
+    await instance.connect(addr1).getFreeKilo();
+    
+    // Get the kilos assigned to addr1
+    const kilos = await instance.getMyKilo();
+    
+    // Get DRUGS_TO_PRODUCE_1KILO value
+    const drugsToProduce = await instance.DRUGS_TO_PRODUCE_1KILO();
+    
+    // Wait longer than DRUGS_TO_PRODUCE_1KILO seconds to ensure we exceed the cap
+    await ethers.provider.send("evm_increaseTime", [Number(drugsToProduce) + 100]);
+    await ethers.provider.send("evm_mine");
+
+    // Get the drugs since last collect - should be capped at DRUGS_TO_PRODUCE_1KILO * kilos
+    const drugsSinceLastCollect = await instance.getDrugsSinceLastCollect(addr1.address);
+    
+    // Calculate expected capped value: min(DRUGS_TO_PRODUCE_1KILO, secondsPassed) * Kilos
+    // Since we waited > DRUGS_TO_PRODUCE_1KILO, the cap should be DRUGS_TO_PRODUCE_1KILO
+    const expectedCappedValue = drugsToProduce * kilos;
+    
+    // On the original contract, this returns the capped value
+    // On the mutant (a > b instead of a < b), it returns secondsPassed * kilos which would be larger
+    expect(drugsSinceLastCollect).to.equal(expectedCappedValue);
+  });
+});
+```

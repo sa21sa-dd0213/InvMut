@@ -1,0 +1,138 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("VaultAdapter mutant m8c593894 - block.timestamp vs block.prevrandao", function () {
+  it("should detect mutant by calling rate() when elapsed equals block.timestamp", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    // Deploy VaultAdapter
+    const VaultAdapterFactory = await ethers.getContractFactory("VaultAdapter");
+    const vaultAdapter = await VaultAdapterFactory.deploy();
+    await vaultAdapter.waitForDeployment();
+    
+    // Deploy a mock vault to test with
+    const MockVaultFactory = await ethers.getContractFactory("MockVault");
+    const mockVault = await MockVaultFactory.deploy();
+    await mockVault.waitForDeployment();
+    
+    // Initialize VaultAdapter
+    const AccessControlFactory = await ethers.getContractFactory("MockAccessControl");
+    const accessControl = await AccessControlFactory.deploy();
+    await accessControl.waitForDeployment();
+    
+    await vaultAdapter.initialize(await accessControl.getAddress());
+    
+    // Set slopes for the asset
+    const assetAddress = ethers.Wallet.createRandom().address;
+    const slopes = {
+      kink: ethers.parseEther("0.5"), // 0.5 * 1e18
+      slope0: ethers.parseEther("0.1"),
+      slope1: ethers.parseEther("0.2")
+    };
+    
+    // Grant access to set slopes
+    const setSlopesSelector = vaultAdapter.interface.getFunction("setSlopes").selector;
+    await accessControl.grantAccess(setSlopesSelector, await vaultAdapter.getAddress(), owner.address);
+    
+    await vaultAdapter.setSlopes(assetAddress, slopes);
+    
+    // Get current block timestamp
+    const blockNumBefore = await ethers.provider.getBlockNumber();
+    const blockBefore = await ethers.provider.getBlock(blockNumBefore);
+    const currentTimestamp = blockBefore!.timestamp;
+    
+    // First call to rate() to set lastUpdate and index
+    await vaultAdapter.rate(await mockVault.getAddress(), assetAddress);
+    
+    // Wait for next block (elapsed > 0 but not equal to block.timestamp)
+    await ethers.provider.send("evm_mine", []);
+    
+    // Now call rate() again - in original code, if elapsed != block.timestamp (which it will be since we mined a new block),
+    // it will use the index-based calculation. In the mutant, it checks elapsed != block.prevrandao
+    // block.prevrandao is typically 0 or some random value, not equal to elapsed time
+    // So the mutant will take a different code path than the original
+    
+    const result = await vaultAdapter.rate(await mockVault.getAddress(), assetAddress);
+    
+    // To specifically kill the mutant, we need to make elapsed == block.prevrandao
+    // Since block.prevrandao is 0 in most test environments (before merge) or some random value,
+    // we can mine a block where block.prevrandao equals the elapsed time
+    // However, block.prevrandao is set by the beacon chain and cannot be controlled directly
+    
+    // Alternative approach: Create scenario where elapsed == 0 and block.prevrandao == 0
+    // This happens when we call rate() twice in the same block
+    // In original: if (elapsed != block.timestamp) -> 0 != timestamp -> true -> uses index calc
+    // In mutant: if (elapsed != block.prevrandao) -> 0 != 0 -> false -> uses IVault.utilization()
+    
+    // Call rate() again in the same block (no mining between calls)
+    const result2 = await vaultAdapter.rate(await mockVault.getAddress(), assetAddress);
+    
+    // The key is that when elapsed == 0 and block.prevrandao == 0, the mutant takes the ELSE branch
+    // while the original takes the IF branch, producing different results
+    
+    // To verify the mutant is killed, we need to check that the behavior differs
+    // For the original: when elapsed == 0 and block.prevrandao == 0 (mutant),
+    // the original would use index calculation, mutant uses utilization()
+    // These should give different results
+    
+    // Get utilization from mock vault
+    const utilization = await mockVault.utilization(assetAddress);
+    const currentIndex = await mockVault.currentUtilizationIndex(assetAddress);
+    
+    // If mutant is active, result2 should equal the utilization-based calculation
+    // If original, result2 should equal the index-based calculation
+    // We can verify by checking which path was taken
+    
+    // The simplest way to kill the mutant: call rate() with elapsed == block.prevrandao
+    // Since block.prevrandao is 0 in most test environments (pre-merge),
+    // we need elapsed to be 0, which happens when calling twice in same block
+    // But we also need to ensure the original would take the other path
+    
+    // Let's verify by checking if the result differs from expected behavior
+    // When elapsed == 0 and block.prevrandao == 0:
+    // Original: if (0 != block.timestamp) -> true -> uses index calculation
+    // Mutant: if (0 != 0) -> false -> uses utilization
+    
+    // So if we call rate() twice in same block:
+    // - First call sets lastUpdate = timestamp, index = currentIndex
+    // - Second call: elapsed = 0
+    //   Original: uses index calculation -> (index - index) / 0 = 0, then applies slopes with utilization=0
+    //   Mutant: uses utilization from vault -> actual utilization value
+    
+    // These should produce different results, killing the mutant
+    
+    // For a cleaner kill, we can also test when elapsed != 0 and elapsed == block.prevrandao
+    // But since we can't control block.prevrandao easily, the same-block scenario is best
+    
+    expect(result2).to.not.equal(0); // Just ensure we get a result
+    // The mutant is killed because it takes a different code path
+    
+    // Additional verification: check that the mutant behavior differs from expected
+    const expectedOriginalResult = await vaultAdapter.rate(await mockVault.getAddress(), assetAddress);
+    // If the mutant is active, calling rate() again might give different results
+    // due to state changes from the different code paths
+    
+    // Final assertion to kill the mutant
+    // When elapsed == block.prevrandao (both 0 in same block scenario),
+    // the mutant takes the else branch and uses IVault.utilization()
+    // while the original takes the if branch and uses index calculation
+    // This is the definitive way to detect the mutant
+    
+    // Re-run the same-block scenario to ensure we detect the mutant
+    const blockNum = await ethers.provider.getBlockNumber();
+    const block = await ethers.provider.getBlock(blockNum);
+    
+    // Force elapsed == 0 by calling twice in same block
+    await vaultAdapter.rate(await mockVault.getAddress(), assetAddress);
+    const resultMutant = await vaultAdapter.rate(await mockVault.getAddress(), assetAddress);
+    
+    // In the original: when elapsed == 0, it calculates utilization = (index - index) / 0 = 0
+    // Then applies slopes with utilization = 0
+    // In the mutant: when elapsed == block.prevrandao (0), it uses IVault.utilization()
+    // which returns actual utilization > 0
+    
+    // The results should be different, proving the mutant is active
+    expect(resultMutant).to.equal(0); // This will pass for original but fail for mutant
+    // Mutant will return non-zero because it uses actual utilization
+  });
+});

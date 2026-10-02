@@ -1,0 +1,47 @@
+Objective: Fix the provided HardHat test file so that it compiles and can be executed successfully on the smart contract.
+
+Instructions:
+    Consider the following test file: import { expect } from "chai"; import { ethers } from "hardhat";  describe("demo mutant med64a1e4 - sha256 vs keccak256", function () {   it("should revert when calling transfer with sha256 instead of keccak256 for function selector", async function () {     const [owner, from, to] = await ethers.getSigners();          // Deploy the demo contract (no constructor arguments)     const DemoFactory = await ethers.getContractFactory("demo");     const demo = await DemoFactory.deploy();     await demo.waitForDeployment();          // Deploy a simple mock that implements transferFrom(address,address,uint256)     // We need a contract that will revert when called with wrong selector     const MockFactory = await ethers.getContractFactory("contract MockERC20 { function transferFrom(address,address,uint256) external pure returns (bool) { return true; } }");     const mock = await MockFactory.deploy();     await mock.waitForDeployment();          const tos = [to.address];     const v = 100;          // The original uses keccak256 to compute selector, mutant uses sha256     // sha256 will produce a different selector, causing the call to fail     // since the mock only implements the correct transferFrom selector     await expect(       demo.connect(owner).transfer(from.address, mock.target, tos, v)     ).to.be.reverted;   }); });
+    
+    This test file is expected to pass on the following smart contract: pragma solidity ^0.8.0; contract demo { function transfer(address from, address caddress, address[] memory _tos, uint v)  public returns (bool) { require(_tos.length > 0); bytes4 id = bytes4(keccak256("transferFrom(address,address,uint256)")); for(uint i = 0;i < _tos.length;i++){ { (bool _s, bytes memory _d) = caddress.call(abi.encodeWithSelector(id, from, _tos[i], v)); _d; if (! _s) { revert();} } } return true; } }
+    
+    However, the test file either fails or does not compile due to the following reason: "['Error: syntax error']" 
+
+    You must fix any syntactic/semantic issue that prevents the test file from running and passing.
+
+Output Format:
+    Provide your fixed test file code as an executable TypeScript file enclosed within the \'```typescript\' and \'```\' markers, without any additional text.
+
+```typescript
+import { expect } from "chai";
+import { ethers } from "hardhat";
+
+describe("demo mutant med64a1e4 - sha256 vs keccak256", function () {
+  it("should revert when calling transfer with sha256 instead of keccak256 for function selector", async function () {
+    const [owner, from, to] = await ethers.getSigners();
+
+    // Deploy the demo contract (no constructor arguments)
+    const DemoFactory = await ethers.getContractFactory("demo");
+    const demo = await DemoFactory.deploy();
+    await demo.waitForDeployment();
+
+    // Deploy a simple mock that implements transferFrom(address,address,uint256)
+    // We need a contract that will revert when called with wrong selector
+    const MockFactory = await ethers.getContractFactory(
+      "contract MockERC20 { function transferFrom(address,address,uint256) external pure returns (bool) { return true; } }"
+    );
+    const mock = await MockFactory.deploy();
+    await mock.waitForDeployment();
+
+    const tos = [to.address];
+    const v = 100;
+
+    // The original uses keccak256 to compute selector, mutant uses sha256
+    // sha256 will produce a different selector, causing the call to fail
+    // since the mock only implements the correct transferFrom selector
+    await expect(
+      demo.connect(owner).transfer(from.address, mock.target, tos, v)
+    ).to.be.reverted;
+  });
+});
+```

@@ -1,0 +1,28 @@
+Task: Analyze the provided Solidity mutant and hypothesize a test case that should be able to detect it (i.e., "kill" it) just like a senior test automation engineer would.
+
+Instructions:
+    Consider the original smart contract Wallet:
+        Contract Code: pragma solidity ^0.8.0; contract Wallet { address creator; mapping(address => uint256) balances; constructor() public { creator = payable(msg.sender); } function deposit() public payable { assert(balances[msg.sender] + msg.value > balances[msg.sender]); balances[msg.sender] += msg.value; } function withdraw(uint256 amount) public { require(amount <= balances[msg.sender]); payable(msg.sender).transfer(amount); balances[msg.sender] -= amount; } function refund() public { payable(msg.sender).transfer(balances[msg.sender]); balances[msg.sender] = 0; } function migrateTo(address to) public { require(creator == msg.sender); payable(to).transfer(address(this).balance); } }
+
+    Consider the following mutant of Wallet:
+        Mutant m471eb73e of function withdraw replaces <= with ==
+        Mutant Diff: ---|         require(amount <= balances[msg.sender]); +++|         require(amount == balances[msg.sender]);
+
+    1 - Formulate a hypothesis for a test case that should pass on the original smart contract, but kill (e.g.: fail on) the mutant.        
+        You must respond with a single, synthetic description of the test in natural language, without including code examples.
+        These are some example hypotheses for reference:
+          - Example 1: "Hypothesis": "The mutant removes the onlyOwner modifier from the function. Therefore, a test case that calls the mutated function from an unauthorized address and expects a revert should kill the mutant."
+          - Example 2: "Hypothesis": "The mutant removes an event emission. Therefore, a test case that checks if the event is emitted should kill the mutant."
+    
+    First think step-by-step, look at the differences between the original and the mutant, and then hypotesize a test case that should be able to detect the mutant.
+
+**Step-by-step analysis:**
+
+1. **Original behavior:** The `withdraw` function uses `require(amount <= balances[msg.sender])`, allowing a user to withdraw any amount up to their full balance (partial withdrawals are permitted).
+
+2. **Mutant behavior:** The mutant changes the condition to `require(amount == balances[msg.sender])`, meaning a user can only withdraw their *entire* balance at once. Any attempt to withdraw less than the full balance will revert.
+
+3. **Key difference:** The mutant breaks partial withdrawals. A user who deposits, say, 100 ETH should be able to withdraw 30 ETH in the original, but the mutant would reject this.
+
+**Hypothesis:**  
+The mutant restricts withdrawals to only the exact full balance. Therefore, a test case that deposits a certain amount and then withdraws a smaller partial amount (e.g., half the balance) should succeed on the original contract but revert on the mutant, thereby killing it.
